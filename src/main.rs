@@ -12,7 +12,11 @@ use ratatui::widgets::Paragraph;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
+
+    terminal.clear()?;
+
     run(&mut terminal)?;
+
     restore_terminal(&mut terminal)?;
     Ok(())
 }
@@ -35,7 +39,7 @@ fn restore_terminal(
 fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn Error>> {
     Ok(loop {
         terminal.draw(|frame| {
-            let greeting = Paragraph::new("Hello World!");
+            let greeting = Paragraph::new("Hello World!!");
             frame.render_widget(greeting, frame.size());
         })?;
         if event::poll(Duration::from_millis(250))? {
