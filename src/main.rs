@@ -6,9 +6,11 @@ use crossterm::event::{self, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal::enable_raw_mode};
 
-use ratatui::prelude::CrosstermBackend;
+use ratatui::layout::Layout;
+use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction};
+use ratatui::style::{Color, Style};
 use ratatui::terminal::Terminal;
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
@@ -39,8 +41,37 @@ fn restore_terminal(
 fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn Error>> {
     Ok(loop {
         terminal.draw(|frame| {
-            let greeting = Paragraph::new("Hello World!!");
-            frame.render_widget(greeting, frame.size());
+            let main_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
+                .split(frame.size());
+
+            let details = Paragraph::new("Request details")
+                .style(Style::default().fg(Color::LightCyan))
+                .alignment(Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .style(Style::default().fg(Color::White))
+                        .title("Request details")
+                        .border_type(BorderType::Plain),
+                );
+
+            let requests = Paragraph::new("Requests")
+                .style(Style::default().fg(Color::LightCyan))
+                .alignment(Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .style(Style::default().fg(Color::White))
+                        .title("Network requests")
+                        .border_type(BorderType::Plain),
+                );
+
+            frame.render_widget(requests, main_layout[0]);
+
+            frame.render_widget(details, main_layout[1]);
         })?;
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
