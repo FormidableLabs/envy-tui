@@ -12,6 +12,10 @@ use ratatui::style::{Color, Style};
 use ratatui::terminal::Terminal;
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
+mod app;
+
+use app::{ActiveBlock, App};
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
 
@@ -39,6 +43,8 @@ fn restore_terminal(
 }
 
 fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn Error>> {
+    let mut app = App::new();
+
     Ok(loop {
         terminal.draw(|frame| {
             let main_layout = Layout::default()
@@ -47,24 +53,50 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
                 .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
                 .split(frame.size());
 
+            let active_block = app.active_block.clone();
+
             let details = Paragraph::new("Request details")
-                .style(Style::default().fg(Color::LightCyan))
+                .style(
+                    Style::default().fg(if active_block == ActiveBlock::RequestDetails {
+                        Color::White
+                    } else {
+                        Color::DarkGray
+                    }),
+                )
                 .alignment(Alignment::Center)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .style(Style::default().fg(Color::White))
+                        .style(Style::default().fg(
+                            if active_block == ActiveBlock::RequestDetails {
+                                Color::White
+                            } else {
+                                Color::DarkGray
+                            },
+                        ))
                         .title("Request details")
                         .border_type(BorderType::Plain),
                 );
 
             let requests = Paragraph::new("Requests")
-                .style(Style::default().fg(Color::LightCyan))
+                .style(
+                    Style::default().fg(if active_block == ActiveBlock::NetworkRequests {
+                        Color::White
+                    } else {
+                        Color::DarkGray
+                    }),
+                )
                 .alignment(Alignment::Center)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .style(Style::default().fg(Color::White))
+                        .style(Style::default().fg(
+                            if active_block == ActiveBlock::NetworkRequests {
+                                Color::White
+                            } else {
+                                Color::DarkGray
+                            },
+                        ))
                         .title("Network requests")
                         .border_type(BorderType::Plain),
                 );
