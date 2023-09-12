@@ -69,23 +69,31 @@ pub struct App {
     pub active_block: ActiveBlock,
     pub mode: Mode,
     pub requests: Vec<Request>,
-    pub selected_request: String,
+    pub selection_index: usize,
 }
 
-// "1.58s",
 impl App {
     pub fn new() -> App {
         App {
-            selected_request: "id".to_string(),
             active_block: ActiveBlock::NetworkRequests,
             mode: Mode::Normal,
-            requests: vec![Request {
-                method: HttpMethod::GET,
-                status: HttpStatus::OK,
-                id: String::from("id"),
-                uri: String::from("https://randomdomain.com/randompath"),
-                time: 234524,
-            }],
+            selection_index: 0,
+            requests: vec![
+                Request {
+                    method: HttpMethod::GET,
+                    status: HttpStatus::OK,
+                    id: String::from("id"),
+                    uri: String::from("https://randomdomain.com/randompath"),
+                    time: 234524,
+                },
+                Request {
+                    method: HttpMethod::POST,
+                    status: HttpStatus::CREATED,
+                    id: String::from("id2"),
+                    uri: String::from("https://randomdomain.com/randompath"),
+                    time: 234511,
+                },
+            ],
         }
     }
 }
