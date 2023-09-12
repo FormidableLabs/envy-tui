@@ -15,9 +15,8 @@ use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
 
 use app::App;
-use handlers::{handle_down, handle_up};
-
-use self::render::{render_network_requests, render_request_details};
+use handlers::{handle_down, handle_left, handle_right, handle_up};
+use render::{render_network_requests, render_request_details};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
@@ -85,6 +84,12 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         handle_down(&mut app, key);
+                    }
+                    KeyCode::Left | KeyCode::Char('h') => {
+                        handle_left(&mut app, key);
+                    }
+                    KeyCode::Right | KeyCode::Char('l') => {
+                        handle_right(&mut app, key);
                     }
                     _ => {}
                 }

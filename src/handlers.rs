@@ -37,3 +37,27 @@ pub fn handle_down(app: &mut App, key: KeyEvent) {
         },
     }
 }
+
+pub fn handle_left(app: &mut App, key: KeyEvent) {
+    match key.modifiers {
+        KeyModifiers::CONTROL => match app.active_block {
+            ActiveBlock::NetworkRequests => app.active_block = ActiveBlock::RequestDetails,
+            _ => app.active_block = ActiveBlock::NetworkRequests,
+        },
+        _ => match app.active_block {
+            _ => {}
+        },
+    }
+}
+
+pub fn handle_right(app: &mut App, key: KeyEvent) {
+    match key.modifiers {
+        KeyModifiers::CONTROL => match app.active_block {
+            ActiveBlock::NetworkRequests => app.active_block = ActiveBlock::RequestDetails,
+            _ => app.active_block = ActiveBlock::NetworkRequests,
+        },
+        _ => match app.active_block {
+            _ => {}
+        },
+    }
+}
