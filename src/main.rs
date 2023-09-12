@@ -18,7 +18,10 @@ use app::App;
 use handlers::{handle_down, handle_enter, handle_esc, handle_left, handle_right, handle_up};
 use render::{render_network_requests, render_request_details};
 
-fn main() -> Result<(), Box<dyn Error>> {
+pub mod wss;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
 
     terminal.clear()?;
@@ -26,6 +29,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     run(&mut terminal)?;
 
     restore_terminal(&mut terminal)?;
+
+    wss::connect().await;
+
     Ok(())
 }
 
