@@ -12,56 +12,18 @@ pub enum Mode {
     Normal,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum HttpMethod {
-    POST,
-    GET,
-    DELETE,
-    OPTION,
-    PATCH,
-    PUT,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum HttpStatus {
-    OK,
-    CREATED,
-    NOT_FOUND,
-}
-
-impl Display for HttpMethod {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Display for HttpStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
 #[derive(Clone, PartialEq, Debug)]
 pub struct Request {
     pub id: String,
-    pub method: HttpMethod,
-    pub status: HttpStatus,
+    pub method: http::method::Method,
+    pub status: http::status::StatusCode,
     pub uri: String,
     pub time: u32,
 }
 
 impl Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:?}, {:?}",
-            self.method,
-            match self.status {
-                HttpStatus::OK => "OK - 200",
-                HttpStatus::CREATED => "CREATED - 201",
-                HttpStatus::NOT_FOUND => "NOT_FOUND - 404",
-            }
-        )
+        write!(f, "{:?}, {:?}", self.method, self.status)
     }
 }
 
@@ -80,18 +42,25 @@ impl App {
             selection_index: 0,
             requests: vec![
                 Request {
-                    method: HttpMethod::GET,
-                    status: HttpStatus::OK,
+                    status: http::StatusCode::OK,
+                    method: http::method::Method::GET,
                     id: String::from("id"),
                     uri: String::from("https://randomdomain.com/randompath"),
                     time: 234524,
                 },
                 Request {
-                    method: HttpMethod::POST,
-                    status: HttpStatus::CREATED,
+                    method: http::method::Method::POST,
+                    status: http::StatusCode::CREATED,
                     id: String::from("id2"),
                     uri: String::from("https://randomdomain.com/randompath"),
                     time: 234511,
+                },
+                Request {
+                    method: http::method::Method::POST,
+                    status: http::StatusCode::CREATED,
+                    id: String::from("id3"),
+                    uri: String::from("https://randomdomain.com/randompath/nestedPath"),
+                    time: 1111,
                 },
             ],
         }
