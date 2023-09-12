@@ -50,15 +50,28 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
 
     Ok(loop {
         terminal.draw(|frame| {
-            // TODO: Make this responsive based on dimensions.
-            let main_layout = Layout::default()
+            let terminal_width = frame.size().width;
+
+            let wide_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .margin(1)
+                .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
+                .split(frame.size());
+
+            let narrow_layout = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(1)
                 .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
                 .split(frame.size());
 
-            render_request_details(&mut app, frame, main_layout[1]);
-            render_network_requests(&mut app, frame, main_layout[0])
+            let layout = if terminal_width > 200 {
+                wide_layout
+            } else {
+                narrow_layout
+            };
+
+            render_request_details(&mut app, frame, layout[1]);
+            render_network_requests(&mut app, frame, layout[0]);
         })?;
 
         if event::poll(Duration::from_millis(250))? {
