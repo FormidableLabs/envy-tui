@@ -13,7 +13,16 @@ pub fn render_request_details(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    let details = Paragraph::new("Request details")
+    let index = app.selection_index.clone();
+
+    let selected_item = app.requests.get(index).clone();
+
+    let selected = match selected_item {
+        Some(item) => item.deref().to_string(),
+        None => String::from("Could not find request."),
+    };
+
+    let details = Paragraph::new(selected)
         .style(
             Style::default().fg(if app.active_block == ActiveBlock::RequestDetails {
                 Color::White

@@ -23,7 +23,11 @@ pub struct Request {
 
 impl Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}, {:?}", self.method, self.status)
+        write!(
+            f,
+            "Method used: {:?}, response status is {:?}, time took: {:?} miliseconds.",
+            self.method, self.status, self.time
+        )
     }
 }
 

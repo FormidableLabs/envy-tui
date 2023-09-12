@@ -61,3 +61,11 @@ pub fn handle_right(app: &mut App, key: KeyEvent) {
         },
     }
 }
+
+pub fn handle_enter(app: &mut App, _key: KeyEvent) {
+    app.active_block = ActiveBlock::RequestDetails
+}
+
+pub fn handle_esc(app: &mut App, _key: KeyEvent) {
+    app.active_block = ActiveBlock::NetworkRequests
+}

@@ -15,7 +15,7 @@ use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
 
 use app::App;
-use handlers::{handle_down, handle_left, handle_right, handle_up};
+use handlers::{handle_down, handle_enter, handle_esc, handle_left, handle_right, handle_up};
 use render::{render_network_requests, render_request_details};
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -79,6 +79,8 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
                     KeyCode::Char('q') => {
                         break;
                     }
+                    KeyCode::Enter => handle_enter(&mut app, key),
+                    KeyCode::Esc => handle_esc(&mut app, key),
                     KeyCode::Up | KeyCode::Char('k') => {
                         handle_up(&mut app, key);
                     }
