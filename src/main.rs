@@ -26,11 +26,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     terminal.clear()?;
 
+    let _handle = tokio::spawn(async {
+        wss::connect().await;
+    });
+
     run(&mut terminal)?;
 
     restore_terminal(&mut terminal)?;
-
-    wss::connect().await;
 
     Ok(())
 }
