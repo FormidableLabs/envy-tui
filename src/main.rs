@@ -16,7 +16,9 @@ use ratatui::terminal::Terminal;
 
 use app::App;
 use handlers::{handle_down, handle_enter, handle_esc, handle_left, handle_right, handle_up};
-use render::{render_network_requests, render_request_details};
+use render::{
+    render_footer, render_network_requests, render_request_details, render_request_headers,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
@@ -49,28 +51,37 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
 
     Ok(loop {
         terminal.draw(|frame| {
-            let terminal_width = frame.size().width;
+            // TODO: Make the layout responsive.
+            let _terminal_width = frame.size().width;
 
-            let wide_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .margin(1)
-                .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
-                .split(frame.size());
-
-            let narrow_layout = Layout::default()
+            let main_layout = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(1)
-                .constraints([Constraint::Percentage(80), Constraint::Percentage(20)].as_ref())
+                .constraints([Constraint::Percentage(95), Constraint::Percentage(5)].as_ref())
                 .split(frame.size());
 
-            let layout = if terminal_width > 200 {
-                wide_layout
-            } else {
-                narrow_layout
-            };
+            let split_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
+                .split(main_layout[0]);
 
-            render_request_details(&mut app, frame, layout[1]);
-            render_network_requests(&mut app, frame, layout[0]);
+            let details_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(
+                    [
+                        Constraint::Percentage(10),
+                        Constraint::Percentage(30),
+                        Constraint::Percentage(30),
+                        Constraint::Percentage(30),
+                    ]
+                    .as_ref(),
+                )
+                .split(split_layout[1]);
+
+            render_request_details(&mut app, frame, details_layout[1]);
+            render_network_requests(&mut app, frame, split_layout[0]);
+            render_request_headers(&mut app, frame, details_layout[2]);
+            render_footer(&mut app, frame, main_layout[1]);
         })?;
 
         if event::poll(Duration::from_millis(250))? {
