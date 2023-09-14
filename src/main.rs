@@ -22,6 +22,8 @@ use render::{
     render_request_summary, render_response_headers,
 };
 
+use self::handlers::{handle_back_tab, handle_tab};
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
 
@@ -96,6 +98,8 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
                     KeyCode::Char('q') => {
                         break;
                     }
+                    KeyCode::Tab => handle_tab(&mut app, key),
+                    KeyCode::BackTab => handle_back_tab(&mut app, key),
                     KeyCode::Enter => handle_enter(&mut app, key),
                     KeyCode::Esc => handle_esc(&mut app, key),
                     KeyCode::Up | KeyCode::Char('k') => {

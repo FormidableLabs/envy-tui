@@ -3,6 +3,11 @@ use crossterm::event::{KeyEvent, KeyModifiers};
 use crate::app::{ActiveBlock, App};
 use crate::utils::parse_query_params;
 
+fn clear_aux_indexes(app: &mut App) {
+    app.selected_params_index = 0;
+    app.selected_params_index = 0;
+}
+
 pub fn handle_up(app: &mut App, key: KeyEvent) {
     match key.modifiers {
         KeyModifiers::CONTROL => match app.active_block {
@@ -79,7 +84,7 @@ pub fn handle_left(app: &mut App, _key: KeyEvent) {
 
 pub fn handle_right(app: &mut App, _key: KeyEvent) {
     match app.active_block {
-        ActiveBlock::NetworkRequests => app.active_block = ActiveBlock::RequestDetails,
+        ActiveBlock::NetworkRequests => app.active_block = ActiveBlock::Summary,
         _ => {}
     }
 }
@@ -92,4 +97,24 @@ pub fn handle_enter(app: &mut App, _key: KeyEvent) {
 
 pub fn handle_esc(app: &mut App, _key: KeyEvent) {
     app.active_block = ActiveBlock::NetworkRequests
+}
+
+pub fn handle_tab(app: &mut App, _key: KeyEvent) {
+    match app.active_block {
+        ActiveBlock::NetworkRequests => app.active_block = ActiveBlock::Summary,
+        ActiveBlock::Summary => app.active_block = ActiveBlock::RequestDetails,
+        ActiveBlock::RequestDetails => app.active_block = ActiveBlock::RequestHeaders,
+        ActiveBlock::RequestHeaders => app.active_block = ActiveBlock::ResponseHeaders,
+        ActiveBlock::ResponseHeaders => {}
+    }
+}
+
+pub fn handle_back_tab(app: &mut App, _key: KeyEvent) {
+    match app.active_block {
+        ActiveBlock::NetworkRequests => clear_aux_indexes(app),
+        ActiveBlock::Summary => app.active_block = ActiveBlock::NetworkRequests,
+        ActiveBlock::RequestDetails => app.active_block = ActiveBlock::Summary,
+        ActiveBlock::RequestHeaders => app.active_block = ActiveBlock::RequestDetails,
+        ActiveBlock::ResponseHeaders => app.active_block = ActiveBlock::RequestHeaders,
+    }
 }
