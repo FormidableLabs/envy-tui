@@ -36,6 +36,14 @@ fn get_row_style(row_style: RowStyle) -> Style {
     }
 }
 
+fn get_border_style(active: bool) -> Style {
+    if active {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    }
+}
+
 fn render_headers(
     app: &mut App,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
@@ -96,11 +104,11 @@ fn render_headers(
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(match (active_block, header_type) {
-                    (ActiveBlock::RequestHeaders, HeaderType::Request) => Color::White,
-                    (ActiveBlock::ResponseHeaders, HeaderType::Response) => Color::White,
-                    (_, _) => Color::DarkGray,
-                }))
+                .style(match (active_block, header_type) {
+                    (ActiveBlock::RequestHeaders, HeaderType::Request) => get_border_style(true),
+                    (ActiveBlock::ResponseHeaders, HeaderType::Response) => get_border_style(true),
+                    (_, _) => get_border_style(false),
+                })
                 .title(title)
                 .border_type(BorderType::Plain),
         )
@@ -252,20 +260,6 @@ pub fn render_network_requests(
         })
         .collect();
 
-    let default_style = Style::default().fg(Color::White);
-
-    let selected_style = Style::default().fg(Color::Black).bg(Color::LightRed);
-
-    // NOTE: Why iter or map gives back ref?
-    let _mapped_over: Vec<Paragraph> = [Paragraph::new("title")]
-        .iter()
-        .map(|x| {
-            let cloned = x.deref().clone();
-
-            cloned
-        })
-        .collect();
-
     let styled_rows: Vec<Row> = converted_rows
         .iter()
         .map(|(row, selected)| {
@@ -275,10 +269,10 @@ pub fn render_network_requests(
                 .collect::<Vec<&str>>()
                 .clone();
 
-            Row::new(str_vec).style(if *selected {
-                selected_style
-            } else {
-                default_style
+            Row::new(str_vec).style(match (*selected, active_block) {
+                (true, ActiveBlock::NetworkRequests) => get_row_style(RowStyle::Selected),
+                (true, _) => get_row_style(RowStyle::Inactive),
+                (_, _) => get_row_style(RowStyle::Default),
             })
         })
         .collect();
@@ -298,13 +292,9 @@ pub fn render_network_requests(
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(
-                    Style::default().fg(if active_block == ActiveBlock::NetworkRequests {
-                        Color::White
-                    } else {
-                        Color::DarkGray
-                    }),
-                )
+                .style(get_border_style(
+                    app.active_block == ActiveBlock::NetworkRequests,
+                ))
                 .title("Network requests")
                 .border_type(BorderType::Plain),
         )
@@ -351,13 +341,7 @@ pub fn render_request_summary(
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(
-                    Style::default().fg(if app.active_block == ActiveBlock::Summary {
-                        Color::White
-                    } else {
-                        Color::DarkGray
-                    }),
-                )
+                .style(get_border_style(app.active_block == ActiveBlock::Summary))
                 .title("Request Summary")
                 .border_type(BorderType::Plain),
         );
