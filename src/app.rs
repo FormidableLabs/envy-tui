@@ -7,6 +7,8 @@ pub enum ActiveBlock {
     NetworkRequests,
     RequestDetails,
     RequestHeaders,
+    ResponseHeaders,
+    Summary,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -24,6 +26,7 @@ pub struct Request {
     pub response_headers: http::HeaderMap,
     pub uri: String,
     pub duration: u32,
+    pub body: Option<String>,
 }
 
 impl Display for Request {
@@ -41,6 +44,8 @@ pub struct App {
     pub mode: Mode,
     pub items: Vec<Request>,
     pub selection_index: usize,
+    pub selected_header_index: usize,
+    pub selected_params_index: usize,
 }
 
 impl App {
@@ -49,10 +54,11 @@ impl App {
             status: http::StatusCode::OK,
             method: http::method::Method::GET,
             id: String::from("id"),
-            uri: String::from("https://randomdomain.com/randompath"),
+            uri: String::from("https://randomdomain.com/randompath?foo=bar&bottle=water"),
             duration: 524,
             request_headers: http::HeaderMap::new(),
             response_headers: http::HeaderMap::new(),
+            body: None,
         };
 
         first_request
@@ -78,21 +84,47 @@ impl App {
                 .unwrap(),
         );
 
+        let mut second_request = Request {
+            status: http::StatusCode::OK,
+            method: http::method::Method::GET,
+            id: String::from("id"),
+            uri: String::from(
+                "https://randomdomain.com/anotherpath/someresource?cursor=4056&limit=10",
+            ),
+            duration: 524,
+            request_headers: http::HeaderMap::new(),
+            response_headers: http::HeaderMap::new(),
+            body: None,
+        };
+
+        second_request
+            .request_headers
+            .append(HOST, "randomdomain.com".parse().unwrap());
+
+        second_request
+            .request_headers
+            .append(CONTENT_TYPE, "application/json".parse().unwrap());
+
+        second_request
+            .request_headers
+            .append(AUTHORIZATION, "Bearer token".parse().unwrap());
+
+        second_request.request_headers.append(
+            USER_AGENT,
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.9; rv:50.0) Gecko/20100101 Firefox/50.0"
+                .parse()
+                .unwrap(),
+        );
+
         App {
             active_block: ActiveBlock::NetworkRequests,
             mode: Mode::Normal,
             selection_index: 0,
+            selected_params_index: 0,
+            selected_header_index: 0,
             items: vec![
                 first_request,
-                Request {
-                    status: http::StatusCode::OK,
-                    method: http::method::Method::GET,
-                    id: String::from("id"),
-                    uri: String::from("https://randomdomain.com/randompath"),
-                    duration: 524,
-                    request_headers: http::HeaderMap::new(),
-                    response_headers: http::HeaderMap::new(),
-                },
+                second_request,
                 Request {
                     method: http::method::Method::POST,
                     status: http::StatusCode::CREATED,
@@ -101,6 +133,7 @@ impl App {
                     duration: 1511,
                     request_headers: http::HeaderMap::new(),
                     response_headers: http::HeaderMap::new(),
+                    body: Some(String::from(r#"{}"#)),
                 },
                 Request {
                     method: http::method::Method::DELETE,
@@ -110,6 +143,7 @@ impl App {
                     duration: 242,
                     request_headers: http::HeaderMap::new(),
                     response_headers: http::HeaderMap::new(),
+                    body: None,
                 },
             ],
         }

@@ -1,6 +1,7 @@
 mod app;
 mod handlers;
 mod render;
+mod utils;
 
 use std::io;
 use std::time::Duration;
@@ -17,7 +18,8 @@ use ratatui::terminal::Terminal;
 use app::App;
 use handlers::{handle_down, handle_enter, handle_esc, handle_left, handle_right, handle_up};
 use render::{
-    render_footer, render_network_requests, render_request_details, render_request_headers,
+    render_footer, render_network_requests, render_request_headers, render_request_query_params,
+    render_request_summary, render_response_headers,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -78,9 +80,13 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
                 )
                 .split(split_layout[1]);
 
-            render_request_details(&mut app, frame, details_layout[1]);
             render_network_requests(&mut app, frame, split_layout[0]);
+
+            render_request_summary(&mut app, frame, details_layout[0]);
+            render_request_query_params(&mut app, frame, details_layout[1]);
             render_request_headers(&mut app, frame, details_layout[2]);
+            render_response_headers(&mut app, frame, details_layout[3]);
+
             render_footer(&mut app, frame, main_layout[1]);
         })?;
 
