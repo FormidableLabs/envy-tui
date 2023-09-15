@@ -206,7 +206,6 @@ pub fn render_request_query_params(
                         Color::DarkGray
                     }),
                 )
-                .title(app.selected_params_index.to_string())
                 .title("Request Query Params")
                 .border_type(BorderType::Plain),
         )
