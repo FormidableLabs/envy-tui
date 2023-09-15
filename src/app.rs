@@ -230,7 +230,7 @@ impl App {
                     duration: 1511,
                     request_headers: http::HeaderMap::new(),
                     response_headers: http::HeaderMap::new(),
-                    body: Some(String::from(r#"{}"#)),
+                    body: Some(String::from(r#"{"name": "john"}"#)),
                 },
                 Request {
                     method: http::method::Method::DELETE,
