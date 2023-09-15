@@ -2,7 +2,7 @@ use std::io::Stdout;
 use std::ops::Deref;
 
 use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Modifier, Style, Styled};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Row, Table};
 use ratatui::Frame;
 
@@ -56,6 +56,16 @@ fn render_headers(
 
     let active_block = app.active_block;
 
+    let map = match selected_item {
+        Some(item) => item.clone().request_headers,
+        None => http::HeaderMap::new(),
+    };
+
+    let current_header_selected = match map.iter().nth(app.selected_header_index) {
+        Some((name, _)) => name.deref().to_string(),
+        None => "".to_string(),
+    };
+
     let rows = match selected_item {
         Some(item) => {
             let headers = if header_type == HeaderType::Request {
@@ -74,7 +84,15 @@ fn render_headers(
                         _ => "Unknown header value",
                     };
 
-                    Row::new(vec![String::from(header_name), String::from(header_value)])
+                    let is_active_header = header_name == current_header_selected;
+
+                    Row::new(vec![String::from(header_name), String::from(header_value)]).style(
+                        Style::default().fg(if is_active_header {
+                            Color::Magenta
+                        } else {
+                            Color::LightBlue
+                        }),
+                    )
                 })
                 .collect();
 
