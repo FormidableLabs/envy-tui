@@ -6,6 +6,9 @@ use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layou
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Row, Table, Tabs};
 use ratatui::Frame;
+use serde_json::Value;
+
+use std::error::Error;
 
 use crate::app::{ActiveBlock, App, RequestDetailsPane, ResponseDetailsPane};
 use crate::utils::{parse_query_params, truncate};
@@ -21,6 +24,22 @@ enum RowStyle {
 enum HeaderType {
     Request,
     Response,
+}
+
+fn pretty_parse_body() -> Result<String, Box<dyn Error>> {
+    let test_json = r#"{"name": "john", "nested": {
+        "another": {
+        "oneMore": {
+        "array": ["first"
+        }
+        }
+        }}"#;
+
+    let potential_json_body = serde_json::from_str::<Value>(test_json)?;
+
+    let parsed_json = serde_json::to_string_pretty(&potential_json_body)?;
+
+    Ok(parsed_json)
 }
 
 fn get_row_style(row_style: RowStyle) -> Style {
@@ -324,7 +343,14 @@ pub fn render_response_block(
     frame.render_widget(tabs, inner_layout[0]);
 
     match app.response_details_block {
-        ResponseDetailsPane::Body => {}
+        ResponseDetailsPane::Body => {
+            let content = match pretty_parse_body() {
+                Ok(v) => v,
+                Err(err) => "Error happened while parsing JSON, ".to_string() + &err.to_string(),
+            };
+
+            frame.render_widget(Paragraph::new(content), inner_layout[1]);
+        }
         ResponseDetailsPane::Headers => {
             render_headers(app, frame, inner_layout[1], HeaderType::Response)
         }

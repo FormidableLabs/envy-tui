@@ -45,6 +45,7 @@ dependencies = [
  "crossterm",
  "http",
  "ratatui",
+ "serde",
  "serde_json",
 ]
 
