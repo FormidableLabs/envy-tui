@@ -16,13 +16,14 @@ use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
 
 use app::App;
-use handlers::{handle_down, handle_enter, handle_esc, handle_left, handle_right, handle_up};
-use render::{
-    render_footer, render_network_requests, render_request_headers, render_request_query_params,
-    render_request_summary, render_response_headers,
+use handlers::{
+    handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
+    handle_pane_prev, handle_right, handle_tab, handle_up,
 };
-
-use self::handlers::{handle_back_tab, handle_tab};
+use render::{
+    render_footer, render_network_requests, render_request_block, render_request_summary,
+    render_response_block,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
@@ -74,9 +75,8 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
                 .constraints(
                     [
                         Constraint::Percentage(10),
-                        Constraint::Percentage(30),
-                        Constraint::Percentage(30),
-                        Constraint::Percentage(30),
+                        Constraint::Percentage(40),
+                        Constraint::Percentage(50),
                     ]
                     .as_ref(),
                 )
@@ -85,9 +85,8 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
             render_network_requests(&mut app, frame, split_layout[0]);
 
             render_request_summary(&mut app, frame, details_layout[0]);
-            render_request_query_params(&mut app, frame, details_layout[1]);
-            render_request_headers(&mut app, frame, details_layout[2]);
-            render_response_headers(&mut app, frame, details_layout[3]);
+            render_request_block(&mut app, frame, details_layout[1]);
+            render_response_block(&mut app, frame, details_layout[2]);
 
             render_footer(&mut app, frame, main_layout[1]);
         })?;
@@ -100,6 +99,8 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
                     }
                     KeyCode::Tab => handle_tab(&mut app, key),
                     KeyCode::BackTab => handle_back_tab(&mut app, key),
+                    KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
+                    KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
                     KeyCode::Enter => handle_enter(&mut app, key),
                     KeyCode::Esc => handle_esc(&mut app, key),
                     KeyCode::Up | KeyCode::Char('k') => {

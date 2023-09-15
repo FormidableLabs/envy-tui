@@ -6,11 +6,23 @@ use http::header::{
 };
 
 #[derive(Clone, Copy, PartialEq, Debug)]
+pub enum RequestDetailsPane {
+    Query,
+    Headers,
+    Body,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ResponseDetailsPane {
+    Headers,
+    Body,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ActiveBlock {
     NetworkRequests,
     RequestDetails,
-    RequestHeaders,
-    ResponseHeaders,
+    ResponseDetails,
     Summary,
 }
 
@@ -44,6 +56,8 @@ impl Display for Request {
 
 pub struct App {
     pub active_block: ActiveBlock,
+    pub request_details_block: RequestDetailsPane,
+    pub response_details_block: ResponseDetailsPane,
     pub mode: Mode,
     pub items: Vec<Request>,
     pub selection_index: usize,
@@ -198,6 +212,8 @@ impl App {
 
         App {
             active_block: ActiveBlock::NetworkRequests,
+            request_details_block: RequestDetailsPane::Body,
+            response_details_block: ResponseDetailsPane::Body,
             mode: Mode::Normal,
             selection_index: 0,
             selected_params_index: 0,
