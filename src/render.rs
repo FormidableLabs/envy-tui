@@ -30,7 +30,7 @@ fn pretty_parse_body() -> Result<String, Box<dyn Error>> {
     let test_json = r#"{"name": "john", "nested": {
         "another": {
         "oneMore": {
-        "array": ["first"
+        "array": ["first"]
         }
         }
         }}"#;
@@ -312,13 +312,7 @@ pub fn render_response_block(
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .style(
-                    Style::default().fg(if active_block == ActiveBlock::ResponseDetails {
-                        Color::White
-                    } else {
-                        Color::DarkGray
-                    }),
-                )
+                .style(Style::default().fg(Color::DarkGray))
                 // .title("Request Query Params")
                 .border_type(BorderType::Thick),
         )
@@ -327,7 +321,7 @@ pub fn render_response_block(
             ResponseDetailsPane::Headers => 1,
             // DetailsPane::Query => 2,
         })
-        .highlight_style(Style::default().fg(Color::LightMagenta));
+        .highlight_style(Style::default().fg(Color::White));
 
     let inner_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -349,7 +343,18 @@ pub fn render_response_block(
                 Err(err) => "Error happened while parsing JSON, ".to_string() + &err.to_string(),
             };
 
-            frame.render_widget(Paragraph::new(content), inner_layout[1]);
+            frame.render_widget(
+                Paragraph::new(content).style(
+                    Style::default()
+                        .fg(if active_block == ActiveBlock::ResponseDetails {
+                            Color::White
+                        } else {
+                            Color::DarkGray
+                        })
+                        .add_modifier(Modifier::BOLD),
+                ),
+                inner_layout[1],
+            );
         }
         ResponseDetailsPane::Headers => {
             render_headers(app, frame, inner_layout[1], HeaderType::Response)
