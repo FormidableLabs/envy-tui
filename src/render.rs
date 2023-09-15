@@ -1,8 +1,9 @@
 use std::io::Stdout;
 use std::ops::Deref;
 
+use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Rect};
-use ratatui::style::{Color, Modifier, Style, Styled};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Row, Table};
 use ratatui::Frame;
 
@@ -56,16 +57,6 @@ fn render_headers(
 
     let active_block = app.active_block;
 
-    let map = match selected_item {
-        Some(item) => item.clone().request_headers,
-        None => http::HeaderMap::new(),
-    };
-
-    let current_header_selected = match map.iter().nth(app.selected_header_index) {
-        Some((name, _)) => name.deref().to_string(),
-        None => "".to_string(),
-    };
-
     let rows = match selected_item {
         Some(item) => {
             let headers = if header_type == HeaderType::Request {
@@ -74,7 +65,27 @@ fn render_headers(
                 &item.response_headers
             };
 
-            let rows = headers
+            let index = if header_type == HeaderType::Request {
+                app.selected_header_index
+            } else {
+                app.selected_response_header_index
+            };
+
+            let mut cloned = headers.iter().collect::<Vec<(&HeaderName, &HeaderValue)>>();
+
+            cloned.sort_by(|a, b| {
+                let (name_a, _) = a;
+                let (name_b, _) = b;
+
+                name_a.to_string().cmp(&name_b.to_string())
+            });
+
+            let current_header_selected = match cloned.iter().nth(index) {
+                Some((name, _)) => name.deref().to_string(),
+                None => "".to_string(),
+            };
+
+            let rows = cloned
                 .iter()
                 .map(|(name, value)| {
                     let header_name = name.as_str();
@@ -87,11 +98,16 @@ fn render_headers(
                     let is_active_header = header_name == current_header_selected;
 
                     Row::new(vec![String::from(header_name), String::from(header_value)]).style(
-                        Style::default().fg(if is_active_header {
-                            Color::Magenta
-                        } else {
-                            Color::LightBlue
-                        }),
+                        match (is_active_header, active_block, header_type) {
+                            (true, ActiveBlock::RequestHeaders, HeaderType::Request) => {
+                                get_row_style(RowStyle::Selected)
+                            }
+                            (true, ActiveBlock::ResponseHeaders, HeaderType::Response) => {
+                                get_row_style(RowStyle::Selected)
+                            }
+                            (true, _, _) => get_row_style(RowStyle::Inactive),
+                            (_, _, _) => get_row_style(RowStyle::Default),
+                        },
                     )
                 })
                 .collect();
@@ -162,9 +178,18 @@ pub fn render_request_query_params(
 
     let raw_params = parse_query_params(uri);
 
-    let current_param_selected = &raw_params.get(app.selected_params_index);
+    let mut cloned = raw_params.clone();
 
-    let rows = raw_params
+    cloned.sort_by(|a, b| {
+        let (name_a, _) = a;
+        let (name_b, _) = b;
+
+        name_a.cmp(name_b)
+    });
+
+    let current_param_selected = cloned.get(app.selected_params_index);
+
+    let rows = cloned
         .iter()
         .map(|param| {
             let (name, value) = param;
@@ -172,7 +197,11 @@ pub fn render_request_query_params(
             let cloned_value = value.deref().clone();
 
             let is_selected = match current_param_selected {
-                Some(v) => v.deref() == param,
+                Some(v) => {
+                    let (current_name, _) = v;
+
+                    current_name.deref() == name
+                }
                 None => false,
             };
 
@@ -352,7 +381,9 @@ pub fn render_request_summary(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    let status_bar = Paragraph::new("Request Summary")
+    let item = &app.items[app.selection_index];
+
+    let status_bar = Paragraph::new(item.to_string())
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center)
         .block(

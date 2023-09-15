@@ -42,6 +42,15 @@ pub fn handle_up(app: &mut App, key: KeyEvent) {
 
                 app.selected_header_index = next_index
             }
+            ActiveBlock::ResponseHeaders => {
+                let next_index = if app.selected_response_header_index == 0 {
+                    0
+                } else {
+                    app.selected_response_header_index - 1
+                };
+
+                app.selected_response_header_index = next_index
+            }
             _ => {}
         },
     }
@@ -91,6 +100,19 @@ pub fn handle_down(app: &mut App, key: KeyEvent) {
                 };
 
                 app.selected_header_index = next_index
+            }
+            ActiveBlock::ResponseHeaders => {
+                let item = &app.items[app.selection_index];
+
+                let item_length = item.response_headers.len();
+
+                let next_index = if app.selected_response_header_index + 1 >= item_length {
+                    item_length - 1
+                } else {
+                    app.selected_response_header_index + 1
+                };
+
+                app.selected_response_header_index = next_index
             }
             _ => {}
         },
