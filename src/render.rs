@@ -2,12 +2,12 @@ use std::io::Stdout;
 use std::ops::Deref;
 
 use http::{HeaderName, HeaderValue};
-use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Rect};
+use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Row, Table};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Row, Table, Tabs};
 use ratatui::Frame;
 
-use crate::app::{ActiveBlock, App};
+use crate::app::{ActiveBlock, App, RequestDetailsPane, ResponseDetailsPane};
 use crate::utils::{parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -99,10 +99,10 @@ fn render_headers(
 
                     Row::new(vec![String::from(header_name), String::from(header_value)]).style(
                         match (is_active_header, active_block, header_type) {
-                            (true, ActiveBlock::RequestHeaders, HeaderType::Request) => {
+                            (true, ActiveBlock::RequestDetails, HeaderType::Request) => {
                                 get_row_style(RowStyle::Selected)
                             }
-                            (true, ActiveBlock::ResponseHeaders, HeaderType::Response) => {
+                            (true, ActiveBlock::ResponseDetails, HeaderType::Response) => {
                                 get_row_style(RowStyle::Selected)
                             }
                             (true, _, _) => get_row_style(RowStyle::Inactive),
@@ -117,12 +117,6 @@ fn render_headers(
         None => vec![Row::new(vec!["No headers found."])],
     };
 
-    let title = if header_type == HeaderType::Request {
-        "Request headers"
-    } else {
-        "Response headers"
-    };
-
     let table = Table::new(rows)
         // You can set the style of the entire Table.
         .style(Style::default().fg(Color::White))
@@ -134,19 +128,6 @@ fn render_headers(
                 // specify some margin at the bottom.
                 .bottom_margin(1),
         )
-        // As any other widget, a Table can be wrapped in a Block.
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .style(match (active_block, header_type) {
-                    (ActiveBlock::RequestHeaders, HeaderType::Request) => get_border_style(true),
-                    (ActiveBlock::ResponseHeaders, HeaderType::Response) => get_border_style(true),
-                    (_, _) => get_border_style(false),
-                })
-                .title(title)
-                .border_type(BorderType::Plain),
-        )
-        // Columns widths are constrained in the same way as Layout...
         .widths(&[
             Constraint::Percentage(10),
             Constraint::Percentage(70),
@@ -162,7 +143,7 @@ fn render_headers(
     frame.render_widget(table, area);
 }
 
-pub fn render_request_query_params(
+pub fn render_request_block(
     app: &mut App,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
@@ -224,21 +205,6 @@ pub fn render_request_query_params(
                 // specify some margin at the bottom.
                 .bottom_margin(1),
         )
-        // As any other widget, a Table can be wrapped in a Block.
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .style(
-                    Style::default().fg(if active_block == ActiveBlock::RequestDetails {
-                        Color::White
-                    } else {
-                        Color::DarkGray
-                    }),
-                )
-                .title("Request Query Params")
-                .border_type(BorderType::Plain),
-        )
-        // Columns widths are constrained in the same way as Layout...
         .widths(&[
             Constraint::Percentage(10),
             Constraint::Percentage(70),
@@ -249,25 +215,120 @@ pub fn render_request_query_params(
         // If you wish to highlight a row in any specific way when it is selected...
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         // ...and potentially show a symbol in front of the selection.
+        //
+        //
         .highlight_symbol(">>");
 
-    frame.render_widget(table, area);
+    let tabs = Tabs::new(vec!["Request Body", "Request Header", "Request Params"])
+        .block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .style(
+                    Style::default().fg(if active_block == ActiveBlock::RequestDetails {
+                        Color::White
+                    } else {
+                        Color::DarkGray
+                    }),
+                )
+                // .title("Request Query Params")
+                .border_type(BorderType::Thick),
+        )
+        .select(match app.request_details_block {
+            RequestDetailsPane::Body => 0,
+            RequestDetailsPane::Headers => 1,
+            RequestDetailsPane::Query => 2,
+        })
+        .highlight_style(Style::default().fg(Color::LightMagenta));
+
+    let inner_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
+        .split(area);
+
+    let main = Block::default()
+        .title("Request details")
+        .borders(Borders::ALL);
+
+    frame.render_widget(main, area);
+    frame.render_widget(tabs, inner_layout[0]);
+
+    match app.request_details_block {
+        RequestDetailsPane::Body => {}
+        RequestDetailsPane::Query => {
+            frame.render_widget(table, inner_layout[1]);
+        }
+        RequestDetailsPane::Headers => {
+            render_headers(app, frame, inner_layout[1], HeaderType::Request)
+        }
+    }
 }
 
-pub fn render_request_headers(
+pub fn render_response_block(
     app: &mut App,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    render_headers(app, frame, area, HeaderType::Request)
-}
+    let active_block = app.active_block;
 
-pub fn render_response_headers(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
-    render_headers(app, frame, area, HeaderType::Response)
+    let selected_item = app.items.get(app.selection_index);
+
+    let uri = match selected_item {
+        Some(item) => item.deref().uri.clone(),
+        None => String::from("Could not find request."),
+    };
+
+    let raw_params = parse_query_params(uri);
+
+    let mut cloned = raw_params.clone();
+
+    cloned.sort_by(|a, b| {
+        let (name_a, _) = a;
+        let (name_b, _) = b;
+
+        name_a.cmp(name_b)
+    });
+
+    let tabs = Tabs::new(vec!["Response Body", "Response Header"])
+        .block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .style(
+                    Style::default().fg(if active_block == ActiveBlock::ResponseDetails {
+                        Color::White
+                    } else {
+                        Color::DarkGray
+                    }),
+                )
+                // .title("Request Query Params")
+                .border_type(BorderType::Thick),
+        )
+        .select(match app.response_details_block {
+            ResponseDetailsPane::Body => 0,
+            ResponseDetailsPane::Headers => 1,
+            // DetailsPane::Query => 2,
+        })
+        .highlight_style(Style::default().fg(Color::LightMagenta));
+
+    let inner_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
+        .split(area);
+
+    let main = Block::default()
+        .title("Response details")
+        .borders(Borders::ALL);
+
+    frame.render_widget(main, area);
+    frame.render_widget(tabs, inner_layout[0]);
+
+    match app.response_details_block {
+        ResponseDetailsPane::Body => {}
+        ResponseDetailsPane::Headers => {
+            render_headers(app, frame, inner_layout[1], HeaderType::Response)
+        }
+    }
 }
 
 pub fn render_network_requests(
@@ -362,7 +423,7 @@ pub fn render_network_requests(
 }
 
 pub fn render_footer(_app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let status_bar = Paragraph::new("Status Bar")
+    let status_bar = Paragraph::new("Waiting for connection")
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center)
         .block(
