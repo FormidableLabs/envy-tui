@@ -71,42 +71,29 @@ pub struct App {
 
 impl App {
     pub fn new() -> App {
-        let res_1 = parse_raw_trace(TEST_JSON_1);
-
-        let res_2 = parse_raw_trace(TEST_JSON_2);
-
-        let res_3 = parse_raw_trace(TEST_JSON_3);
-
-        let res_4 = parse_raw_trace(TEST_JSON_4);
-
-        let res_5 = parse_raw_trace(TEST_JSON_5);
-
-        let res_6 = parse_raw_trace(TEST_JSON_6);
-
-        let res_7 = parse_raw_trace(TEST_JSON_7);
-
-        let res_8 = parse_raw_trace(TEST_JSON_8);
-
-        let res_9 = parse_raw_trace(TEST_JSON_9);
-
         let mut items = vec![];
 
         vec![
-            &res_1, &res_2, &res_3, &res_4, &res_5, &res_6, &res_7, &res_8, &res_9,
+            TEST_JSON_1,
+            TEST_JSON_2,
+            TEST_JSON_3,
+            TEST_JSON_4,
+            TEST_JSON_5,
+            TEST_JSON_6,
+            TEST_JSON_7,
+            TEST_JSON_8,
+            TEST_JSON_9,
         ]
         .iter()
+        .map(|raw_json_string| parse_raw_trace(raw_json_string))
         .for_each(|x| match x {
-            Ok(v) => {
-                let cloned = v.clone();
-
-                items.push(cloned)
-            }
+            Ok(v) => items.push(v),
             Err(_) => {}
         });
 
         App {
             active_block: ActiveBlock::NetworkRequests,
-            request_details_block: RequestDetailsPane::Body,
+            request_details_block: RequestDetailsPane::Headers,
             response_details_block: ResponseDetailsPane::Body,
             mode: Mode::Normal,
             selection_index: 0,
