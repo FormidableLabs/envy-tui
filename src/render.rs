@@ -377,10 +377,21 @@ pub fn render_network_requests(
         .iter()
         .map(|request| {
             let uri = truncate(request.uri.clone().as_str(), 40);
+
             let method = request.method.clone().to_string();
-            let status = request.status.clone().to_string();
-            let time = request.duration.clone().to_string();
+
+            let status = match request.status {
+                Some(v) => v.to_string(),
+                None => "".to_string(),
+            };
+
+            let duration = match request.duration {
+                Some(v) => v.to_string(),
+                None => "".to_string(),
+            };
+
             let id = request.id.clone().to_string();
+
             let selected_item = requests.get(index).clone();
 
             let selected = match selected_item {
@@ -394,7 +405,7 @@ pub fn render_network_requests(
                 None => false,
             };
 
-            (vec![method, status, uri, time, id], selected)
+            (vec![method, status, uri, duration, id], selected)
         })
         .collect();
 

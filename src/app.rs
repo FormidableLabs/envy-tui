@@ -1,9 +1,10 @@
 use std::fmt::Display;
 
-use http::header::{
-    ACCEPT_RANGES, ACCESS_CONTROL_ALLOW_ORIGIN, AGE, AUTHORIZATION, CACHE_CONTROL,
-    CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, DATE, ETAG, EXPIRES, HOST, USER_AGENT,
+use crate::mock::{
+    TEST_JSON_1, TEST_JSON_2, TEST_JSON_3, TEST_JSON_4, TEST_JSON_5, TEST_JSON_6, TEST_JSON_7,
+    TEST_JSON_8, TEST_JSON_9,
 };
+use crate::parser::parse_raw_trace;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum RequestDetailsPane {
@@ -36,12 +37,14 @@ pub enum Mode {
 pub struct Request {
     pub id: String,
     pub method: http::method::Method,
-    pub status: http::status::StatusCode,
+    pub status: Option<http::status::StatusCode>,
     pub request_headers: http::HeaderMap,
     pub response_headers: http::HeaderMap,
     pub uri: String,
-    pub duration: u32,
-    pub body: Option<String>,
+    pub duration: Option<u32>,
+    pub request_body: Option<String>,
+    pub response_body: Option<String>,
+    pub http_version: Option<http::Version>,
 }
 
 impl Display for Request {
@@ -68,147 +71,38 @@ pub struct App {
 
 impl App {
     pub fn new() -> App {
-        let mut first_request = Request {
-            status: http::StatusCode::OK,
-            method: http::method::Method::GET,
-            id: String::from("id"),
-            uri: String::from("https://randomdomain.com/randompath?foo=bar&bottle=water"),
-            duration: 524,
-            request_headers: http::HeaderMap::new(),
-            response_headers: http::HeaderMap::new(),
-            body: None,
-        };
+        let res_1 = parse_raw_trace(TEST_JSON_1);
 
-        first_request
-            .request_headers
-            .append(HOST, "randomdomain.com".parse().unwrap());
+        let res_2 = parse_raw_trace(TEST_JSON_2);
 
-        first_request
-            .request_headers
-            .append(CONTENT_TYPE, "application/json".parse().unwrap());
+        let res_3 = parse_raw_trace(TEST_JSON_3);
 
-        first_request
-            .request_headers
-            .append(CACHE_CONTROL, "max-age=604800".parse().unwrap());
+        let res_4 = parse_raw_trace(TEST_JSON_4);
 
-        first_request
-            .request_headers
-            .append(AUTHORIZATION, "Bearer token".parse().unwrap());
+        let res_5 = parse_raw_trace(TEST_JSON_5);
 
-        first_request.request_headers.append(
-            USER_AGENT,
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.9; rv:50.0) Gecko/20100101 Firefox/50.0"
-                .parse()
-                .unwrap(),
-        );
-        first_request
-            .response_headers
-            .append(ACCEPT_RANGES, "bytes".parse().unwrap());
-        first_request
-            .response_headers
-            .append(ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
-        first_request
-            .response_headers
-            .append(AGE, "0".parse().unwrap());
+        let res_6 = parse_raw_trace(TEST_JSON_6);
 
-        first_request
-            .response_headers
-            .append(CACHE_CONTROL, "max-age=600".parse().unwrap());
+        let res_7 = parse_raw_trace(TEST_JSON_7);
 
-        first_request
-            .response_headers
-            .append(CONTENT_ENCODING, "gzip".parse().unwrap());
+        let res_8 = parse_raw_trace(TEST_JSON_8);
 
-        first_request
-            .response_headers
-            .append(CONTENT_LENGTH, "6530".parse().unwrap());
+        let res_9 = parse_raw_trace(TEST_JSON_9);
 
-        first_request
-            .response_headers
-            .append(CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+        let mut items = vec![];
 
-        first_request
-            .response_headers
-            .append(DATE, "Fri, 15 Sep 2023 07:46:09 GMT".parse().unwrap());
+        vec![
+            &res_1, &res_2, &res_3, &res_4, &res_5, &res_6, &res_7, &res_8, &res_9,
+        ]
+        .iter()
+        .for_each(|x| match x {
+            Ok(v) => {
+                let cloned = v.clone();
 
-        first_request
-            .response_headers
-            .append(ETAG, r#"W/"65039b6c-7819"#.parse().unwrap());
-
-        first_request
-            .response_headers
-            .append(EXPIRES, r#"W/"65039b6c-7819"#.parse().unwrap());
-
-        first_request
-            .response_headers
-            .append(ETAG, r#"W/"65039b6c-7819"#.parse().unwrap());
-
-        first_request
-            .response_headers
-            .append(ETAG, r#"W/"65039b6c-7819"#.parse().unwrap());
-        // Expires:
-        // Fri, 15 Sep 2023 07:56:09 GMT
-        // Last-Modified:
-        // Thu, 14 Sep 2023 23:46:52 GMT
-        // Permissions-Policy:
-        // interest-cohort=()
-        // Server:
-        // GitHub.com
-        //
-        // Strict-Transport-Security:
-        // max-age=31556952
-        // Vary:
-        // Accept-Encoding
-        // Via:
-        // 1.1 varnish
-        // X-Cache:
-        // MISS
-        // X-Cache-Hits:
-        // 0
-        // X-Fastly-Request-Id:
-        // 02bdf6f717a69d031d4b1861d2f6b00eaf7455d8
-        // X-Github-Request-Id:
-        // 0F12:111F2:3EF449D:405EA60:65040BC0
-        // X-Origin-Cache:
-        // HIT
-        // X-Proxy-Cache:
-        // MISS
-        // X-Served-By:
-        // cache-fra-eddf8230025-FRA
-        // X-Timer:
-        // S1694763969.404281,VS0,VE100
-
-        let mut second_request = Request {
-            status: http::StatusCode::OK,
-            method: http::method::Method::GET,
-            id: String::from("id"),
-            uri: String::from(
-                "https://randomdomain.com/anotherpath/someresource?cursor=4056&limit=10",
-            ),
-            duration: 524,
-            request_headers: http::HeaderMap::new(),
-            response_headers: http::HeaderMap::new(),
-            body: None,
-        };
-
-        second_request
-            .request_headers
-            .append(HOST, "randomdomain.com".parse().unwrap());
-
-        second_request
-            .request_headers
-            .append(CONTENT_TYPE, "application/json".parse().unwrap());
-
-        second_request
-            .request_headers
-            .append(AUTHORIZATION, "Bearer token".parse().unwrap());
-
-        second_request.request_headers.append(
-            USER_AGENT,
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.9; rv:50.0) Gecko/20100101 Firefox/50.0"
-                .parse()
-                .unwrap(),
-        );
+                items.push(cloned)
+            }
+            Err(_) => {}
+        });
 
         App {
             active_block: ActiveBlock::NetworkRequests,
@@ -219,30 +113,7 @@ impl App {
             selected_params_index: 0,
             selected_header_index: 0,
             selected_response_header_index: 0,
-            items: vec![
-                first_request,
-                second_request,
-                Request {
-                    method: http::method::Method::POST,
-                    status: http::StatusCode::CREATED,
-                    id: String::from("id2"),
-                    uri: String::from("https://randomdomain.com/randompath"),
-                    duration: 1511,
-                    request_headers: http::HeaderMap::new(),
-                    response_headers: http::HeaderMap::new(),
-                    body: Some(String::from(r#"{"name": "john"}"#)),
-                },
-                Request {
-                    method: http::method::Method::DELETE,
-                    status: http::StatusCode::NOT_FOUND,
-                    id: String::from("id3"),
-                    uri: String::from("https://randomdomain.com/randompath/nestedPath"),
-                    duration: 242,
-                    request_headers: http::HeaderMap::new(),
-                    response_headers: http::HeaderMap::new(),
-                    body: None,
-                },
-            ],
+            items,
         }
     }
 }
