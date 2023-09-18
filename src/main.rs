@@ -69,45 +69,83 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
 
                 render_help(&mut app, frame, main_layout[0]);
             } else {
-                // TODO: Make the layout responsive.
-                let _terminal_width = frame.size().width;
+                let terminal_width = frame.size().width;
 
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(1)
-                    .constraints([Constraint::Percentage(95), Constraint::Percentage(5)].as_ref())
-                    .split(frame.size());
+                if terminal_width > 200 {
+                    let main_layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .margin(1)
+                        .constraints(
+                            [Constraint::Percentage(95), Constraint::Percentage(5)].as_ref(),
+                        )
+                        .split(frame.size());
 
-                let split_layout = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
-                    .split(main_layout[0]);
+                    let split_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(30), Constraint::Percentage(70)].as_ref(),
+                        )
+                        .split(main_layout[0]);
 
-                let details_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints(
-                        [
-                            Constraint::Percentage(10),
-                            Constraint::Percentage(40),
-                            Constraint::Percentage(50),
-                        ]
-                        .as_ref(),
-                    )
-                    .split(split_layout[1]);
+                    let details_layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints(
+                            [
+                                Constraint::Percentage(10),
+                                Constraint::Percentage(40),
+                                Constraint::Percentage(50),
+                            ]
+                            .as_ref(),
+                        )
+                        .split(split_layout[1]);
 
-                let request_layout = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-                    .split(details_layout[1]);
+                    let request_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(details_layout[1]);
 
-                render_request_block(&mut app, frame, request_layout[0]);
-                render_request_body(&mut app, frame, request_layout[1]);
-                render_network_requests(&mut app, frame, split_layout[0]);
+                    render_request_block(&mut app, frame, request_layout[0]);
+                    render_request_body(&mut app, frame, request_layout[1]);
+                    render_network_requests(&mut app, frame, split_layout[0]);
 
-                render_request_summary(&mut app, frame, details_layout[0], _terminal_width);
-                render_response_block(&mut app, frame, details_layout[2]);
+                    render_request_summary(&mut app, frame, details_layout[0]);
+                    render_response_block(&mut app, frame, details_layout[2]);
 
-                render_footer(&mut app, frame, main_layout[1]);
+                    render_footer(&mut app, frame, main_layout[1]);
+                } else {
+                    let main_layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .margin(1)
+                        .constraints(
+                            [
+                                Constraint::Percentage(30),
+                                Constraint::Percentage(5),
+                                Constraint::Percentage(30),
+                                Constraint::Percentage(30),
+                                Constraint::Percentage(5),
+                            ]
+                            .as_ref(),
+                        )
+                        .split(frame.size());
+
+                    let request_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(main_layout[2]);
+
+                    render_request_block(&mut app, frame, request_layout[0]);
+                    render_request_body(&mut app, frame, request_layout[1]);
+                    render_network_requests(&mut app, frame, main_layout[0]);
+
+                    render_request_summary(&mut app, frame, main_layout[1]);
+                    render_response_block(&mut app, frame, main_layout[3]);
+
+                    render_footer(&mut app, frame, main_layout[4]);
+                }
             }
         })?;
 

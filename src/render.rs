@@ -83,6 +83,14 @@ fn get_border_style(active: bool) -> Style {
     }
 }
 
+fn get_text_style(active: bool) -> Style {
+    if active {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    }
+}
+
 fn render_headers(
     app: &mut App,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
@@ -104,7 +112,7 @@ fn render_headers(
             };
 
             let index = if header_type == HeaderType::Request {
-                app.selected_header_index
+                app.selected_request_header_index
             } else {
                 app.selected_response_header_index
             };
@@ -333,7 +341,7 @@ pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Std
                     let body_to_render = Paragraph::new(pretty_json)
                         .style(
                             Style::default()
-                                .fg(if app.active_block == ActiveBlock::ResponseDetails {
+                                .fg(if app.active_block == ActiveBlock::RequestDetails {
                                     Color::White
                                 } else {
                                     Color::DarkGray
@@ -360,12 +368,16 @@ pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Std
             },
             _ => {
                 let status_bar = Paragraph::new("This request does not have a body")
-                    .style(Style::default().fg(Color::DarkGray))
+                    .style(get_text_style(
+                        app.active_block == ActiveBlock::RequestDetails,
+                    ))
                     .alignment(Alignment::Center)
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
-                            .style(get_border_style(app.active_block == ActiveBlock::Summary))
+                            .style(get_border_style(
+                                app.active_block == ActiveBlock::RequestDetails,
+                            ))
                             .title("Request Body")
                             .border_type(BorderType::Plain),
                     );
@@ -403,7 +415,9 @@ pub fn render_response_block(
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .style(get_border_style(app.active_block == ActiveBlock::Summary))
+                    .style(get_border_style(
+                        app.active_block == ActiveBlock::ResponseDetails,
+                    ))
                     .title("Response details")
                     .border_type(BorderType::Plain),
             );
@@ -579,33 +593,36 @@ pub fn render_request_summary(
     app: &mut App,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
-    w: u16,
 ) {
     let item = &app.items[app.selection_index];
 
     let status_bar = Paragraph::new(item.to_string())
-        .style(Style::default().fg(Color::DarkGray))
+        .style(get_text_style(
+            app.active_block == ActiveBlock::RequestSummary,
+        ))
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(app.active_block == ActiveBlock::Summary))
-                .title(w.to_string())
+                .style(get_border_style(
+                    app.active_block == ActiveBlock::RequestSummary,
+                ))
+                .title("Request Summary")
                 .border_type(BorderType::Plain),
         );
 
     frame.render_widget(status_bar, area);
 }
 
-pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_help(_app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     // TODO: Render different Keybindings that are relevant for the given `active_block`.
     let status_bar = Paragraph::new("Keybindings")
-        .style(Style::default().fg(Color::DarkGray))
+        .style(get_text_style(true))
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(app.active_block == ActiveBlock::Summary))
+                .style(get_border_style(true))
                 .title("Help")
                 .border_type(BorderType::Plain),
         );

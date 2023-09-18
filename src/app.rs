@@ -23,7 +23,7 @@ pub enum ActiveBlock {
     NetworkRequests,
     RequestDetails,
     ResponseDetails,
-    Summary,
+    RequestSummary,
     Help,
 }
 
@@ -64,7 +64,7 @@ pub struct App {
     pub mode: Mode,
     pub items: Vec<Request>,
     pub selection_index: usize,
-    pub selected_header_index: usize,
+    pub selected_request_header_index: usize,
     pub selected_response_header_index: usize,
     pub selected_params_index: usize,
 }
@@ -98,7 +98,7 @@ impl App {
             mode: Mode::Normal,
             selection_index: 0,
             selected_params_index: 0,
-            selected_header_index: 0,
+            selected_request_header_index: 0,
             selected_response_header_index: 0,
             items,
         }
