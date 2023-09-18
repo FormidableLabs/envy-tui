@@ -177,13 +177,13 @@ pub fn handle_pane_next(app: &mut App, _key: KeyEvent) {
         app.response_details_block,
     ) {
         (ActiveBlock::RequestDetails, RequestDetailsPane::Body, _) => {
-            app.request_details_block = RequestDetailsPane::Headers
-        }
-        (ActiveBlock::RequestDetails, RequestDetailsPane::Headers, _) => {
             app.request_details_block = RequestDetailsPane::Query
         }
-        (ActiveBlock::RequestDetails, RequestDetailsPane::Query, _) => {
+        (ActiveBlock::RequestDetails, RequestDetailsPane::Headers, _) => {
             app.request_details_block = RequestDetailsPane::Body
+        }
+        (ActiveBlock::RequestDetails, RequestDetailsPane::Query, _) => {
+            app.request_details_block = RequestDetailsPane::Headers
         }
         (ActiveBlock::ResponseDetails, _, ResponseDetailsPane::Body) => {
             app.response_details_block = ResponseDetailsPane::Headers

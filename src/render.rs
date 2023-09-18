@@ -26,20 +26,39 @@ enum HeaderType {
     Response,
 }
 
-fn pretty_parse_body() -> Result<String, Box<dyn Error>> {
-    let test_json = r#"{"name": "john", "nested": {
-        "another": {
-        "oneMore": {
-        "array": ["first"]
-        }
-        }
-        }}"#;
-
-    let potential_json_body = serde_json::from_str::<Value>(test_json)?;
+fn pretty_parse_body(json: &str) -> Result<String, Box<dyn Error>> {
+    let potential_json_body = serde_json::from_str::<Value>(json)?;
 
     let parsed_json = serde_json::to_string_pretty(&potential_json_body)?;
 
     Ok(parsed_json)
+}
+
+fn render_body(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let maybe_selected_item = app.items.get(app.selection_index);
+
+    match maybe_selected_item {
+        Some(selected_item) => match &selected_item.response_body {
+            Some(response_body) => match pretty_parse_body(response_body.as_str()) {
+                Ok(pretty_json) => {
+                    let body_to_render = Paragraph::new(pretty_json).style(
+                        Style::default()
+                            .fg(if app.active_block == ActiveBlock::ResponseDetails {
+                                Color::White
+                            } else {
+                                Color::DarkGray
+                            })
+                            .add_modifier(Modifier::BOLD),
+                    );
+
+                    frame.render_widget(body_to_render, area);
+                }
+                Err(_) => {}
+            },
+            _ => {}
+        },
+        None => {}
+    };
 }
 
 fn get_row_style(row_style: RowStyle) -> Style {
@@ -169,9 +188,9 @@ pub fn render_request_block(
 ) {
     let active_block = app.active_block;
 
-    let selected_item = app.items.get(app.selection_index);
+    let maybe_selected_item = app.items.get(app.selection_index);
 
-    let uri = match selected_item {
+    let uri = match maybe_selected_item {
         Some(item) => item.deref().uri.clone(),
         None => String::from("Could not find request."),
     };
@@ -238,7 +257,7 @@ pub fn render_request_block(
         //
         .highlight_symbol(">>");
 
-    let tabs = Tabs::new(vec!["Request Body", "Request Header", "Request Params"])
+    let tabs = Tabs::new(vec!["Request Header", "Request Body", "Request Params"])
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
@@ -249,12 +268,11 @@ pub fn render_request_block(
                         Color::DarkGray
                     }),
                 )
-                // .title("Request Query Params")
                 .border_type(BorderType::Thick),
         )
         .select(match app.request_details_block {
-            RequestDetailsPane::Body => 0,
-            RequestDetailsPane::Headers => 1,
+            RequestDetailsPane::Body => 1,
+            RequestDetailsPane::Headers => 0,
             RequestDetailsPane::Query => 2,
         })
         .highlight_style(Style::default().fg(Color::LightMagenta));
@@ -273,7 +291,30 @@ pub fn render_request_block(
     frame.render_widget(tabs, inner_layout[0]);
 
     match app.request_details_block {
-        RequestDetailsPane::Body => {}
+        RequestDetailsPane::Body => {
+            match maybe_selected_item {
+                Some(selected_item) => match &selected_item.request_body {
+                    Some(request_body) => match pretty_parse_body(request_body.as_str()) {
+                        Ok(pretty_json) => {
+                            let body_to_render = Paragraph::new(pretty_json).style(
+                                Style::default()
+                                    .fg(if active_block == ActiveBlock::ResponseDetails {
+                                        Color::White
+                                    } else {
+                                        Color::DarkGray
+                                    })
+                                    .add_modifier(Modifier::BOLD),
+                            );
+
+                            frame.render_widget(body_to_render, inner_layout[1]);
+                        }
+                        Err(_) => {}
+                    },
+                    _ => {}
+                },
+                None => {}
+            };
+        }
         RequestDetailsPane::Query => {
             frame.render_widget(table, inner_layout[1]);
         }
@@ -288,11 +329,9 @@ pub fn render_response_block(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    let active_block = app.active_block;
+    let maybe_selected_item = app.items.get(app.selection_index);
 
-    let selected_item = app.items.get(app.selection_index);
-
-    let uri = match selected_item {
+    let uri = match maybe_selected_item {
         Some(item) => item.deref().uri.clone(),
         None => String::from("Could not find request."),
     };
@@ -313,13 +352,11 @@ pub fn render_response_block(
             Block::default()
                 .borders(Borders::BOTTOM)
                 .style(Style::default().fg(Color::DarkGray))
-                // .title("Request Query Params")
                 .border_type(BorderType::Thick),
         )
         .select(match app.response_details_block {
             ResponseDetailsPane::Body => 0,
             ResponseDetailsPane::Headers => 1,
-            // DetailsPane::Query => 2,
         })
         .highlight_style(Style::default().fg(Color::White));
 
@@ -338,23 +375,7 @@ pub fn render_response_block(
 
     match app.response_details_block {
         ResponseDetailsPane::Body => {
-            let content = match pretty_parse_body() {
-                Ok(v) => v,
-                Err(err) => "Error happened while parsing JSON, ".to_string() + &err.to_string(),
-            };
-
-            frame.render_widget(
-                Paragraph::new(content).style(
-                    Style::default()
-                        .fg(if active_block == ActiveBlock::ResponseDetails {
-                            Color::White
-                        } else {
-                            Color::DarkGray
-                        })
-                        .add_modifier(Modifier::BOLD),
-                ),
-                inner_layout[1],
-            );
+            render_body(app, frame, inner_layout[1]);
         }
         ResponseDetailsPane::Headers => {
             render_headers(app, frame, inner_layout[1], HeaderType::Response)
@@ -376,18 +397,20 @@ pub fn render_network_requests(
     let converted_rows: Vec<(Vec<String>, bool)> = requests
         .iter()
         .map(|request| {
-            let uri = truncate(request.uri.clone().as_str(), 40);
+            let uri = truncate(request.uri.clone().as_str(), 60);
 
             let method = request.method.clone().to_string();
 
             let status = match request.status {
                 Some(v) => v.to_string(),
-                None => "".to_string(),
+                None => "...".to_string(),
             };
 
             let duration = match request.duration {
-                Some(v) => v.to_string(),
-                None => "".to_string(),
+                Some(v) => {
+                    format!("{} miliseconds", v.to_string())
+                }
+                None => "...".to_string(),
             };
 
             let id = request.id.clone().to_string();
@@ -431,7 +454,7 @@ pub fn render_network_requests(
         .style(Style::default().fg(Color::White))
         // It has an optional header, which is simply a Row always visible at the top.
         .header(
-            Row::new(vec!["Method", "Status", "Request", "Time"])
+            Row::new(vec!["Method", "Status", "Request", "Duration"])
                 .style(Style::default().fg(Color::Yellow))
                 // If you want some space between the header and the rest of the rows, you can always
                 // specify some margin at the bottom.
