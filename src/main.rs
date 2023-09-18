@@ -1,5 +1,7 @@
 mod app;
 mod handlers;
+mod mock;
+mod parser;
 mod render;
 mod utils;
 
