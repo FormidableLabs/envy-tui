@@ -257,7 +257,7 @@ pub fn render_request_block(
         //
         .highlight_symbol(">>");
 
-    let tabs = Tabs::new(vec!["Request Header", "Request Body", "Request Params"])
+    let tabs = Tabs::new(vec!["Request Header", "Request Params"])
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
@@ -271,9 +271,8 @@ pub fn render_request_block(
                 .border_type(BorderType::Thick),
         )
         .select(match app.request_details_block {
-            RequestDetailsPane::Body => 1,
             RequestDetailsPane::Headers => 0,
-            RequestDetailsPane::Query => 2,
+            RequestDetailsPane::Query => 1,
         })
         .highlight_style(Style::default().fg(Color::LightMagenta));
 
@@ -291,30 +290,30 @@ pub fn render_request_block(
     frame.render_widget(tabs, inner_layout[0]);
 
     match app.request_details_block {
-        RequestDetailsPane::Body => {
-            match maybe_selected_item {
-                Some(selected_item) => match &selected_item.request_body {
-                    Some(request_body) => match pretty_parse_body(request_body.as_str()) {
-                        Ok(pretty_json) => {
-                            let body_to_render = Paragraph::new(pretty_json).style(
-                                Style::default()
-                                    .fg(if active_block == ActiveBlock::ResponseDetails {
-                                        Color::White
-                                    } else {
-                                        Color::DarkGray
-                                    })
-                                    .add_modifier(Modifier::BOLD),
-                            );
-
-                            frame.render_widget(body_to_render, inner_layout[1]);
-                        }
-                        Err(_) => {}
-                    },
-                    _ => {}
-                },
-                None => {}
-            };
-        }
+        // RequestDetailsPane::Body => {
+        //     match maybe_selected_item {
+        //         Some(selected_item) => match &selected_item.request_body {
+        //             Some(request_body) => match pretty_parse_body(request_body.as_str()) {
+        //                 Ok(pretty_json) => {
+        //                     let body_to_render = Paragraph::new(pretty_json).style(
+        //                         Style::default()
+        //                             .fg(if active_block == ActiveBlock::ResponseDetails {
+        //                                 Color::White
+        //                             } else {
+        //                                 Color::DarkGray
+        //                             })
+        //                             .add_modifier(Modifier::BOLD),
+        //                     );
+        //
+        //                     frame.render_widget(body_to_render, inner_layout[1]);
+        //                 }
+        //                 Err(_) => {}
+        //             },
+        //             _ => {}
+        //         },
+        //         None => {}
+        //     };
+        // }
         RequestDetailsPane::Query => {
             frame.render_widget(table, inner_layout[1]);
         }
@@ -322,6 +321,60 @@ pub fn render_request_block(
             render_headers(app, frame, inner_layout[1], HeaderType::Request)
         }
     }
+}
+
+pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let maybe_selected_item = app.items.get(app.selection_index);
+
+    match maybe_selected_item {
+        Some(selected_item) => match &selected_item.request_body {
+            Some(request_body) => match pretty_parse_body(request_body.as_str()) {
+                Ok(pretty_json) => {
+                    let body_to_render = Paragraph::new(pretty_json)
+                        .style(
+                            Style::default()
+                                .fg(if app.active_block == ActiveBlock::ResponseDetails {
+                                    Color::White
+                                } else {
+                                    Color::DarkGray
+                                })
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .style(Style::default().fg(
+                                    if app.active_block == ActiveBlock::RequestDetails {
+                                        Color::White
+                                    } else {
+                                        Color::DarkGray
+                                    },
+                                ))
+                                .title("Request body")
+                                .border_type(BorderType::Thick),
+                        );
+
+                    frame.render_widget(body_to_render, area);
+                }
+                Err(_) => {}
+            },
+            _ => {
+                let status_bar = Paragraph::new("This request does not have a body")
+                    .style(Style::default().fg(Color::DarkGray))
+                    .alignment(Alignment::Center)
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .style(get_border_style(app.active_block == ActiveBlock::Summary))
+                            .title("Request Body")
+                            .border_type(BorderType::Plain),
+                    );
+
+                frame.render_widget(status_bar, area);
+            }
+        },
+        None => {}
+    };
 }
 
 pub fn render_response_block(
@@ -338,47 +391,67 @@ pub fn render_response_block(
 
     let raw_params = parse_query_params(uri);
 
-    let mut cloned = raw_params.clone();
+    let is_progress = match maybe_selected_item {
+        Some(v) => v.duration.is_none(),
+        None => true,
+    };
 
-    cloned.sort_by(|a, b| {
-        let (name_a, _) = a;
-        let (name_b, _) = b;
+    if is_progress {
+        let status_bar = Paragraph::new("Loading...")
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .style(get_border_style(app.active_block == ActiveBlock::Summary))
+                    .title("Response details")
+                    .border_type(BorderType::Plain),
+            );
 
-        name_a.cmp(name_b)
-    });
+        frame.render_widget(status_bar, area);
+    } else {
+        let mut cloned = raw_params.clone();
 
-    let tabs = Tabs::new(vec!["Response Body", "Response Header"])
-        .block(
-            Block::default()
-                .borders(Borders::BOTTOM)
-                .style(Style::default().fg(Color::DarkGray))
-                .border_type(BorderType::Thick),
-        )
-        .select(match app.response_details_block {
-            ResponseDetailsPane::Body => 0,
-            ResponseDetailsPane::Headers => 1,
-        })
-        .highlight_style(Style::default().fg(Color::White));
+        cloned.sort_by(|a, b| {
+            let (name_a, _) = a;
+            let (name_b, _) = b;
 
-    let inner_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
-        .split(area);
+            name_a.cmp(name_b)
+        });
 
-    let main = Block::default()
-        .title("Response details")
-        .borders(Borders::ALL);
+        let tabs = Tabs::new(vec!["Response Body", "Response Header"])
+            .block(
+                Block::default()
+                    .borders(Borders::BOTTOM)
+                    .style(Style::default().fg(Color::DarkGray))
+                    .border_type(BorderType::Thick),
+            )
+            .select(match app.response_details_block {
+                ResponseDetailsPane::Body => 0,
+                ResponseDetailsPane::Headers => 1,
+            })
+            .highlight_style(Style::default().fg(Color::White));
 
-    frame.render_widget(main, area);
-    frame.render_widget(tabs, inner_layout[0]);
+        let inner_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
+            .split(area);
 
-    match app.response_details_block {
-        ResponseDetailsPane::Body => {
-            render_body(app, frame, inner_layout[1]);
-        }
-        ResponseDetailsPane::Headers => {
-            render_headers(app, frame, inner_layout[1], HeaderType::Response)
+        let main = Block::default()
+            .title("Response details")
+            .borders(Borders::ALL);
+
+        frame.render_widget(main, area);
+        frame.render_widget(tabs, inner_layout[0]);
+
+        match app.response_details_block {
+            ResponseDetailsPane::Body => {
+                render_body(app, frame, inner_layout[1]);
+            }
+            ResponseDetailsPane::Headers => {
+                render_headers(app, frame, inner_layout[1], HeaderType::Response)
+            }
         }
     }
 }
@@ -506,6 +579,7 @@ pub fn render_request_summary(
     app: &mut App,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
+    w: u16,
 ) {
     let item = &app.items[app.selection_index];
 
@@ -516,7 +590,23 @@ pub fn render_request_summary(
             Block::default()
                 .borders(Borders::ALL)
                 .style(get_border_style(app.active_block == ActiveBlock::Summary))
-                .title("Request Summary")
+                .title(w.to_string())
+                .border_type(BorderType::Plain),
+        );
+
+    frame.render_widget(status_bar, area);
+}
+
+pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    // TODO: Render different Keybindings that are relevant for the given `active_block`.
+    let status_bar = Paragraph::new("Keybindings")
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(get_border_style(app.active_block == ActiveBlock::Summary))
+                .title("Help")
                 .border_type(BorderType::Plain),
         );
 

@@ -10,7 +10,6 @@ use crate::parser::parse_raw_trace;
 pub enum RequestDetailsPane {
     Query,
     Headers,
-    Body,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -25,6 +24,7 @@ pub enum ActiveBlock {
     RequestDetails,
     ResponseDetails,
     Summary,
+    Help,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

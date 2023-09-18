@@ -27,6 +27,8 @@ use render::{
     render_response_block,
 };
 
+use self::render::{render_help, render_request_body};
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
 
@@ -58,48 +60,72 @@ fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn 
 
     Ok(loop {
         terminal.draw(|frame| {
-            // TODO: Make the layout responsive.
-            let _terminal_width = frame.size().width;
+            if app.active_block == app::ActiveBlock::Help {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
 
-            let main_layout = Layout::default()
-                .direction(Direction::Vertical)
-                .margin(1)
-                .constraints([Constraint::Percentage(95), Constraint::Percentage(5)].as_ref())
-                .split(frame.size());
+                render_help(&mut app, frame, main_layout[0]);
+            } else {
+                // TODO: Make the layout responsive.
+                let _terminal_width = frame.size().width;
 
-            let split_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
-                .split(main_layout[0]);
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(1)
+                    .constraints([Constraint::Percentage(95), Constraint::Percentage(5)].as_ref())
+                    .split(frame.size());
 
-            let details_layout = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(
-                    [
-                        Constraint::Percentage(10),
-                        Constraint::Percentage(40),
-                        Constraint::Percentage(50),
-                    ]
-                    .as_ref(),
-                )
-                .split(split_layout[1]);
+                let split_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
+                    .split(main_layout[0]);
 
-            render_network_requests(&mut app, frame, split_layout[0]);
+                let details_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints(
+                        [
+                            Constraint::Percentage(10),
+                            Constraint::Percentage(40),
+                            Constraint::Percentage(50),
+                        ]
+                        .as_ref(),
+                    )
+                    .split(split_layout[1]);
 
-            render_request_summary(&mut app, frame, details_layout[0]);
-            render_request_block(&mut app, frame, details_layout[1]);
-            render_response_block(&mut app, frame, details_layout[2]);
+                let request_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                    .split(details_layout[1]);
 
-            render_footer(&mut app, frame, main_layout[1]);
+                render_request_block(&mut app, frame, request_layout[0]);
+                render_request_body(&mut app, frame, request_layout[1]);
+                render_network_requests(&mut app, frame, split_layout[0]);
+
+                render_request_summary(&mut app, frame, details_layout[0], _terminal_width);
+                render_response_block(&mut app, frame, details_layout[2]);
+
+                render_footer(&mut app, frame, main_layout[1]);
+            }
         })?;
 
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
-                    KeyCode::Char('q') => {
-                        break;
-                    }
+                    KeyCode::Char('q') => match app.active_block {
+                        app::ActiveBlock::Help => {
+                            app.active_block = app::ActiveBlock::NetworkRequests
+                        }
+                        _ => {
+                            break;
+                        }
+                    },
                     KeyCode::Tab => handle_tab(&mut app, key),
+                    KeyCode::Char('?') => {
+                        app.active_block = app::ActiveBlock::Help;
+                    }
                     KeyCode::BackTab => handle_back_tab(&mut app, key),
                     KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
                     KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),

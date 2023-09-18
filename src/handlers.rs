@@ -6,6 +6,8 @@ use crate::utils::parse_query_params;
 fn clear_aux_indexes(app: &mut App) {
     app.selected_params_index = 0;
     app.selected_params_index = 0;
+    app.selected_header_index = 0;
+    app.selected_response_header_index = 0;
 }
 
 pub fn handle_up(app: &mut App, key: KeyEvent) {
@@ -158,6 +160,7 @@ pub fn handle_tab(app: &mut App, _key: KeyEvent) {
         ActiveBlock::Summary => app.active_block = ActiveBlock::RequestDetails,
         ActiveBlock::RequestDetails => app.active_block = ActiveBlock::ResponseDetails,
         ActiveBlock::ResponseDetails => {}
+        _ => {}
     }
 }
 
@@ -167,6 +170,7 @@ pub fn handle_back_tab(app: &mut App, _key: KeyEvent) {
         ActiveBlock::Summary => app.active_block = ActiveBlock::NetworkRequests,
         ActiveBlock::RequestDetails => app.active_block = ActiveBlock::Summary,
         ActiveBlock::ResponseDetails => app.active_block = ActiveBlock::RequestDetails,
+        _ => {}
     }
 }
 
@@ -176,11 +180,8 @@ pub fn handle_pane_next(app: &mut App, _key: KeyEvent) {
         app.request_details_block,
         app.response_details_block,
     ) {
-        (ActiveBlock::RequestDetails, RequestDetailsPane::Body, _) => {
-            app.request_details_block = RequestDetailsPane::Query
-        }
         (ActiveBlock::RequestDetails, RequestDetailsPane::Headers, _) => {
-            app.request_details_block = RequestDetailsPane::Body
+            app.request_details_block = RequestDetailsPane::Query
         }
         (ActiveBlock::RequestDetails, RequestDetailsPane::Query, _) => {
             app.request_details_block = RequestDetailsPane::Headers
@@ -201,11 +202,8 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
         app.request_details_block,
         app.response_details_block,
     ) {
-        (ActiveBlock::RequestDetails, RequestDetailsPane::Body, _) => {
-            app.request_details_block = RequestDetailsPane::Query
-        }
         (ActiveBlock::RequestDetails, RequestDetailsPane::Headers, _) => {
-            app.request_details_block = RequestDetailsPane::Body
+            app.request_details_block = RequestDetailsPane::Query
         }
         (ActiveBlock::RequestDetails, RequestDetailsPane::Query, _) => {
             app.request_details_block = RequestDetailsPane::Headers
