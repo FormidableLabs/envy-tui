@@ -574,8 +574,16 @@ pub fn render_network_requests(
     frame.render_widget(requests, area);
 }
 
-pub fn render_footer(_app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let status_bar = Paragraph::new("Waiting for connection")
+pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let status_message = match app.ws_server_state {
+        crate::app::WsServerState::Open => "Waiting for connection".to_string(),
+        crate::app::WsServerState::Closed => "Server closed".to_string(),
+        crate::app::WsServerState::HasConnections(clients) => {
+            format!("{:?} clients connected", clients)
+        }
+    };
+
+    let status_bar = Paragraph::new(status_message)
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center)
         .block(

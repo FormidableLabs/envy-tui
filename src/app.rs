@@ -33,6 +33,13 @@ pub enum Mode {
     Normal,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum WsServerState {
+    Closed,
+    Open,
+    HasConnections(usize),
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct Request {
     pub id: String,
@@ -67,6 +74,7 @@ pub struct App {
     pub selected_request_header_index: usize,
     pub selected_response_header_index: usize,
     pub selected_params_index: usize,
+    pub ws_server_state: WsServerState,
 }
 
 impl App {
@@ -101,6 +109,7 @@ impl App {
             selected_request_header_index: 0,
             selected_response_header_index: 0,
             items,
+            ws_server_state: WsServerState::Closed,
         }
     }
 }

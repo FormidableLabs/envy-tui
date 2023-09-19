@@ -4,8 +4,12 @@ mod mock;
 mod parser;
 mod render;
 mod utils;
+mod wss;
 
+use std::collections::HashMap;
 use std::io;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{error::Error, io::Stdout};
 
@@ -13,6 +17,8 @@ use crossterm::event::{self, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal::enable_raw_mode};
 
+use futures_channel::mpsc::{unbounded, UnboundedSender};
+use futures_util::{future, StreamExt, TryStreamExt};
 use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
@@ -26,15 +32,92 @@ use render::{
     render_footer, render_network_requests, render_request_block, render_request_summary,
     render_response_block,
 };
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Mutex;
+use tungstenite::Message;
+type Tx = UnboundedSender<Message>;
+type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
 
 use self::render::{render_help, render_request_body};
+use self::wss::handle_connection;
 
-fn main() -> Result<(), Box<dyn Error>> {
+// async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
+//     println!("Incoming TCP connection from: {}", addr);
+//
+//     let ws_stream = tokio_tungstenite::accept_async(raw_stream)
+//         .await
+//         .expect("Error during the websocket handshake occurred");
+//     println!("WebSocket connection established: {}", addr);
+//
+//     // Insert the write part of this peer to the peer map.
+//     let (tx, rx) = unbounded();
+//
+//     peer_map.lock().unwrap().insert(addr, tx);
+//
+//     let (outgoing, incoming) = ws_stream.split();
+//
+//     let broadcast_incoming = incoming.try_for_each(|msg| {
+//         println!(
+//             "Received a message from {}: {}",
+//             addr,
+//             msg.to_text().unwrap()
+//         );
+//         let peers = peer_map.lock().unwrap();
+//
+//         // We want to broadcast the message to everyone except ourselves.
+//         let broadcast_recipients = peers
+//             .iter()
+//             .filter(|(peer_addr, _)| peer_addr != &&addr)
+//             .map(|(_, ws_sink)| ws_sink);
+//
+//         for recp in broadcast_recipients {
+//             recp.unbounded_send(msg.clone()).unwrap();
+//         }
+//
+//         future::ok(())
+//     });
+//
+//     let receive_from_others = rx.map(Ok).forward(outgoing);
+//     //
+//     // pin_mut!(broadcast_incoming, receive_from_others);
+//     future::select(broadcast_incoming, receive_from_others).await;
+//
+//     println!("{} disconnected", &addr);
+//     peer_map.lock().unwrap().remove(&addr);
+// }
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
+
+    let app = Arc::new(Mutex::new(App::new()));
+
+    let app_clone = app.clone();
+
+    let state = PeerMap::new(std::sync::Mutex::new(HashMap::new()));
+
+    let addr = "127.0.0.1:9999";
+
+    let try_socket = TcpListener::bind(addr).await;
+    let listener = try_socket.expect("Failed to bind");
+
+    tokio::spawn(async move {
+        wss::client(&app).await;
+
+        ()
+    });
+
+    tokio::spawn(async move {
+        while let Ok((stream, addr)) = listener.accept().await {
+            tokio::spawn(handle_connection(state.clone(), stream, addr));
+        }
+
+        ()
+    });
 
     terminal.clear()?;
 
-    run(&mut terminal)?;
+    let _ = run(&mut terminal, &app_clone).await;
 
     restore_terminal(&mut terminal)?;
     Ok(())
@@ -55,10 +138,13 @@ fn restore_terminal(
     Ok(terminal.show_cursor()?)
 }
 
-fn run(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn Error>> {
-    let mut app = App::new();
-
+async fn run(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    app: &Arc<Mutex<App>>,
+) -> Result<(), Box<dyn Error>> {
     Ok(loop {
+        let mut app = app.lock().await;
+
         terminal.draw(|frame| {
             if app.active_block == app::ActiveBlock::Help {
                 let main_layout = Layout::default()
