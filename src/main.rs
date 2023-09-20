@@ -17,8 +17,7 @@ use crossterm::event::{self, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal::enable_raw_mode};
 
-use futures_channel::mpsc::{unbounded, UnboundedSender};
-use futures_util::{future, StreamExt, TryStreamExt};
+use futures_channel::mpsc::UnboundedSender;
 use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
@@ -32,59 +31,16 @@ use render::{
     render_footer, render_network_requests, render_request_block, render_request_summary,
     render_response_block,
 };
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tungstenite::Message;
+
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
 
+use self::app::WsServerState;
 use self::render::{render_help, render_request_body};
 use self::wss::handle_connection;
-
-// async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
-//     println!("Incoming TCP connection from: {}", addr);
-//
-//     let ws_stream = tokio_tungstenite::accept_async(raw_stream)
-//         .await
-//         .expect("Error during the websocket handshake occurred");
-//     println!("WebSocket connection established: {}", addr);
-//
-//     // Insert the write part of this peer to the peer map.
-//     let (tx, rx) = unbounded();
-//
-//     peer_map.lock().unwrap().insert(addr, tx);
-//
-//     let (outgoing, incoming) = ws_stream.split();
-//
-//     let broadcast_incoming = incoming.try_for_each(|msg| {
-//         println!(
-//             "Received a message from {}: {}",
-//             addr,
-//             msg.to_text().unwrap()
-//         );
-//         let peers = peer_map.lock().unwrap();
-//
-//         // We want to broadcast the message to everyone except ourselves.
-//         let broadcast_recipients = peers
-//             .iter()
-//             .filter(|(peer_addr, _)| peer_addr != &&addr)
-//             .map(|(_, ws_sink)| ws_sink);
-//
-//         for recp in broadcast_recipients {
-//             recp.unbounded_send(msg.clone()).unwrap();
-//         }
-//
-//         future::ok(())
-//     });
-//
-//     let receive_from_others = rx.map(Ok).forward(outgoing);
-//     //
-//     // pin_mut!(broadcast_incoming, receive_from_others);
-//     future::select(broadcast_incoming, receive_from_others).await;
-//
-//     println!("{} disconnected", &addr);
-//     peer_map.lock().unwrap().remove(&addr);
-// }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -92,7 +48,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let app = Arc::new(Mutex::new(App::new()));
 
-    let app_clone = app.clone();
+    let app_for_ui = app.clone();
+
+    let app_for_ws_server = app.clone();
 
     let state = PeerMap::new(std::sync::Mutex::new(HashMap::new()));
 
@@ -100,6 +58,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let try_socket = TcpListener::bind(addr).await;
     let listener = try_socket.expect("Failed to bind");
+
+    app.lock().await.ws_server_state = WsServerState::Open;
 
     tokio::spawn(async move {
         wss::client(&app).await;
@@ -109,7 +69,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tokio::spawn(async move {
         while let Ok((stream, addr)) = listener.accept().await {
-            tokio::spawn(handle_connection(state.clone(), stream, addr));
+            tokio::spawn(handle_connection(
+                state.clone(),
+                stream,
+                addr,
+                app_for_ws_server.clone(),
+            ));
         }
 
         ()
@@ -117,7 +82,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     terminal.clear()?;
 
-    let _ = run(&mut terminal, &app_clone).await;
+    let _ = run(&mut terminal, &app_for_ui).await;
 
     restore_terminal(&mut terminal)?;
     Ok(())

@@ -13,6 +13,7 @@ use crate::app::Request;
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
 struct RawTrace {
+    timestamp: u64,
     id: String,
     url: String,
     statusMessage: Option<String>,
@@ -22,7 +23,7 @@ struct RawTrace {
     host: String,
     httpVersion: Option<String>,
     path: Option<String>,
-    port: usize,
+    port: Option<usize>,
     responseBody: Option<String>,
     requestBody: Option<String>,
     responseHeaders: Option<HashMap<String, Value>>,
@@ -93,6 +94,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Request, Box<dyn Error>
     };
 
     let mut request = Request {
+        timestamp: potential_json_body.timestamp,
         duration: potential_json_body.duration,
         id: potential_json_body.id,
         uri: potential_json_body.url,
