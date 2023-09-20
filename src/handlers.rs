@@ -1,6 +1,6 @@
 use crossterm::event::{KeyEvent, KeyModifiers};
 
-use crate::app::{ActiveBlock, App, RequestDetailsPane, ResponseDetailsPane};
+use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, ResponseDetailsPane};
 use crate::utils::parse_query_params;
 
 pub fn handle_up(app: &mut App, key: KeyEvent) {
@@ -76,7 +76,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent) {
                 app.selected_params_index = 0
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Query, _) => {
-                let index = &app.items[app.selection_index];
+                let index = &app.items.iter().collect::<Vec<&Request>>()[app.selection_index];
 
                 let params = parse_query_params(index.uri.clone());
 
@@ -89,7 +89,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent) {
                 app.selected_params_index = next_index
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Headers, _) => {
-                let item = &app.items[app.selection_index];
+                let item = &app.items.iter().collect::<Vec<&Request>>()[app.selection_index];
 
                 let item_length = item.request_headers.len();
 
@@ -102,7 +102,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent) {
                 app.selected_request_header_index = next_index
             }
             (ActiveBlock::ResponseDetails, _, ResponseDetailsPane::Headers) => {
-                let item = &app.items[app.selection_index];
+                let item = &app.items.iter().collect::<Vec<&Request>>()[app.selection_index];
 
                 let item_length = item.response_headers.len();
 

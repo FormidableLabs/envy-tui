@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use std::error::Error;
 
-use crate::app::{ActiveBlock, App, RequestDetailsPane, ResponseDetailsPane};
+use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, ResponseDetailsPane};
 use crate::utils::{parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -35,7 +35,9 @@ fn pretty_parse_body(json: &str) -> Result<String, Box<dyn Error>> {
 }
 
 fn render_body(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let maybe_selected_item = app.items.get(app.selection_index);
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+
+    let maybe_selected_item = items_as_vector.get(app.selection_index);
 
     match maybe_selected_item {
         Some(selected_item) => match &selected_item.response_body {
@@ -97,13 +99,13 @@ fn render_headers(
     area: Rect,
     header_type: HeaderType,
 ) {
-    let index = app.selection_index.clone();
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let selected_item = app.items.get(index).clone();
+    let maybe_selected_item = items_as_vector.get(app.selection_index);
 
     let active_block = app.active_block;
 
-    let rows = match selected_item {
+    let rows = match maybe_selected_item {
         Some(item) => {
             let headers = if header_type == HeaderType::Request {
                 &item.request_headers
@@ -196,7 +198,9 @@ pub fn render_request_block(
 ) {
     let active_block = app.active_block;
 
-    let maybe_selected_item = app.items.get(app.selection_index);
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+
+    let maybe_selected_item = items_as_vector.get(app.selection_index);
 
     let uri = match maybe_selected_item {
         Some(item) => item.deref().uri.clone(),
@@ -332,7 +336,9 @@ pub fn render_request_block(
 }
 
 pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let maybe_selected_item = app.items.get(app.selection_index);
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+
+    let maybe_selected_item = items_as_vector.get(app.selection_index);
 
     match maybe_selected_item {
         Some(selected_item) => match &selected_item.request_body {
@@ -394,7 +400,9 @@ pub fn render_response_block(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    let maybe_selected_item = app.items.get(app.selection_index);
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+
+    let maybe_selected_item = items_as_vector.get(app.selection_index);
 
     let uri = match maybe_selected_item {
         Some(item) => item.deref().uri.clone(),
@@ -479,9 +487,11 @@ pub fn render_network_requests(
 
     let active_block = app.active_block.clone();
 
-    let index = app.selection_index.clone();
+    let items_as_vector = requests.iter().collect::<Vec<&Request>>();
 
-    let converted_rows: Vec<(Vec<String>, bool)> = requests
+    let selected_item = items_as_vector.get(app.selection_index);
+
+    let converted_rows: Vec<(Vec<String>, bool)> = items_as_vector
         .iter()
         .map(|request| {
             let uri = truncate(request.uri.clone().as_str(), 60);
@@ -502,11 +512,9 @@ pub fn render_network_requests(
 
             let id = request.id.clone().to_string();
 
-            let selected_item = requests.get(index).clone();
-
             let selected = match selected_item {
                 Some(item) => {
-                    if item.deref() == request {
+                    if item.deref() == request.deref() {
                         true
                     } else {
                         false
@@ -574,8 +582,19 @@ pub fn render_network_requests(
     frame.render_widget(requests, area);
 }
 
-pub fn render_footer(_app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let status_bar = Paragraph::new("Waiting for connection")
+pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let status_message = match app.ws_server_state {
+        crate::app::WsServerState::Open => "🟠 Waiting for connection".to_string(),
+        crate::app::WsServerState::Closed => "⭕ Server closed".to_string(),
+        crate::app::WsServerState::HasConnections(1) => {
+            format!("🟢 {:?} client connected", 1)
+        }
+        crate::app::WsServerState::HasConnections(clients) => {
+            format!("🟢 {:?} clients connected", clients)
+        }
+    };
+
+    let status_bar = Paragraph::new(status_message)
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center)
         .block(
@@ -594,9 +613,19 @@ pub fn render_request_summary(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    let item = &app.items[app.selection_index];
+    // TODO:
+    // let item = &app.items[app.selection_index];
 
-    let status_bar = Paragraph::new(item.to_string())
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+
+    let selected_item = items_as_vector.get(app.selection_index);
+
+    let message = match selected_item {
+        Some(item) => item.to_string(),
+        None => "No item found".to_string(),
+    };
+
+    let status_bar = Paragraph::new(message)
         .style(get_text_style(
             app.active_block == ActiveBlock::RequestSummary,
         ))
