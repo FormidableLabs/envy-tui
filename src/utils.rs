@@ -1,5 +1,9 @@
 use http::Uri;
 
+pub enum UIDispatchEvent {
+    ClearStatusMessage,
+}
+
 // NOTE: [stackoverflow](https://stackoverflow.com/questions/38461429/how-can-i-truncate-a-string-to-have-at-most-n-characters)
 pub fn truncate(s: &str, max_chars: usize) -> String {
     match s.char_indices().nth(max_chars) {

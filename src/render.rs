@@ -583,7 +583,7 @@ pub fn render_network_requests(
 }
 
 pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let status_message = match app.ws_server_state {
+    let ws_status = match app.ws_server_state {
         crate::app::WsServerState::Open => "🟠 Waiting for connection".to_string(),
         crate::app::WsServerState::Closed => "⭕ Server closed".to_string(),
         crate::app::WsServerState::HasConnections(1) => {
@@ -594,9 +594,18 @@ pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
         }
     };
 
-    let status_bar = Paragraph::new(status_message)
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Center)
+    let general_status = match &app.status_message {
+        Some(text) => text,
+        None => "",
+    };
+
+    let status_bar = Paragraph::new(format!("{} {}", general_status, ws_status))
+        .style(
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Right)
         .block(
             Block::default()
                 .borders(Borders::ALL)

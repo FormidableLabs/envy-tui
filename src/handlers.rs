@@ -1,7 +1,13 @@
+use std::time::Duration;
+
 use crossterm::event::{KeyEvent, KeyModifiers};
+use futures_channel::mpsc::UnboundedSender;
+use tokio::time::sleep;
 
 use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, ResponseDetailsPane};
+use crate::parser::generate_curl_command;
 use crate::utils::parse_query_params;
+use crate::UIDispatchEvent;
 
 pub fn handle_up(app: &mut App, key: KeyEvent) {
     match key.modifiers {
@@ -184,5 +190,43 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
             app.request_details_block = RequestDetailsPane::Headers
         }
         (_, _) => {}
+    }
+}
+
+pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<UIDispatchEvent>) {
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+
+    let selected_item = items_as_vector.get(app.selection_index);
+
+    match selected_item {
+        Some(request) => {
+            let cmd = generate_curl_command(request);
+
+            match clippers::Clipboard::get().write_text(cmd) {
+                Ok(_) => {
+                    app.status_message = Some(String::from("Request copied as cURL command!"));
+                }
+                Err(_) => {
+                    app.status_message = Some(String::from(
+                        "Something went wrong while copying to the clipboard!",
+                    ));
+                }
+            }
+
+            app.abort_handlers.iter().for_each(|handler| {
+                handler.abort();
+            });
+
+            app.abort_handlers.clear();
+
+            let thread_handler = tokio::spawn(async move {
+                sleep(Duration::from_millis(5000)).await;
+
+                loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
+            });
+
+            app.abort_handlers.push(thread_handler.abort_handle());
+        }
+        None => {}
     }
 }
