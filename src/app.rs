@@ -104,6 +104,7 @@ pub struct App {
     pub selected_response_header_index: usize,
     pub selected_params_index: usize,
     pub ws_server_state: WsServerState,
+    pub status_message: Option<String>,
 }
 
 impl App {
@@ -146,6 +147,7 @@ impl App {
             selected_response_header_index: 0,
             items,
             ws_server_state: WsServerState::Closed,
+            status_message: None,
         }
     }
 }

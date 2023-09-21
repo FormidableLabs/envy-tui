@@ -17,13 +17,14 @@ use crossterm::event::{self, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal::enable_raw_mode};
 
-use futures_channel::mpsc::UnboundedSender;
+use futures_channel::mpsc::{unbounded, UnboundedSender};
 use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
 
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tungstenite::Message;
 
 use app::{App, WsServerState};
@@ -105,12 +106,38 @@ fn restore_terminal(
     Ok(terminal.show_cursor()?)
 }
 
+enum UIDispatchEvent {
+    ClearStatusMessage,
+}
+
 async fn run(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    app: &Arc<Mutex<App>>,
+    app_raw: &Arc<Mutex<App>>,
 ) -> Result<(), Box<dyn Error>> {
+    let (tx, mut rx) = unbounded::<UIDispatchEvent>();
+
     Ok(loop {
-        let mut app = app.lock().await;
+        let mut app = app_raw.lock().await;
+
+        let loop_sender = tx.clone();
+
+        match rx.try_next() {
+            Ok(value) => match value {
+                Some(event) => match event {
+                    UIDispatchEvent::ClearStatusMessage => app.status_message = None,
+                },
+                None => {}
+            },
+            Err(_) => (),
+        }
+
+        if app.status_message.is_some() {
+            tokio::spawn(async move {
+                sleep(Duration::from_millis(5000)).await;
+
+                loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
+            });
+        }
 
         terminal.draw(|frame| {
             if app.active_block == app::ActiveBlock::Help {

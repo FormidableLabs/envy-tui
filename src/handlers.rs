@@ -197,7 +197,16 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent) {
         Some(request) => {
             let cmd = generate_curl_command(request);
 
-            let _ = clippers::Clipboard::get().write_text(cmd);
+            match clippers::Clipboard::get().write_text(cmd) {
+                Ok(_) => {
+                    app.status_message = Some(String::from("Request copied as cURL command!"));
+                }
+                Err(_) => {
+                    app.status_message = Some(String::from(
+                        "Something went wrong while copying to the clipboard!",
+                    ));
+                }
+            }
         }
         None => {}
     }
