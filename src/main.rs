@@ -22,25 +22,24 @@ use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
 
-use app::App;
-use handlers::{
-    handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
-    handle_pane_prev, handle_right, handle_tab, handle_up,
-};
-use render::{
-    render_footer, render_network_requests, render_request_block, render_request_summary,
-    render_response_block,
-};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tungstenite::Message;
 
+use app::{App, WsServerState};
+use handlers::{
+    handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
+    handle_pane_prev, handle_right, handle_tab, handle_up, handle_yank,
+};
+use render::{
+    render_footer, render_help, render_network_requests, render_request_block, render_request_body,
+    render_request_summary, render_response_block,
+};
+
+use wss::handle_connection;
+
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
-
-use self::app::WsServerState;
-use self::render::{render_help, render_request_body};
-use self::wss::handle_connection;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -52,6 +51,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let app_for_ws_server = app.clone();
 
+    start_ws_server(app_for_ws_server).await;
+
+    start_ws_client(app);
+
+    terminal.clear()?;
+
+    let _ = run(&mut terminal, &app_for_ui).await;
+
+    restore_terminal(&mut terminal)?;
+    Ok(())
+}
+
+async fn start_ws_server(app: Arc<Mutex<App>>) {
     let state = PeerMap::new(std::sync::Mutex::new(HashMap::new()));
 
     let addr = "127.0.0.1:9999";
@@ -62,30 +74,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     app.lock().await.ws_server_state = WsServerState::Open;
 
     tokio::spawn(async move {
-        wss::client(&app).await;
-
-        ()
-    });
-
-    tokio::spawn(async move {
         while let Ok((stream, addr)) = listener.accept().await {
-            tokio::spawn(handle_connection(
-                state.clone(),
-                stream,
-                addr,
-                app_for_ws_server.clone(),
-            ));
+            tokio::spawn(handle_connection(state.clone(), stream, addr, app.clone()));
         }
 
         ()
     });
+}
 
-    terminal.clear()?;
+fn start_ws_client(app: Arc<Mutex<App>>) {
+    tokio::spawn(async move {
+        wss::client(&app).await;
 
-    let _ = run(&mut terminal, &app_for_ui).await;
-
-    restore_terminal(&mut terminal)?;
-    Ok(())
+        ()
+    });
 }
 
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>, Box<dyn Error>> {
@@ -215,6 +217,7 @@ async fn run(
                     KeyCode::Char('?') => {
                         app.active_block = app::ActiveBlock::Help;
                     }
+                    KeyCode::Char('y') => handle_yank(&mut app, key),
                     KeyCode::BackTab => handle_back_tab(&mut app, key),
                     KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
                     KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),

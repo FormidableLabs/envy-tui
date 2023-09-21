@@ -1,6 +1,7 @@
 use crossterm::event::{KeyEvent, KeyModifiers};
 
 use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, ResponseDetailsPane};
+use crate::parser::generate_curl_command;
 use crate::utils::parse_query_params;
 
 pub fn handle_up(app: &mut App, key: KeyEvent) {
@@ -184,5 +185,20 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
             app.request_details_block = RequestDetailsPane::Headers
         }
         (_, _) => {}
+    }
+}
+
+pub fn handle_yank(app: &mut App, _key: KeyEvent) {
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+
+    let selected_item = items_as_vector.get(app.selection_index);
+
+    match selected_item {
+        Some(request) => {
+            let cmd = generate_curl_command(request);
+
+            let _ = clippers::Clipboard::get().write_text(cmd);
+        }
+        None => {}
     }
 }
