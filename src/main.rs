@@ -24,7 +24,6 @@ use ratatui::terminal::Terminal;
 
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tokio::time::sleep;
 use tungstenite::Message;
 
 use app::{App, WsServerState};
@@ -36,6 +35,7 @@ use render::{
     render_footer, render_help, render_network_requests, render_request_block, render_request_body,
     render_request_summary, render_response_block,
 };
+use utils::UIDispatchEvent;
 
 use wss::handle_connection;
 
@@ -106,10 +106,6 @@ fn restore_terminal(
     Ok(terminal.show_cursor()?)
 }
 
-enum UIDispatchEvent {
-    ClearStatusMessage,
-}
-
 async fn run(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app_raw: &Arc<Mutex<App>>,
@@ -119,7 +115,7 @@ async fn run(
     Ok(loop {
         let mut app = app_raw.lock().await;
 
-        let loop_sender = tx.clone();
+        let loop_bounded_sender = tx.clone();
 
         match rx.try_next() {
             Ok(value) => match value {
@@ -129,15 +125,7 @@ async fn run(
                 None => {}
             },
             Err(_) => (),
-        }
-
-        if app.status_message.is_some() {
-            tokio::spawn(async move {
-                sleep(Duration::from_millis(5000)).await;
-
-                loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
-            });
-        }
+        };
 
         terminal.draw(|frame| {
             if app.active_block == app::ActiveBlock::Help {
@@ -244,7 +232,7 @@ async fn run(
                     KeyCode::Char('?') => {
                         app.active_block = app::ActiveBlock::Help;
                     }
-                    KeyCode::Char('y') => handle_yank(&mut app, key),
+                    KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
                     KeyCode::BackTab => handle_back_tab(&mut app, key),
                     KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
                     KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),

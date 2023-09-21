@@ -2,6 +2,8 @@ use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
+use tokio::task::AbortHandle;
+
 use crate::mock::{
     TEST_JSON_1, TEST_JSON_2, TEST_JSON_3, TEST_JSON_4, TEST_JSON_5, TEST_JSON_6, TEST_JSON_7,
     TEST_JSON_8, TEST_JSON_9,
@@ -105,6 +107,7 @@ pub struct App {
     pub selected_params_index: usize,
     pub ws_server_state: WsServerState,
     pub status_message: Option<String>,
+    pub abort_handlers: Vec<AbortHandle>,
 }
 
 impl App {
@@ -148,6 +151,7 @@ impl App {
             items,
             ws_server_state: WsServerState::Closed,
             status_message: None,
+            abort_handlers: vec![],
         }
     }
 }
