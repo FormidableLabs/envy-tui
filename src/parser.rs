@@ -8,6 +8,8 @@ use http::HeaderMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use regex::Regex;
+
 use crate::app::Request;
 
 #[allow(non_snake_case)]
@@ -118,4 +120,62 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Request, Box<dyn Error>
     );
 
     Ok(request)
+}
+
+/// Finds all occurances of `\` and `"` in a header value string and add an `\` to it.
+/// This escapes those characther making sure it behaves correctly in the command line.
+///
+/// # Example
+///
+///
+/// let header_value = r#"\ping"#;
+///
+/// let escaped =escape_header(header_value);
+///
+/// assert_eq!(escaped, "r#"\\ping"#".to_string());
+fn escape_header(value: &str) -> String {
+    let regex = Regex::new(r#"(\\|")"#).unwrap();
+
+    let result = regex.replace_all(value, "\\$1");
+
+    result.to_string()
+}
+
+pub fn generate_curl_command(request: &Request) -> String {
+    let mut headers_as_curl: String = "".to_owned();
+
+    let mut is_encoded = false;
+
+    request.request_headers.iter().for_each(|(name, value)| {
+        let value_str = value.to_str().unwrap();
+        let name_str = name.to_string();
+
+        if name != http::header::CONTENT_LENGTH {
+            let escaped_value_str = escape_header(&value_str);
+
+            let formatted_header =
+                format!(r#"-H "{}: {}" "#, name_str.as_str(), &escaped_value_str);
+
+            headers_as_curl.push_str(&formatted_header);
+        }
+
+        if name == http::header::ACCEPT_ENCODING {
+            is_encoded = true
+        }
+    });
+
+    let body_as_curl = match &request.request_body {
+        Some(body) => format!("--data-binary '{}'", body),
+        None => "".to_string(),
+    };
+
+    let compression_as_curl = match is_encoded {
+        true => format!("--compressed"),
+        _ => "".to_string(),
+    };
+
+    format!(
+        "curl '{}' -X {} {} {} {}",
+        request.uri, request.method, headers_as_curl, body_as_curl, compression_as_curl
+    )
 }
