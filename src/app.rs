@@ -28,6 +28,7 @@ pub enum ActiveBlock {
     RequestDetails,
     ResponseDetails,
     RequestSummary,
+    SearchQuery,
     Help,
 }
 
@@ -108,6 +109,7 @@ pub struct App {
     pub ws_server_state: WsServerState,
     pub status_message: Option<String>,
     pub abort_handlers: Vec<AbortHandle>,
+    pub search_query: String,
 }
 
 impl App {
@@ -152,6 +154,7 @@ impl App {
             ws_server_state: WsServerState::Closed,
             status_message: None,
             abort_handlers: vec![],
+            search_query: String::with_capacity(10),
         }
     }
 }

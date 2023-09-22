@@ -29,11 +29,11 @@ use tungstenite::Message;
 use app::{App, WsServerState};
 use handlers::{
     handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
-    handle_pane_prev, handle_right, handle_tab, handle_up, handle_yank,
+    handle_pane_prev, handle_right, handle_search, handle_tab, handle_up, handle_yank,
 };
 use render::{
     render_footer, render_help, render_network_requests, render_request_block, render_request_body,
-    render_request_summary, render_response_block,
+    render_request_summary, render_response_block, render_search,
 };
 use utils::UIDispatchEvent;
 
@@ -144,7 +144,7 @@ async fn run(
                         .direction(Direction::Vertical)
                         .margin(1)
                         .constraints(
-                            [Constraint::Percentage(95), Constraint::Percentage(5)].as_ref(),
+                            [Constraint::Percentage(90), Constraint::Percentage(5), Constraint::Percentage(5)].as_ref(),
                         )
                         .split(frame.size());
 
@@ -181,7 +181,8 @@ async fn run(
                     render_request_summary(&mut app, frame, details_layout[0]);
                     render_response_block(&mut app, frame, details_layout[2]);
 
-                    render_footer(&mut app, frame, main_layout[1]);
+                    render_search(&mut app, frame, main_layout[1]);
+                    render_footer(&mut app, frame, main_layout[2]);
                 } else {
                     let main_layout = Layout::default()
                         .direction(Direction::Vertical)
@@ -191,7 +192,8 @@ async fn run(
                                 Constraint::Percentage(30),
                                 Constraint::Percentage(5),
                                 Constraint::Percentage(30),
-                                Constraint::Percentage(30),
+                                Constraint::Percentage(25),
+                                Constraint::Percentage(5),
                                 Constraint::Percentage(5),
                             ]
                             .as_ref(),
@@ -212,45 +214,52 @@ async fn run(
                     render_request_summary(&mut app, frame, main_layout[1]);
                     render_response_block(&mut app, frame, main_layout[3]);
 
-                    render_footer(&mut app, frame, main_layout[4]);
+                    render_search(&mut app, frame, main_layout[4]);
+                    render_footer(&mut app, frame, main_layout[5]);
                 }
             }
         })?;
 
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => match app.active_block {
-                        app::ActiveBlock::Help => {
-                            app.active_block = app::ActiveBlock::NetworkRequests
+                match app.active_block {
+                    app::ActiveBlock::SearchQuery => handle_search(&mut app, key),
+                    _ => match key.code {
+                        KeyCode::Char('q') => match app.active_block {
+                            app::ActiveBlock::Help => {
+                                app.active_block = app::ActiveBlock::NetworkRequests
+                            }
+                            _ => {
+                                break;
+                            }
+                        },
+                        KeyCode::Tab => handle_tab(&mut app, key),
+                        KeyCode::Char('?') => {
+                            app.active_block = app::ActiveBlock::Help;
                         }
-                        _ => {
-                            break;
+                        KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
+                        KeyCode::BackTab => handle_back_tab(&mut app, key),
+                        KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
+                        KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
+                        KeyCode::Char('n') => handle_search(&mut app, key),
+                        KeyCode::Char('N') => handle_search(&mut app, key),
+                        KeyCode::Char('/') => handle_search(&mut app, key),
+                        KeyCode::Enter => handle_enter(&mut app, key),
+                        KeyCode::Esc => handle_esc(&mut app, key),
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            handle_up(&mut app, key);
                         }
-                    },
-                    KeyCode::Tab => handle_tab(&mut app, key),
-                    KeyCode::Char('?') => {
-                        app.active_block = app::ActiveBlock::Help;
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            handle_down(&mut app, key);
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            handle_left(&mut app, key);
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            handle_right(&mut app, key);
+                        }
+                        _ => {}
                     }
-                    KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
-                    KeyCode::BackTab => handle_back_tab(&mut app, key),
-                    KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
-                    KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
-                    KeyCode::Enter => handle_enter(&mut app, key),
-                    KeyCode::Esc => handle_esc(&mut app, key),
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        handle_up(&mut app, key);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        handle_down(&mut app, key);
-                    }
-                    KeyCode::Left | KeyCode::Char('h') => {
-                        handle_left(&mut app, key);
-                    }
-                    KeyCode::Right | KeyCode::Char('l') => {
-                        handle_right(&mut app, key);
-                    }
-                    _ => {}
                 }
             }
         }

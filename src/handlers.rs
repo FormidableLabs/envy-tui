@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crossterm::event::{KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use futures_channel::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
@@ -147,6 +147,25 @@ pub fn handle_enter(app: &mut App, _key: KeyEvent) {
 
 pub fn handle_esc(app: &mut App, _key: KeyEvent) {
     app.active_block = ActiveBlock::NetworkRequests
+}
+
+pub fn handle_search(app: &mut App, key: KeyEvent) {
+    match app.active_block {
+        ActiveBlock::SearchQuery => {
+            match key.code {
+              KeyCode::Backspace => {
+                  app.search_query.pop();
+              },
+              KeyCode::Enter => {
+                app.items.retain(|i| i.uri.contains(&app.search_query));
+                app.active_block = ActiveBlock::NetworkRequests;
+              },
+              KeyCode::Char(c) => app.search_query.push(c),
+              _ => app.active_block = ActiveBlock::NetworkRequests,
+            }
+        }
+        _ => app.active_block = ActiveBlock::SearchQuery,
+    }
 }
 
 pub fn handle_tab(app: &mut App, _key: KeyEvent) {

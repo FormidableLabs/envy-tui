@@ -582,6 +582,32 @@ pub fn render_network_requests(
     frame.render_widget(requests, area);
 }
 
+pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let search_str = match app.active_block {
+        ActiveBlock::SearchQuery => &app.search_query,
+        _ => "",
+    };
+
+    let widget = Paragraph::new(format!("{}", search_str))
+        .style(
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Right)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(get_border_style(
+                    app.active_block == ActiveBlock::SearchQuery,
+                ))
+                .title("Search")
+                .border_type(BorderType::Plain),
+        );
+
+    frame.render_widget(widget, area);
+}
+
 pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let ws_status = match app.ws_server_state {
         crate::app::WsServerState::Open => "🟠 Waiting for connection".to_string(),
