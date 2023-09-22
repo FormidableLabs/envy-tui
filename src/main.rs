@@ -1,4 +1,5 @@
 mod app;
+mod consts;
 mod handlers;
 mod mock;
 mod parser;
@@ -38,6 +39,10 @@ use render::{
 use utils::UIDispatchEvent;
 
 use wss::handle_connection;
+
+use self::handlers::HandlerMetadata;
+use self::render::render_response_body;
+use self::utils::get_currently_selected_request;
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
@@ -112,20 +117,18 @@ async fn run(
 ) -> Result<(), Box<dyn Error>> {
     let (tx, mut rx) = unbounded::<UIDispatchEvent>();
 
+    // TODO: Find a better way to represent this data.
+    let mut is_first_render = true;
+
+    let mut network_requests_height = 0;
+
+    let mut response_body_requests_height = 0;
+    let mut response_body_requests_width = 0;
+
     Ok(loop {
         let mut app = app_raw.lock().await;
 
         let loop_bounded_sender = tx.clone();
-
-        match rx.try_next() {
-            Ok(value) => match value {
-                Some(event) => match event {
-                    UIDispatchEvent::ClearStatusMessage => app.status_message = None,
-                },
-                None => {}
-            },
-            Err(_) => (),
-        };
 
         terminal.draw(|frame| {
             if app.active_block == app::ActiveBlock::Help {
@@ -205,20 +208,81 @@ async fn run(
                         )
                         .split(main_layout[2]);
 
+                    let response_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(main_layout[3]);
+
                     render_request_block(&mut app, frame, request_layout[0]);
                     render_request_body(&mut app, frame, request_layout[1]);
                     render_network_requests(&mut app, frame, main_layout[0]);
 
                     render_request_summary(&mut app, frame, main_layout[1]);
-                    render_response_block(&mut app, frame, main_layout[3]);
+                    render_response_block(&mut app, frame, response_layout[0]);
+                    render_response_body(&mut app, frame, response_layout[1]);
 
                     render_footer(&mut app, frame, main_layout[4]);
+
+                    response_body_requests_height = response_layout[1].height;
+                    response_body_requests_width = response_layout[1].width;
+                    network_requests_height = main_layout[0].height;
                 }
             }
         })?;
 
+        match rx.try_next() {
+            Ok(value) => match value {
+                Some(event) => match event {
+                    UIDispatchEvent::ClearStatusMessage => app.status_message = None,
+                },
+                None => {}
+            },
+            Err(_) => (),
+        };
+
+        if is_first_render {
+            let item = get_currently_selected_request(&app);
+
+            match item {
+                Some(item) => {
+                    let lines = &item.pretty_response_body.as_ref().unwrap();
+
+                    let longest = lines
+                        .lines()
+                        .into_iter()
+                        .fold(0, |longest: u16, lines: &str| {
+                            let len = lines.len() as u16;
+
+                            len.max(longest)
+                        });
+
+                    let len = lines.lines().into_iter().collect::<Vec<_>>().len();
+
+                    app.response_body.scroll_state =
+                        app.response_body.scroll_state.content_length(len as u16);
+
+                    app.response_body.h_scroll_state = app
+                        .response_body
+                        .h_scroll_state
+                        .content_length(longest as u16);
+                }
+
+                _ => {}
+            }
+
+            is_first_render = false;
+        }
+
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
+                let metadata = HandlerMetadata {
+                    main_height: network_requests_height,
+                    response_body_rectangle_height: response_body_requests_height,
+                    response_body_rectangle_width: response_body_requests_width,
+                };
+
                 match key.code {
                     KeyCode::Char('q') => match app.active_block {
                         app::ActiveBlock::Help => {
@@ -239,16 +303,16 @@ async fn run(
                     KeyCode::Enter => handle_enter(&mut app, key),
                     KeyCode::Esc => handle_esc(&mut app, key),
                     KeyCode::Up | KeyCode::Char('k') => {
-                        handle_up(&mut app, key);
+                        handle_up(&mut app, key, metadata);
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        handle_down(&mut app, key);
+                        handle_down(&mut app, key, metadata);
                     }
                     KeyCode::Left | KeyCode::Char('h') => {
-                        handle_left(&mut app, key);
+                        handle_left(&mut app, key, metadata);
                     }
                     KeyCode::Right | KeyCode::Char('l') => {
-                        handle_right(&mut app, key);
+                        handle_right(&mut app, key, metadata);
                     }
                     _ => {}
                 }

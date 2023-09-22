@@ -106,7 +106,25 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Request, Box<dyn Error>
         status,
         http_version,
         request_body: potential_json_body.requestBody,
-        response_body: potential_json_body.responseBody,
+        response_body: None,
+        pretty_response_body: None,
+        pretty_response_body_lines: None,
+    };
+
+    match potential_json_body.responseBody {
+        Some(raw_response_body) => match pretty_parse_body(&raw_response_body) {
+            Ok(pretty_response_body) => {
+                let len = pretty_response_body.lines().collect::<Vec<_>>().len();
+
+                request.pretty_response_body_lines = Some(len);
+                request.pretty_response_body = Some(pretty_response_body);
+                request.request_body = Some(raw_response_body);
+
+                ()
+            }
+            Err(_) => (),
+        },
+        None => (),
     };
 
     populate_header_map(
@@ -178,4 +196,12 @@ pub fn generate_curl_command(request: &Request) -> String {
         "curl '{}' -X {} {} {} {}",
         request.uri, request.method, headers_as_curl, body_as_curl, compression_as_curl
     )
+}
+
+pub fn pretty_parse_body(json: &str) -> Result<String, Box<dyn Error>> {
+    let potential_json_body = serde_json::from_str::<Value>(json)?;
+
+    let parsed_json = serde_json::to_string_pretty(&potential_json_body)?;
+
+    Ok(parsed_json)
 }
