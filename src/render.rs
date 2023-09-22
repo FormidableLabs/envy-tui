@@ -2,16 +2,21 @@ use std::io::Stdout;
 use std::ops::Deref;
 
 use http::{HeaderName, HeaderValue};
-use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Rect};
+use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Row, Table, Tabs};
+use ratatui::text::Line;
+use ratatui::widgets::{
+    Block, BorderType, Borders, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
+    Tabs,
+};
 use ratatui::Frame;
-use serde_json::Value;
 
-use std::error::Error;
-
-use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, ResponseDetailsPane};
-use crate::utils::{parse_query_params, truncate};
+use crate::app::{ActiveBlock, App, Request, RequestDetailsPane};
+use crate::consts::{
+    RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE, RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
+};
+use crate::parser::pretty_parse_body;
+use crate::utils::{get_currently_selected_request, parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -26,37 +31,94 @@ enum HeaderType {
     Response,
 }
 
-fn pretty_parse_body(json: &str) -> Result<String, Box<dyn Error>> {
-    let potential_json_body = serde_json::from_str::<Value>(json)?;
+pub fn render_response_body(
+    app: &mut App,
+    frame: &mut Frame<CrosstermBackend<Stdout>>,
+    area: Rect,
+) {
+    match get_currently_selected_request(&app) {
+        Some(selected_item) => match &selected_item.pretty_response_body {
+            Some(pretty_json) => {
+                let mut longest_line_length = 0;
 
-    let parsed_json = serde_json::to_string_pretty(&potential_json_body)?;
+                let lines = pretty_json
+                    .lines()
+                    .into_iter()
+                    .map(|lines| {
+                        let len = lines.len();
 
-    Ok(parsed_json)
-}
+                        longest_line_length = len.max(longest_line_length);
 
-fn render_body(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+                        Line::from(lines)
+                    })
+                    .collect::<Vec<_>>();
 
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
+                let number_of_lines = lines.len();
 
-    match maybe_selected_item {
-        Some(selected_item) => match &selected_item.response_body {
-            Some(response_body) => match pretty_parse_body(response_body.as_str()) {
-                Ok(pretty_json) => {
-                    let body_to_render = Paragraph::new(pretty_json).style(
+                let body_to_render = Paragraph::new(lines)
+                    .style(
                         Style::default()
-                            .fg(if app.active_block == ActiveBlock::ResponseDetails {
+                            .fg(if app.active_block == ActiveBlock::ResponseBody {
                                 Color::White
                             } else {
                                 Color::DarkGray
                             })
                             .add_modifier(Modifier::BOLD),
-                    );
+                    )
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .style(Style::default().fg(
+                                if app.active_block == ActiveBlock::ResponseBody {
+                                    Color::White
+                                } else {
+                                    Color::DarkGray
+                                },
+                            ))
+                            .title("Response body")
+                            .border_type(BorderType::Thick),
+                    )
+                    .scroll((
+                        app.response_body.offset as u16,
+                        app.response_body.h_offset as u16,
+                    ));
 
-                    frame.render_widget(body_to_render, area);
+                frame.render_widget(body_to_render, area);
+
+                let has_overflown_x_axis = longest_line_length as u16
+                    > area.width - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+
+                let has_overflown_y_axis = number_of_lines as u16
+                    > area.height - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
+
+                if has_overflown_y_axis {
+                    let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+                    frame.render_stateful_widget(
+                        vertical_scroll,
+                        area.inner(&Margin {
+                            vertical: 1,
+                            horizontal: 0,
+                        }),
+                        &mut app.response_body.scroll_state,
+                    );
                 }
-                Err(_) => {}
-            },
+
+                if has_overflown_x_axis {
+                    let horizontal_scroll = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+                        .begin_symbol(Some("<-"))
+                        .end_symbol(Some("->"));
+
+                    frame.render_stateful_widget(
+                        horizontal_scroll,
+                        area.inner(&Margin {
+                            vertical: 0,
+                            horizontal: 1,
+                        }),
+                        &mut app.response_body.h_scroll_state,
+                    );
+                }
+            }
             _ => {}
         },
         None => {}
@@ -441,40 +503,7 @@ pub fn render_response_block(
             name_a.cmp(name_b)
         });
 
-        let tabs = Tabs::new(vec!["Response Body", "Response Header"])
-            .block(
-                Block::default()
-                    .borders(Borders::BOTTOM)
-                    .style(Style::default().fg(Color::DarkGray))
-                    .border_type(BorderType::Thick),
-            )
-            .select(match app.response_details_block {
-                ResponseDetailsPane::Body => 0,
-                ResponseDetailsPane::Headers => 1,
-            })
-            .highlight_style(Style::default().fg(Color::White));
-
-        let inner_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
-            .split(area);
-
-        let main = Block::default()
-            .title("Response details")
-            .borders(Borders::ALL);
-
-        frame.render_widget(main, area);
-        frame.render_widget(tabs, inner_layout[0]);
-
-        match app.response_details_block {
-            ResponseDetailsPane::Body => {
-                render_body(app, frame, inner_layout[1]);
-            }
-            ResponseDetailsPane::Headers => {
-                render_headers(app, frame, inner_layout[1], HeaderType::Response)
-            }
-        }
+        render_headers(app, frame, area, HeaderType::Response)
     }
 }
 
