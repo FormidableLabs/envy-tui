@@ -1,5 +1,7 @@
 use http::Uri;
 
+use crate::app::{App, Request};
+
 pub enum UIDispatchEvent {
     ClearStatusMessage,
 }
@@ -38,4 +40,10 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
         },
         Err(_) => vec![],
     }
+}
+
+pub fn get_currently_selected_request(app: &App) -> Option<&Request> {
+    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+
+    items_as_vector.get(app.main.index).copied()
 }
