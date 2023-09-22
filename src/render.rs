@@ -13,7 +13,8 @@ use ratatui::Frame;
 
 use crate::app::{ActiveBlock, App, Request, RequestDetailsPane};
 use crate::consts::{
-    RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE, RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
+    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE,
+    RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::parser::pretty_parse_body;
 use crate::utils::{get_currently_selected_request, parse_query_params, truncate};
@@ -514,14 +515,20 @@ pub fn render_network_requests(
 ) {
     let requests = &app.items;
 
+    let height = area.height;
+
+    let effective_height = height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+
     let active_block = app.active_block.clone();
 
     let items_as_vector = requests.iter().collect::<Vec<&Request>>();
 
-    let selected_item = items_as_vector.get(app.selection_index);
+    let selected_item = items_as_vector.get(app.main.index);
 
     let converted_rows: Vec<(Vec<String>, bool)> = items_as_vector
         .iter()
+        .skip(app.main.offset.into())
+        .take(effective_height.into())
         .map(|request| {
             let uri = truncate(request.uri.clone().as_str(), 60);
 
@@ -640,6 +647,7 @@ pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
                 .borders(Borders::ALL)
                 .style(Style::default().fg(Color::DarkGray))
                 .title("Status Bar")
+                .padding(Padding::new(0, 1, 0, 0))
                 .border_type(BorderType::Plain),
         );
 
@@ -656,7 +664,7 @@ pub fn render_request_summary(
 
     let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let selected_item = items_as_vector.get(app.selection_index);
+    let selected_item = items_as_vector.get(app.main.index);
 
     let message = match selected_item {
         Some(item) => item.to_string(),
