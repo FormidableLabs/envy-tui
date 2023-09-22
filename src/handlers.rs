@@ -321,39 +321,54 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
 }
 
 pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<UIDispatchEvent>) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+    match get_currently_selected_request(&app) {
+        Some(request) => match app.active_block {
+            ActiveBlock::NetworkRequests => {
+                let cmd = generate_curl_command(request);
 
-    let selected_item = items_as_vector.get(app.main.index);
-
-    match selected_item {
-        Some(request) => {
-            let cmd = generate_curl_command(request);
-
-            match clippers::Clipboard::get().write_text(cmd) {
-                Ok(_) => {
-                    app.status_message = Some(String::from("Request copied as cURL command!"));
+                match clippers::Clipboard::get().write_text(cmd) {
+                    Ok(_) => {
+                        app.status_message = Some(String::from("Request copied as cURL command!"));
+                    }
+                    Err(_) => {
+                        app.status_message = Some(String::from(
+                            "Something went wrong while copying to the clipboard!",
+                        ));
+                    }
                 }
-                Err(_) => {
-                    app.status_message = Some(String::from(
-                        "Something went wrong while copying to the clipboard!",
-                    ));
-                }
+
+                app.abort_handlers.iter().for_each(|handler| {
+                    handler.abort();
+                });
+
+                app.abort_handlers.clear();
+
+                let thread_handler = tokio::spawn(async move {
+                    sleep(Duration::from_millis(5000)).await;
+
+                    loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
+                });
+
+                app.abort_handlers.push(thread_handler.abort_handle());
             }
-
-            app.abort_handlers.iter().for_each(|handler| {
-                handler.abort();
-            });
-
-            app.abort_handlers.clear();
-
-            let thread_handler = tokio::spawn(async move {
-                sleep(Duration::from_millis(5000)).await;
-
-                loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
-            });
-
-            app.abort_handlers.push(thread_handler.abort_handle());
-        }
+            ActiveBlock::ResponseBody => match &request.response_body {
+                Some(body) => {
+                    match clippers::Clipboard::get().write_text(pretty_parse_body(body).unwrap()) {
+                        Ok(_) => {
+                            app.status_message =
+                                Some(String::from("Response body copied to clipboard."));
+                        }
+                        Err(_) => {
+                            app.status_message = Some(String::from(
+                                "Something went wrong while copying to the clipboard!",
+                            ));
+                        }
+                    }
+                }
+                None => {}
+            },
+            _ => {}
+        },
         None => {}
-    }
+    };
 }
