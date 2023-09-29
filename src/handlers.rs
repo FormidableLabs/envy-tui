@@ -157,7 +157,6 @@ pub fn handle_search(app: &mut App, key: KeyEvent) {
                   app.search_query.pop();
               },
               KeyCode::Enter => {
-                app.items.retain(|i| i.uri.contains(&app.search_query));
                 app.active_block = ActiveBlock::NetworkRequests;
               },
               KeyCode::Char(c) => app.search_query.push(c),

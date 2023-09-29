@@ -487,7 +487,10 @@ pub fn render_network_requests(
 
     let active_block = app.active_block.clone();
 
-    let items_as_vector = requests.iter().collect::<Vec<&Request>>();
+    let items_as_vector = requests
+        .iter()
+        .filter(|i| app.search_query.is_empty() || i.uri.contains(&app.search_query))
+        .collect::<Vec<&Request>>();
 
     let selected_item = items_as_vector.get(app.selection_index);
 
