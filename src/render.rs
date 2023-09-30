@@ -4,7 +4,7 @@ use std::ops::Deref;
 use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Row, Table, Tabs};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Row, Table, Tabs};
 use ratatui::Frame;
 use serde_json::Value;
 
@@ -585,30 +585,20 @@ pub fn render_network_requests(
     frame.render_widget(requests, area);
 }
 
-pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let search_str = match app.active_block {
-        ActiveBlock::SearchQuery => &app.search_query,
-        _ => "",
-    };
+pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+    if app.active_block == ActiveBlock::SearchQuery {
+        let area = overlay_area(frame.size());
+        let widget = Paragraph::new(format!("/{}", &app.search_query))
+            .style(
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .alignment(Alignment::Left);
 
-    let widget = Paragraph::new(format!("{}", search_str))
-        .style(
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )
-        .alignment(Alignment::Right)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .style(get_border_style(
-                    app.active_block == ActiveBlock::SearchQuery,
-                ))
-                .title("Search")
-                .border_type(BorderType::Plain),
-        );
-
-    frame.render_widget(widget, area);
+        frame.render_widget(Clear, area);
+        frame.render_widget(widget, area);
+    }
 }
 
 pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
@@ -695,4 +685,17 @@ pub fn render_help(_app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, 
         );
 
     frame.render_widget(status_bar, area);
+}
+
+/// helper function to create an overlay rect `r`
+fn overlay_area(r: Rect) -> Rect {
+    let overlay_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(100), Constraint::Min(0)].as_ref())
+        .split(overlay_layout[1])[0]
 }

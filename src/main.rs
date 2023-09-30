@@ -144,7 +144,7 @@ async fn run(
                         .direction(Direction::Vertical)
                         .margin(1)
                         .constraints(
-                            [Constraint::Percentage(90), Constraint::Percentage(5), Constraint::Percentage(5)].as_ref(),
+                            [Constraint::Percentage(90), Constraint::Percentage(5)].as_ref(),
                         )
                         .split(frame.size());
 
@@ -181,8 +181,9 @@ async fn run(
                     render_request_summary(&mut app, frame, details_layout[0]);
                     render_response_block(&mut app, frame, details_layout[2]);
 
-                    render_search(&mut app, frame, main_layout[1]);
-                    render_footer(&mut app, frame, main_layout[2]);
+                    render_footer(&mut app, frame, main_layout[1]);
+
+                    render_search(&mut app, frame);
                 } else {
                     let main_layout = Layout::default()
                         .direction(Direction::Vertical)
@@ -192,8 +193,7 @@ async fn run(
                                 Constraint::Percentage(30),
                                 Constraint::Percentage(5),
                                 Constraint::Percentage(30),
-                                Constraint::Percentage(25),
-                                Constraint::Percentage(5),
+                                Constraint::Percentage(30),
                                 Constraint::Percentage(5),
                             ]
                             .as_ref(),
@@ -214,7 +214,7 @@ async fn run(
                     render_request_summary(&mut app, frame, main_layout[1]);
                     render_response_block(&mut app, frame, main_layout[3]);
 
-                    render_search(&mut app, frame, main_layout[4]);
+                    render_search(&mut app, frame);
                     render_footer(&mut app, frame, main_layout[5]);
                 }
             }
@@ -241,8 +241,6 @@ async fn run(
                         KeyCode::BackTab => handle_back_tab(&mut app, key),
                         KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
                         KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
-                        KeyCode::Char('n') => handle_search(&mut app, key),
-                        KeyCode::Char('N') => handle_search(&mut app, key),
                         KeyCode::Char('/') => handle_search(&mut app, key),
                         KeyCode::Enter => handle_enter(&mut app, key),
                         KeyCode::Esc => handle_esc(&mut app, key),

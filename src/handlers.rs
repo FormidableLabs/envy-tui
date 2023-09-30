@@ -155,6 +155,9 @@ pub fn handle_search(app: &mut App, key: KeyEvent) {
             match key.code {
               KeyCode::Backspace => {
                   app.search_query.pop();
+                  if app.search_query.is_empty() {
+                    app.active_block = ActiveBlock::NetworkRequests;
+                  }
               },
               KeyCode::Enter => {
                 app.active_block = ActiveBlock::NetworkRequests;
