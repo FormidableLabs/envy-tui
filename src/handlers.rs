@@ -166,7 +166,10 @@ pub fn handle_search(app: &mut App, key: KeyEvent) {
               _ => app.active_block = ActiveBlock::NetworkRequests,
             }
         }
-        _ => app.active_block = ActiveBlock::SearchQuery,
+        _ => {
+            app.search_query.clear();
+            app.active_block = ActiveBlock::SearchQuery;
+        },
     }
 }
 

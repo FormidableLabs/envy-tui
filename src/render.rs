@@ -1,3 +1,5 @@
+use core::str::FromStr;
+use regex::Regex;
 use std::io::Stdout;
 use std::ops::Deref;
 
@@ -478,18 +480,33 @@ pub fn render_response_block(
     }
 }
 
+fn fuzzy_regex(query: String) -> Regex {
+    if query.is_empty() {
+        return Regex::new(r".*").unwrap();
+    }
+
+    let mut fuzzy_query = String::new();
+
+    for c in query.chars() {
+        fuzzy_query.extend([c, '.', '*']);
+    }
+
+    return Regex::from_str(&fuzzy_query).unwrap();
+}
+
 pub fn render_network_requests(
     app: &mut App,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
     let requests = &app.items;
+    let re = fuzzy_regex(app.search_query.clone());
 
     let active_block = app.active_block.clone();
 
     let items_as_vector = requests
         .iter()
-        .filter(|i| app.search_query.is_empty() || i.uri.contains(&app.search_query))
+        .filter(|i| re.is_match(&i.uri))
         .collect::<Vec<&Request>>();
 
     let selected_item = items_as_vector.get(app.selection_index);
