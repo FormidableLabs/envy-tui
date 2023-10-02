@@ -27,6 +27,7 @@ pub enum ResponseDetailsPane {
 pub enum ActiveBlock {
     NetworkRequests,
     RequestDetails,
+    RequestBody,
     ResponseDetails,
     ResponseBody,
     RequestSummary,
@@ -54,6 +55,8 @@ pub struct Request {
     pub response_body: Option<String>,
     pub pretty_response_body: Option<String>,
     pub pretty_response_body_lines: Option<usize>,
+    pub pretty_request_body: Option<String>,
+    pub pretty_request_body_lines: Option<usize>,
     pub http_version: Option<http::Version>,
 }
 
@@ -96,9 +99,9 @@ impl Display for Request {
 pub struct UIState {
     pub index: usize,
     pub offset: usize,
-    pub h_offset: usize,
+    pub horizontal_offset: usize,
     pub scroll_state: ScrollbarState,
-    pub h_scroll_state: ScrollbarState,
+    pub horizontal_scroll_state: ScrollbarState,
 }
 
 pub struct App {
@@ -106,7 +109,6 @@ pub struct App {
     pub request_details_block: RequestDetailsPane,
     pub response_details_block: ResponseDetailsPane,
     pub items: BTreeSet<Request>,
-    pub selection_index: usize,
     pub selected_request_header_index: usize,
     pub selected_response_header_index: usize,
     pub selected_params_index: usize,
@@ -115,6 +117,7 @@ pub struct App {
     pub abort_handlers: Vec<AbortHandle>,
     pub main: UIState,
     pub response_body: UIState,
+    pub request_body: UIState,
 }
 
 impl App {
@@ -149,7 +152,7 @@ impl App {
             }
             Err(err) => {
                 println!(
-                    "Something went wrong while inserting to the Tree, {:?}",
+                    "Something went wrong while parsing and inserting to the Tree, {:?}",
                     err
                 )
             }
@@ -159,7 +162,6 @@ impl App {
             active_block: ActiveBlock::NetworkRequests,
             request_details_block: RequestDetailsPane::Headers,
             response_details_block: ResponseDetailsPane::Body,
-            selection_index: 0,
             selected_params_index: 0,
             selected_request_header_index: 0,
             selected_response_header_index: 0,
@@ -171,16 +173,23 @@ impl App {
                 offset: 0,
                 // TODO: Move it back to 20. Just for dev purposes.
                 index: 7,
-                h_offset: 0,
+                horizontal_offset: 0,
                 scroll_state: ScrollbarState::default(),
-                h_scroll_state: ScrollbarState::default(),
+                horizontal_scroll_state: ScrollbarState::default(),
             },
             response_body: UIState {
                 offset: 0,
                 index: 0,
-                h_offset: 0,
+                horizontal_offset: 0,
                 scroll_state: ScrollbarState::default(),
-                h_scroll_state: ScrollbarState::default(),
+                horizontal_scroll_state: ScrollbarState::default(),
+            },
+            request_body: UIState {
+                offset: 0,
+                index: 0,
+                horizontal_offset: 0,
+                scroll_state: ScrollbarState::default(),
+                horizontal_scroll_state: ScrollbarState::default(),
             },
         }
     }

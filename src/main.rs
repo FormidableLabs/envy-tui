@@ -40,6 +40,8 @@ use utils::UIDispatchEvent;
 
 use wss::handle_connection;
 
+use crate::consts::RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
+
 use self::handlers::HandlerMetadata;
 use self::render::render_response_body;
 use self::utils::get_currently_selected_request;
@@ -247,26 +249,55 @@ async fn run(
 
             match item {
                 Some(item) => {
-                    let lines = &item.pretty_response_body.as_ref().unwrap();
+                    let response_lines = &item.pretty_response_body.as_ref().unwrap();
 
-                    let longest = lines
-                        .lines()
-                        .into_iter()
-                        .fold(0, |longest: u16, lines: &str| {
-                            let len = lines.len() as u16;
+                    let request_lines = &item.pretty_request_body.as_ref().unwrap();
 
-                            len.max(longest)
-                        });
+                    let response_longest =
+                        response_lines
+                            .lines()
+                            .into_iter()
+                            .fold(0, |longest: u16, lines: &str| {
+                                let len = lines.len() as u16;
 
-                    let len = lines.lines().into_iter().collect::<Vec<_>>().len();
+                                len.max(longest)
+                            });
+
+                    let request_longest =
+                        request_lines
+                            .lines()
+                            .into_iter()
+                            .fold(0, |longest: u16, lines: &str| {
+                                let len = lines.len() as u16;
+
+                                len.max(longest)
+                            });
+
+                    let len = response_lines.lines().into_iter().collect::<Vec<_>>().len();
+
+                    let overflown_number_count_request = request_longest
+                        - response_body_requests_width
+                        - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+
+                    let overflown_number_count_response = response_longest
+                        - response_body_requests_width
+                        - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+
+                    app.main.scroll_state =
+                        app.main.scroll_state.content_length(app.items.len() as u16);
 
                     app.response_body.scroll_state =
                         app.response_body.scroll_state.content_length(len as u16);
 
-                    app.response_body.h_scroll_state = app
-                        .response_body
-                        .h_scroll_state
-                        .content_length(longest as u16);
+                    app.response_body.horizontal_scroll_state =
+                        app.response_body.horizontal_scroll_state.content_length(
+                            overflown_number_count_response + response_body_requests_width,
+                        );
+
+                    app.request_body.horizontal_scroll_state =
+                        app.request_body.horizontal_scroll_state.content_length(
+                            overflown_number_count_request + response_body_requests_width,
+                        );
                 }
 
                 _ => {}

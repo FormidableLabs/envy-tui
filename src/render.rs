@@ -11,12 +11,11 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::app::{ActiveBlock, App, Request, RequestDetailsPane};
+use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, UIState};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::parser::pretty_parse_body;
 use crate::utils::{get_currently_selected_request, parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -32,98 +31,118 @@ enum HeaderType {
     Response,
 }
 
+pub fn render_body(
+    pretty_body: String,
+    ui_state: &mut UIState,
+    active_block: ActiveBlock,
+    frame: &mut Frame<CrosstermBackend<Stdout>>,
+    area: Rect,
+    block: ActiveBlock,
+) {
+    let mut longest_line_length = 0;
+
+    let lines = pretty_body
+        .lines()
+        .into_iter()
+        .map(|lines| {
+            let len = lines.len();
+
+            longest_line_length = len.max(longest_line_length);
+
+            Line::from(lines)
+        })
+        .collect::<Vec<_>>();
+
+    let number_of_lines = lines.len();
+
+    let has_overflown_x_axis =
+        longest_line_length as u16 > area.width - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+
+    let has_overflown_y_axis =
+        number_of_lines as u16 > area.height - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
+
+    let body_to_render = Paragraph::new(lines)
+        .style(
+            Style::default()
+                .fg(if active_block == block {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                })
+                .add_modifier(Modifier::BOLD),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(if active_block == block {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                }))
+                .title(format!(
+                    "{} body",
+                    if block == ActiveBlock::RequestBody {
+                        "Request"
+                    } else {
+                        "Response"
+                    }
+                ))
+                .border_type(BorderType::Thick),
+        )
+        .scroll((ui_state.offset as u16, ui_state.horizontal_offset as u16));
+
+    frame.render_widget(body_to_render, area);
+
+    if has_overflown_y_axis {
+        let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+        frame.render_stateful_widget(
+            vertical_scroll,
+            area.inner(&Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut ui_state.scroll_state,
+        );
+    }
+
+    if has_overflown_x_axis {
+        let horizontal_scroll = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+            .begin_symbol(Some("<-"))
+            .end_symbol(Some("->"));
+
+        frame.render_stateful_widget(
+            horizontal_scroll,
+            area.inner(&Margin {
+                vertical: 0,
+                horizontal: 1,
+            }),
+            &mut ui_state.horizontal_scroll_state,
+        );
+    }
+}
+
 pub fn render_response_body(
     app: &mut App,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
     match get_currently_selected_request(&app) {
-        Some(selected_item) => match &selected_item.pretty_response_body {
+        Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
-                let mut longest_line_length = 0;
-
-                let lines = pretty_json
-                    .lines()
-                    .into_iter()
-                    .map(|lines| {
-                        let len = lines.len();
-
-                        longest_line_length = len.max(longest_line_length);
-
-                        Line::from(lines)
-                    })
-                    .collect::<Vec<_>>();
-
-                let number_of_lines = lines.len();
-
-                let body_to_render = Paragraph::new(lines)
-                    .style(
-                        Style::default()
-                            .fg(if app.active_block == ActiveBlock::ResponseBody {
-                                Color::White
-                            } else {
-                                Color::DarkGray
-                            })
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .style(Style::default().fg(
-                                if app.active_block == ActiveBlock::ResponseBody {
-                                    Color::White
-                                } else {
-                                    Color::DarkGray
-                                },
-                            ))
-                            .title("Response body")
-                            .border_type(BorderType::Thick),
-                    )
-                    .scroll((
-                        app.response_body.offset as u16,
-                        app.response_body.h_offset as u16,
-                    ));
-
-                frame.render_widget(body_to_render, area);
-
-                let has_overflown_x_axis = longest_line_length as u16
-                    > area.width - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
-
-                let has_overflown_y_axis = number_of_lines as u16
-                    > area.height - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
-
-                if has_overflown_y_axis {
-                    let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-
-                    frame.render_stateful_widget(
-                        vertical_scroll,
-                        area.inner(&Margin {
-                            vertical: 1,
-                            horizontal: 0,
-                        }),
-                        &mut app.response_body.scroll_state,
-                    );
-                }
-
-                if has_overflown_x_axis {
-                    let horizontal_scroll = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-                        .begin_symbol(Some("<-"))
-                        .end_symbol(Some("->"));
-
-                    frame.render_stateful_widget(
-                        horizontal_scroll,
-                        area.inner(&Margin {
-                            vertical: 0,
-                            horizontal: 1,
-                        }),
-                        &mut app.response_body.h_scroll_state,
-                    );
-                }
+                render_body(
+                    pretty_json.to_string(),
+                    &mut app.response_body,
+                    app.active_block,
+                    frame,
+                    area,
+                    ActiveBlock::ResponseBody,
+                );
             }
             _ => {}
         },
-        None => {}
-    };
+        _ => {}
+    }
 }
 
 fn get_row_style(row_style: RowStyle) -> Style {
@@ -164,7 +183,7 @@ fn render_headers(
 ) {
     let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
+    let maybe_selected_item = items_as_vector.get(app.main.index);
 
     let active_block = app.active_block;
 
@@ -239,11 +258,7 @@ fn render_headers(
                 // specify some margin at the bottom.
                 .bottom_margin(1),
         )
-        .widths(&[
-            Constraint::Percentage(10),
-            Constraint::Percentage(70),
-            Constraint::Length(20),
-        ])
+        .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
         // ...and they can be separated by a fixed spacing.
         // .column_spacing(1)
         // If you wish to highlight a row in any specific way when it is selected...
@@ -263,7 +278,7 @@ pub fn render_request_block(
 
     let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
+    let maybe_selected_item = items_as_vector.get(app.main.index);
 
     let uri = match maybe_selected_item {
         Some(item) => item.deref().uri.clone(),
@@ -365,30 +380,6 @@ pub fn render_request_block(
     frame.render_widget(tabs, inner_layout[0]);
 
     match app.request_details_block {
-        // RequestDetailsPane::Body => {
-        //     match maybe_selected_item {
-        //         Some(selected_item) => match &selected_item.request_body {
-        //             Some(request_body) => match pretty_parse_body(request_body.as_str()) {
-        //                 Ok(pretty_json) => {
-        //                     let body_to_render = Paragraph::new(pretty_json).style(
-        //                         Style::default()
-        //                             .fg(if active_block == ActiveBlock::ResponseDetails {
-        //                                 Color::White
-        //                             } else {
-        //                                 Color::DarkGray
-        //                             })
-        //                             .add_modifier(Modifier::BOLD),
-        //                     );
-        //
-        //                     frame.render_widget(body_to_render, inner_layout[1]);
-        //                 }
-        //                 Err(_) => {}
-        //             },
-        //             _ => {}
-        //         },
-        //         None => {}
-        //     };
-        // }
         RequestDetailsPane::Query => {
             frame.render_widget(table, inner_layout[1]);
         }
@@ -399,63 +390,22 @@ pub fn render_request_block(
 }
 
 pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
-
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
-
-    match maybe_selected_item {
-        Some(selected_item) => match &selected_item.request_body {
-            Some(request_body) => match pretty_parse_body(request_body.as_str()) {
-                Ok(pretty_json) => {
-                    let body_to_render = Paragraph::new(pretty_json)
-                        .style(
-                            Style::default()
-                                .fg(if app.active_block == ActiveBlock::RequestDetails {
-                                    Color::White
-                                } else {
-                                    Color::DarkGray
-                                })
-                                .add_modifier(Modifier::BOLD),
-                        )
-                        .block(
-                            Block::default()
-                                .borders(Borders::ALL)
-                                .style(Style::default().fg(
-                                    if app.active_block == ActiveBlock::RequestDetails {
-                                        Color::White
-                                    } else {
-                                        Color::DarkGray
-                                    },
-                                ))
-                                .title("Request body")
-                                .border_type(BorderType::Thick),
-                        );
-
-                    frame.render_widget(body_to_render, area);
-                }
-                Err(_) => {}
-            },
-            _ => {
-                let status_bar = Paragraph::new("This request does not have a body")
-                    .style(get_text_style(
-                        app.active_block == ActiveBlock::RequestDetails,
-                    ))
-                    .alignment(Alignment::Center)
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .style(get_border_style(
-                                app.active_block == ActiveBlock::RequestDetails,
-                            ))
-                            .title("Request Body")
-                            .border_type(BorderType::Plain),
-                    );
-
-                frame.render_widget(status_bar, area);
+    match get_currently_selected_request(&app) {
+        Some(request) => match &request.pretty_request_body {
+            Some(pretty_json) => {
+                render_body(
+                    pretty_json.to_string(),
+                    &mut app.request_body,
+                    app.active_block,
+                    frame,
+                    area,
+                    ActiveBlock::RequestBody,
+                );
             }
+            _ => {}
         },
-        None => {}
-    };
+        _ => {}
+    }
 }
 
 pub fn render_response_block(
@@ -465,7 +415,7 @@ pub fn render_response_block(
 ) {
     let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
+    let maybe_selected_item = items_as_vector.get(app.main.index);
 
     let uri = match maybe_selected_item {
         Some(item) => item.deref().uri.clone(),
@@ -522,6 +472,8 @@ pub fn render_network_requests(
     let active_block = app.active_block.clone();
 
     let items_as_vector = requests.iter().collect::<Vec<&Request>>();
+
+    let number_of_lines = items_as_vector.len();
 
     let selected_item = items_as_vector.get(app.main.index);
 
@@ -615,7 +567,22 @@ pub fn render_network_requests(
         // ...and potentially show a symbol in front of the selection.
         .highlight_symbol(">>");
 
+    let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
     frame.render_widget(requests, area);
+
+    let usable_height = area.height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+
+    if number_of_lines > usable_height.into() {
+        frame.render_stateful_widget(
+            vertical_scroll,
+            area.inner(&Margin {
+                horizontal: 0,
+                vertical: 2,
+            }),
+            &mut app.main.scroll_state,
+        );
+    }
 }
 
 pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
@@ -635,6 +602,22 @@ pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
         None => "",
     };
 
+    let help_text = Paragraph::new("For help, press ?")
+        .style(
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Left)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::DarkGray))
+                .title("Status Bar")
+                .padding(Padding::new(1, 0, 0, 0))
+                .border_type(BorderType::Plain),
+        );
+
     let status_bar = Paragraph::new(format!("{} {}", general_status, ws_status))
         .style(
             Style::default()
@@ -652,6 +635,8 @@ pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
         );
 
     frame.render_widget(status_bar, area);
+
+    frame.render_widget(help_text, area);
 }
 
 pub fn render_request_summary(

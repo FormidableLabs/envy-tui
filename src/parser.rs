@@ -105,10 +105,12 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Request, Box<dyn Error>
         method,
         status,
         http_version,
-        request_body: potential_json_body.requestBody,
+        request_body: None,
         response_body: None,
         pretty_response_body: None,
         pretty_response_body_lines: None,
+        pretty_request_body: None,
+        pretty_request_body_lines: None,
     };
 
     match potential_json_body.responseBody {
@@ -118,7 +120,23 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Request, Box<dyn Error>
 
                 request.pretty_response_body_lines = Some(len);
                 request.pretty_response_body = Some(pretty_response_body);
-                request.request_body = Some(raw_response_body);
+                request.response_body = Some(raw_response_body);
+
+                ()
+            }
+            Err(_) => (),
+        },
+        None => (),
+    };
+
+    match potential_json_body.requestBody {
+        Some(raw_request_body) => match pretty_parse_body(&raw_request_body) {
+            Ok(pretty_request_body) => {
+                let len = pretty_request_body.lines().collect::<Vec<_>>().len();
+
+                request.pretty_request_body_lines = Some(len);
+                request.pretty_request_body = Some(pretty_request_body);
+                request.request_body = Some(raw_request_body);
 
                 ()
             }
