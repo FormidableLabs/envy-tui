@@ -42,7 +42,7 @@ pub enum WsServerState {
 }
 
 #[derive(Clone, Debug)]
-pub struct Request {
+pub struct Trace {
     pub id: String,
     pub timestamp: u64,
     pub method: http::method::Method,
@@ -60,33 +60,33 @@ pub struct Request {
     pub http_version: Option<http::Version>,
 }
 
-impl PartialEq<Request> for Request {
-    fn eq(&self, other: &Request) -> bool {
+impl PartialEq<Trace> for Trace {
+    fn eq(&self, other: &Trace) -> bool {
         self.id == *other.id
     }
 }
 
-impl Eq for Request {}
+impl Eq for Trace {}
 
-impl PartialOrd for Request {
+impl PartialOrd for Trace {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.timestamp.cmp(&other.timestamp))
+        Some(other.timestamp.cmp(&self.timestamp))
     }
 }
 
-impl Ord for Request {
+impl Ord for Trace {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.timestamp.cmp(&other.timestamp)
+        other.timestamp.cmp(&self.timestamp)
     }
 }
 
-impl Hash for Request {
+impl Hash for Trace {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }
 }
 
-impl Display for Request {
+impl Display for Trace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -108,7 +108,7 @@ pub struct App {
     pub active_block: ActiveBlock,
     pub request_details_block: RequestDetailsPane,
     pub response_details_block: ResponseDetailsPane,
-    pub items: BTreeSet<Request>,
+    pub items: BTreeSet<Trace>,
     pub selected_request_header_index: usize,
     pub selected_response_header_index: usize,
     pub selected_params_index: usize,
@@ -118,11 +118,12 @@ pub struct App {
     pub main: UIState,
     pub response_body: UIState,
     pub request_body: UIState,
+    pub is_first_render: bool,
 }
 
 impl App {
     pub fn new() -> App {
-        let mut items: BTreeSet<Request> = BTreeSet::new();
+        let mut items: BTreeSet<Trace> = BTreeSet::new();
 
         vec![
             TEST_JSON_1,
@@ -159,6 +160,7 @@ impl App {
         });
 
         App {
+            is_first_render: true,
             active_block: ActiveBlock::NetworkRequests,
             request_details_block: RequestDetailsPane::Headers,
             response_details_block: ResponseDetailsPane::Body,
@@ -171,8 +173,7 @@ impl App {
             abort_handlers: vec![],
             main: UIState {
                 offset: 0,
-                // TODO: Move it back to 20. Just for dev purposes.
-                index: 7,
+                index: 0,
                 horizontal_offset: 0,
                 scroll_state: ScrollbarState::default(),
                 horizontal_scroll_state: ScrollbarState::default(),

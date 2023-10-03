@@ -33,18 +33,16 @@ use handlers::{
     handle_pane_prev, handle_right, handle_tab, handle_up, handle_yank,
 };
 use render::{
-    render_footer, render_help, render_network_requests, render_request_block, render_request_body,
-    render_request_summary, render_response_block,
+    render_footer, render_help, render_request_block, render_request_body, render_request_summary,
+    render_response_block, render_traces,
 };
 use utils::UIDispatchEvent;
 
 use wss::handle_connection;
 
-use crate::consts::RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
-
-use self::handlers::HandlerMetadata;
+use self::handlers::{handle_go_to_end, handle_go_to_start, HandlerMetadata};
 use self::render::render_response_body;
-use self::utils::get_currently_selected_request;
+use self::utils::set_content_length;
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
@@ -119,9 +117,6 @@ async fn run(
 ) -> Result<(), Box<dyn Error>> {
     let (tx, mut rx) = unbounded::<UIDispatchEvent>();
 
-    // TODO: Find a better way to represent this data.
-    let mut is_first_render = true;
-
     let mut network_requests_height = 0;
 
     let mut response_body_requests_height = 0;
@@ -179,14 +174,26 @@ async fn run(
                         )
                         .split(details_layout[1]);
 
+                    let response_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(details_layout[2]);
+
                     render_request_block(&mut app, frame, request_layout[0]);
                     render_request_body(&mut app, frame, request_layout[1]);
-                    render_network_requests(&mut app, frame, split_layout[0]);
+                    render_traces(&mut app, frame, split_layout[0]);
 
                     render_request_summary(&mut app, frame, details_layout[0]);
-                    render_response_block(&mut app, frame, details_layout[2]);
+                    render_response_block(&mut app, frame, response_layout[0]);
+                    render_response_body(&mut app, frame, response_layout[1]);
 
                     render_footer(&mut app, frame, main_layout[1]);
+
+                    response_body_requests_height = response_layout[1].height;
+                    response_body_requests_width = response_layout[1].width;
+                    network_requests_height = split_layout[0].height;
                 } else {
                     let main_layout = Layout::default()
                         .direction(Direction::Vertical)
@@ -219,7 +226,7 @@ async fn run(
 
                     render_request_block(&mut app, frame, request_layout[0]);
                     render_request_body(&mut app, frame, request_layout[1]);
-                    render_network_requests(&mut app, frame, main_layout[0]);
+                    render_traces(&mut app, frame, main_layout[0]);
 
                     render_request_summary(&mut app, frame, main_layout[1]);
                     render_response_block(&mut app, frame, response_layout[0]);
@@ -244,66 +251,12 @@ async fn run(
             Err(_) => (),
         };
 
-        if is_first_render {
-            let item = get_currently_selected_request(&app);
+        if app.is_first_render {
+            set_content_length(&mut app);
 
-            match item {
-                Some(item) => {
-                    let response_lines = &item.pretty_response_body.as_ref().unwrap();
+            app.main.scroll_state = app.main.scroll_state.content_length(app.items.len() as u16);
 
-                    let request_lines = &item.pretty_request_body.as_ref().unwrap();
-
-                    let response_longest =
-                        response_lines
-                            .lines()
-                            .into_iter()
-                            .fold(0, |longest: u16, lines: &str| {
-                                let len = lines.len() as u16;
-
-                                len.max(longest)
-                            });
-
-                    let request_longest =
-                        request_lines
-                            .lines()
-                            .into_iter()
-                            .fold(0, |longest: u16, lines: &str| {
-                                let len = lines.len() as u16;
-
-                                len.max(longest)
-                            });
-
-                    let len = response_lines.lines().into_iter().collect::<Vec<_>>().len();
-
-                    let overflown_number_count_request = request_longest
-                        - response_body_requests_width
-                        - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
-
-                    let overflown_number_count_response = response_longest
-                        - response_body_requests_width
-                        - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
-
-                    app.main.scroll_state =
-                        app.main.scroll_state.content_length(app.items.len() as u16);
-
-                    app.response_body.scroll_state =
-                        app.response_body.scroll_state.content_length(len as u16);
-
-                    app.response_body.horizontal_scroll_state =
-                        app.response_body.horizontal_scroll_state.content_length(
-                            overflown_number_count_response + response_body_requests_width,
-                        );
-
-                    app.request_body.horizontal_scroll_state =
-                        app.request_body.horizontal_scroll_state.content_length(
-                            overflown_number_count_request + response_body_requests_width,
-                        );
-                }
-
-                _ => {}
-            }
-
-            is_first_render = false;
+            app.is_first_render = false;
         }
 
         if event::poll(Duration::from_millis(250))? {
@@ -328,6 +281,8 @@ async fn run(
                         app.active_block = app::ActiveBlock::Help;
                     }
                     KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
+                    KeyCode::Char('>') => handle_go_to_end(&mut app, metadata),
+                    KeyCode::Char('<') => handle_go_to_start(&mut app, metadata),
                     KeyCode::BackTab => handle_back_tab(&mut app, key),
                     KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
                     KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),

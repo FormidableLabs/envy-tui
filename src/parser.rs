@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use regex::Regex;
 
-use crate::app::Request;
+use crate::app::Trace;
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
@@ -66,7 +66,7 @@ pub fn populate_header_map(
     }
 }
 
-pub fn parse_raw_trace(stringified_json: &str) -> Result<Request, Box<dyn Error>> {
+pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> {
     let potential_json_body = serde_json::from_str::<RawTrace>(stringified_json)?;
 
     let method = http::method::Method::from_str(&potential_json_body.method)?;
@@ -95,7 +95,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Request, Box<dyn Error>
         None => None,
     };
 
-    let mut request = Request {
+    let mut request = Trace {
         timestamp: potential_json_body.timestamp,
         duration: potential_json_body.duration,
         id: potential_json_body.id,
@@ -177,7 +177,7 @@ fn escape_header(value: &str) -> String {
     result.to_string()
 }
 
-pub fn generate_curl_command(request: &Request) -> String {
+pub fn generate_curl_command(request: &Trace) -> String {
     let mut headers_as_curl: String = "".to_owned();
 
     let mut is_encoded = false;

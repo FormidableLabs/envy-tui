@@ -31,15 +31,14 @@ pub async fn client(app: &Arc<Mutex<App>>) {
                 panic!()
             }
         };
-        // println!("Received: {}", msg);
 
         let mut app_guard = app.lock().await;
 
         let _ = match parse_raw_trace(&msg) {
             Ok(request) => {
                 app_guard.items.replace(request);
+                app_guard.is_first_render = true;
 
-                // println!("Trace parsed: {}", request);
                 ()
             }
             Err(err) => println!("Trace NOT parsed!! {:?}", err),
