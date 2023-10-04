@@ -7,7 +7,7 @@ use tokio::time::sleep;
 use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_VERTICAL_SPACE,
-    RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE,
+    RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE, RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::parser::{generate_curl_command, pretty_parse_body};
 use crate::utils::{
@@ -545,6 +545,30 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                 reset_request_and_response_body_ui_state(app);
             }
         }
+        ActiveBlock::ResponseBody => {
+            let (_req, res) = get_content_length(app);
+
+            if res.is_some() {
+                let v = res.unwrap();
+
+                let response_body_content_height = additional_metadata
+                    .response_body_rectangle_height
+                    - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
+
+                app.response_body.offset = (v.vertical - response_body_content_height) as usize;
+
+                let overflown_number_count = v.vertical - response_body_content_height;
+
+                app.response_body.scroll_state =
+                    app.response_body
+                        .scroll_state
+                        .position(calculate_scrollbar_position(
+                            v.vertical,
+                            app.response_body.offset,
+                            overflown_number_count,
+                        ))
+            }
+        }
         _ => {}
     }
 }
@@ -559,6 +583,15 @@ pub fn handle_go_to_start(app: &mut App, _key: KeyEvent, _additional_metadata: H
             app.main.scroll_state = app.main.scroll_state.position(0);
 
             reset_request_and_response_body_ui_state(app);
+        }
+        ActiveBlock::ResponseBody => {
+            let (_req, res) = get_content_length(app);
+
+            if res.is_some() {
+                app.response_body.offset = 0;
+
+                app.response_body.scroll_state = app.response_body.scroll_state.position(0)
+            }
         }
         _ => {}
     }
