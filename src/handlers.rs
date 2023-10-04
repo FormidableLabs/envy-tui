@@ -464,9 +464,7 @@ pub fn handle_search(app: &mut App, key: KeyEvent) {
                     app.active_block = ActiveBlock::NetworkRequests;
                   }
               },
-              KeyCode::Enter => {
-                app.active_block = ActiveBlock::NetworkRequests;
-              },
+              KeyCode::Enter | KeyCode::Esc => app.active_block = ActiveBlock::NetworkRequests,
               KeyCode::Char(c) => app.search_query.push(c),
               _ => app.active_block = ActiveBlock::NetworkRequests,
             }

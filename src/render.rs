@@ -8,8 +8,8 @@ use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layou
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
-    Tabs,
+    Block, BorderType, Borders, Clear, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+    Table, Tabs,
 };
 use ratatui::Frame;
 

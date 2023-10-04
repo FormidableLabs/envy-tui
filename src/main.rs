@@ -312,7 +312,7 @@ async fn run(
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
                 if app.active_block == app::ActiveBlock::SearchQuery {
-                  handle_search(&mut app, key),
+                  handle_search(&mut app, key);
                 } else {
                     let metadata = HandlerMetadata {
                         main_height: network_requests_height,
@@ -325,15 +325,8 @@ async fn run(
                             app::ActiveBlock::Help => {
                                 app.active_block = app::ActiveBlock::NetworkRequests
                             }
-                            KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
-                            KeyCode::BackTab => handle_back_tab(&mut app, key),
-                            KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
-                            KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
-                            KeyCode::Char('/') => handle_search(&mut app, key),
-                            KeyCode::Enter => handle_enter(&mut app, key),
-                            KeyCode::Esc => handle_esc(&mut app, key),
-                            KeyCode::Up | KeyCode::Char('k') => {
-                                handle_up(&mut app, key);
+                            _ => {
+                                break;
                             }
                         },
                         KeyCode::Tab => handle_tab(&mut app, key),
@@ -344,11 +337,12 @@ async fn run(
                         KeyCode::BackTab => handle_back_tab(&mut app, key),
                         KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
                         KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
+                        KeyCode::Char('/') => handle_search(&mut app, key),
                         KeyCode::Enter => handle_enter(&mut app, key),
                         KeyCode::Esc => handle_esc(&mut app, key),
                         KeyCode::Up | KeyCode::Char('k') => {
                             handle_up(&mut app, key, metadata);
-                        }
+                        },
                         KeyCode::Down | KeyCode::Char('j') => {
                             handle_down(&mut app, key, metadata);
                         }
@@ -357,7 +351,8 @@ async fn run(
                         }
                         KeyCode::Right | KeyCode::Char('l') => {
                             handle_right(&mut app, key, metadata);
-                        }
+                        },
+                        _ => {},
                     }
                 }
             }
