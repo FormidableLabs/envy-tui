@@ -86,7 +86,7 @@ pub fn render_body(
                         "Response"
                     },
                 ))
-                .border_type(BorderType::Thick),
+                .border_type(BorderType::Plain),
         )
         .scroll((ui_state.offset as u16, ui_state.horizontal_offset as u16));
 
@@ -167,7 +167,7 @@ pub fn render_response_body(
                                 },
                             ))
                             .title("Request body")
-                            .border_type(BorderType::Thick),
+                            .border_type(BorderType::Plain),
                     );
                 frame.render_widget(body_to_render, area)
             }
@@ -389,7 +389,7 @@ pub fn render_request_block(
                         Color::DarkGray
                     }),
                 )
-                .border_type(BorderType::Thick),
+                .border_type(BorderType::Plain),
         )
         .select(match app.request_details_block {
             RequestDetailsPane::Headers => 0,
@@ -412,7 +412,7 @@ pub fn render_request_block(
                 Color::DarkGray
             }),
         )
-        .border_type(BorderType::Thick)
+        .border_type(BorderType::Plain)
         .borders(Borders::ALL);
 
     frame.render_widget(main, area);
@@ -464,7 +464,7 @@ pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Std
                                 },
                             ))
                             .title("Request body")
-                            .border_type(BorderType::Thick),
+                            .border_type(BorderType::Plain),
                     );
                 frame.render_widget(body_to_render, area)
             }
@@ -534,7 +534,7 @@ pub fn render_response_block(
                     Color::DarkGray
                 }),
             )
-            .border_type(BorderType::Thick)
+            .border_type(BorderType::Plain)
             .borders(Borders::ALL);
 
         let tabs = Tabs::new(vec!["Response Header"])
@@ -542,7 +542,7 @@ pub fn render_response_block(
                 Block::default()
                     .borders(Borders::BOTTOM)
                     .style(Style::default().fg(Color::White))
-                    .border_type(BorderType::Thick),
+                    .border_type(BorderType::Plain),
             )
             .select(match app.request_details_block {
                 RequestDetailsPane::Headers => 0,
