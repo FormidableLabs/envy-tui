@@ -250,12 +250,13 @@ async fn run(
         };
 
         if app.is_first_render {
+            // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
+            app.main.index = 0;
+            app.main.offset = 0;
+
             set_content_length(&mut app);
 
             app.main.scroll_state = app.main.scroll_state.content_length(app.items.len() as u16);
-
-            app.main.index = 0;
-            app.main.offset = 0;
 
             app.is_first_render = false;
         }
