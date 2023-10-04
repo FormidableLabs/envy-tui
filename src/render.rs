@@ -149,7 +149,7 @@ pub fn render_response_body(
                     .alignment(Alignment::Center)
                     .style(
                         Style::default()
-                            .fg(if app.active_block == ActiveBlock::RequestBody {
+                            .fg(if app.active_block == ActiveBlock::ResponseBody {
                                 Color::White
                             } else {
                                 Color::DarkGray
@@ -160,7 +160,7 @@ pub fn render_response_body(
                         Block::default()
                             .borders(Borders::ALL)
                             .style(Style::default().fg(
-                                if app.active_block == ActiveBlock::RequestBody {
+                                if app.active_block == ActiveBlock::ResponseBody {
                                     Color::White
                                 } else {
                                     Color::DarkGray
@@ -620,7 +620,7 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
                 .clone();
 
             Row::new(str_vec).style(match (*selected, active_block) {
-                (true, ActiveBlock::NetworkRequests) => get_row_style(RowStyle::Selected),
+                (true, ActiveBlock::TracesBlock) => get_row_style(RowStyle::Selected),
                 (true, _) => get_row_style(RowStyle::Inactive),
                 (_, _) => get_row_style(RowStyle::Default),
             })
@@ -640,7 +640,7 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
             Block::default()
                 .borders(Borders::ALL)
                 .style(get_border_style(
-                    app.active_block == ActiveBlock::NetworkRequests,
+                    app.active_block == ActiveBlock::TracesBlock,
                 ))
                 .title("Traces")
                 .title(

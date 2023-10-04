@@ -25,7 +25,7 @@ pub enum ResponseDetailsPane {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ActiveBlock {
-    NetworkRequests,
+    TracesBlock,
     RequestDetails,
     RequestBody,
     ResponseDetails,
@@ -161,7 +161,7 @@ impl App {
 
         App {
             is_first_render: true,
-            active_block: ActiveBlock::NetworkRequests,
+            active_block: ActiveBlock::TracesBlock,
             request_details_block: RequestDetailsPane::Headers,
             response_details_block: ResponseDetailsPane::Body,
             selected_params_index: 0,

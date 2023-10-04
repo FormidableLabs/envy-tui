@@ -143,9 +143,7 @@ async fn run(
                     let main_layout = Layout::default()
                         .direction(Direction::Vertical)
                         .margin(1)
-                        .constraints(
-                            [Constraint::Percentage(95), Constraint::Percentage(5)].as_ref(),
-                        )
+                        .constraints([Constraint::Percentage(95), Constraint::Min(3)].as_ref())
                         .split(frame.size());
 
                     let split_layout = Layout::default()
@@ -159,7 +157,7 @@ async fn run(
                         .direction(Direction::Vertical)
                         .constraints(
                             [
-                                Constraint::Percentage(10),
+                                Constraint::Min(3),
                                 Constraint::Percentage(40),
                                 Constraint::Percentage(50),
                             ]
@@ -201,10 +199,10 @@ async fn run(
                         .constraints(
                             [
                                 Constraint::Percentage(30),
-                                Constraint::Percentage(5),
+                                Constraint::Min(3),
                                 Constraint::Percentage(30),
                                 Constraint::Percentage(30),
-                                Constraint::Percentage(5),
+                                Constraint::Min(3),
                             ]
                             .as_ref(),
                         )
@@ -256,6 +254,9 @@ async fn run(
 
             app.main.scroll_state = app.main.scroll_state.content_length(app.items.len() as u16);
 
+            app.main.index = 0;
+            app.main.offset = 0;
+
             app.is_first_render = false;
         }
 
@@ -269,9 +270,7 @@ async fn run(
 
                 match key.code {
                     KeyCode::Char('q') => match app.active_block {
-                        app::ActiveBlock::Help => {
-                            app.active_block = app::ActiveBlock::NetworkRequests
-                        }
+                        app::ActiveBlock::Help => app.active_block = app::ActiveBlock::TracesBlock,
                         _ => {
                             break;
                         }

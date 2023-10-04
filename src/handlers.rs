@@ -184,7 +184,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
             _ => {}
         },
         _ => match (app.active_block, app.request_details_block) {
-            (ActiveBlock::NetworkRequests, _) => {
+            (ActiveBlock::TracesBlock, _) => {
                 if app.main.index > 0 {
                     app.main.index = app.main.index - 1;
 
@@ -272,7 +272,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
             _ => {}
         },
         _ => match (app.active_block, app.request_details_block) {
-            (ActiveBlock::NetworkRequests, _) => {
+            (ActiveBlock::TracesBlock, _) => {
                 let length = app.items.len();
                 let number_of_lines: u16 = length.try_into().unwrap();
 
@@ -408,31 +408,31 @@ pub fn handle_right(app: &mut App, _key: KeyEvent, metadata: HandlerMetadata) {
 }
 
 pub fn handle_enter(app: &mut App, _key: KeyEvent) {
-    if app.active_block == ActiveBlock::NetworkRequests {
+    if app.active_block == ActiveBlock::TracesBlock {
         app.active_block = ActiveBlock::RequestDetails
     }
 }
 
 pub fn handle_esc(app: &mut App, _key: KeyEvent) {
-    app.active_block = ActiveBlock::NetworkRequests
+    app.active_block = ActiveBlock::TracesBlock
 }
 
 pub fn handle_tab(app: &mut App, _key: KeyEvent) {
     match app.active_block {
-        ActiveBlock::NetworkRequests => app.active_block = ActiveBlock::RequestSummary,
+        ActiveBlock::TracesBlock => app.active_block = ActiveBlock::RequestSummary,
         ActiveBlock::RequestSummary => app.active_block = ActiveBlock::RequestDetails,
         ActiveBlock::RequestDetails => app.active_block = ActiveBlock::RequestBody,
         ActiveBlock::RequestBody => app.active_block = ActiveBlock::ResponseDetails,
         ActiveBlock::ResponseDetails => app.active_block = ActiveBlock::ResponseBody,
-        ActiveBlock::ResponseBody => app.active_block = ActiveBlock::NetworkRequests,
+        ActiveBlock::ResponseBody => app.active_block = ActiveBlock::TracesBlock,
         _ => {}
     }
 }
 
 pub fn handle_back_tab(app: &mut App, _key: KeyEvent) {
     match app.active_block {
-        ActiveBlock::NetworkRequests => app.active_block = ActiveBlock::ResponseBody,
-        ActiveBlock::RequestSummary => app.active_block = ActiveBlock::NetworkRequests,
+        ActiveBlock::TracesBlock => app.active_block = ActiveBlock::ResponseBody,
+        ActiveBlock::RequestSummary => app.active_block = ActiveBlock::TracesBlock,
         ActiveBlock::RequestDetails => app.active_block = ActiveBlock::RequestSummary,
         ActiveBlock::RequestBody => app.active_block = ActiveBlock::RequestDetails,
         ActiveBlock::ResponseDetails => app.active_block = ActiveBlock::RequestBody,
@@ -468,7 +468,7 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
 pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<UIDispatchEvent>) {
     match get_currently_selected_request(&app) {
         Some(request) => match app.active_block {
-            ActiveBlock::NetworkRequests => {
+            ActiveBlock::TracesBlock => {
                 let cmd = generate_curl_command(request);
 
                 match clippers::Clipboard::get().write_text(cmd) {
@@ -519,36 +519,46 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<U
 }
 
 pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
-    let number_of_lines: u16 = app.items.len().try_into().unwrap();
+    match app.active_block {
+        ActiveBlock::TracesBlock => {
+            let number_of_lines: u16 = app.items.len().try_into().unwrap();
 
-    let usubale_rect_space =
-        additional_metadata.main_height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+            let usubale_rect_space =
+                additional_metadata.main_height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
 
-    app.main.index = number_of_lines as usize - 1;
+            app.main.index = number_of_lines as usize - 1;
 
-    let has_overflown = number_of_lines > usubale_rect_space;
+            let has_overflown = number_of_lines > usubale_rect_space;
 
-    if has_overflown {
-        app.main.offset = (number_of_lines - usubale_rect_space) as usize;
+            if has_overflown {
+                app.main.offset = (number_of_lines - usubale_rect_space) as usize;
 
-        let position = calculate_scrollbar_position(
-            number_of_lines,
-            app.main.offset,
-            number_of_lines - usubale_rect_space,
-        );
+                let position = calculate_scrollbar_position(
+                    number_of_lines,
+                    app.main.offset,
+                    number_of_lines - usubale_rect_space,
+                );
 
-        app.main.scroll_state = app.main.scroll_state.position(position);
+                app.main.scroll_state = app.main.scroll_state.position(position);
 
-        reset_request_and_response_body_ui_state(app);
+                reset_request_and_response_body_ui_state(app);
+            }
+        }
+        _ => {}
     }
 }
 
 pub fn handle_go_to_start(app: &mut App, _additional_metadata: HandlerMetadata) {
-    app.main.index = 0;
+    match app.active_block {
+        ActiveBlock::TracesBlock => {
+            app.main.index = 0;
 
-    app.main.offset = 0;
+            app.main.offset = 0;
 
-    app.main.scroll_state = app.main.scroll_state.position(0);
+            app.main.scroll_state = app.main.scroll_state.position(0);
 
-    reset_request_and_response_body_ui_state(app);
+            reset_request_and_response_body_ui_state(app);
+        }
+        _ => {}
+    }
 }
