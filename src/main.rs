@@ -40,7 +40,7 @@ use utils::UIDispatchEvent;
 
 use wss::handle_connection;
 
-use self::handlers::{handle_go_to_end, handle_go_to_start, HandlerMetadata};
+use self::handlers::{handle_delete_item, handle_go_to_end, handle_go_to_start, HandlerMetadata};
 use self::render::render_response_body;
 use self::utils::set_content_length;
 
@@ -143,7 +143,7 @@ async fn run(
                     let main_layout = Layout::default()
                         .direction(Direction::Vertical)
                         .margin(1)
-                        .constraints([Constraint::Percentage(95), Constraint::Min(3)].as_ref())
+                        .constraints([Constraint::Percentage(95), Constraint::Length(3)].as_ref())
                         .split(frame.size());
 
                     let split_layout = Layout::default()
@@ -157,9 +157,9 @@ async fn run(
                         .direction(Direction::Vertical)
                         .constraints(
                             [
-                                Constraint::Min(3),
-                                Constraint::Percentage(40),
-                                Constraint::Percentage(50),
+                                Constraint::Length(3),
+                                Constraint::Percentage(45),
+                                Constraint::Percentage(45),
                             ]
                             .as_ref(),
                         )
@@ -279,9 +279,10 @@ async fn run(
                     KeyCode::Char('?') => {
                         app.active_block = app::ActiveBlock::Help;
                     }
+                    KeyCode::Char('d') => handle_delete_item(&mut app, key),
                     KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
-                    KeyCode::Char('>') => handle_go_to_end(&mut app, metadata),
-                    KeyCode::Char('<') => handle_go_to_start(&mut app, metadata),
+                    KeyCode::Char('>') => handle_go_to_end(&mut app, key, metadata),
+                    KeyCode::Char('<') => handle_go_to_start(&mut app, key, metadata),
                     KeyCode::BackTab => handle_back_tab(&mut app, key),
                     KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
                     KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),

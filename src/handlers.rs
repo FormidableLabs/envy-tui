@@ -4,7 +4,7 @@ use crossterm::event::{KeyEvent, KeyModifiers};
 use futures_channel::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
-use crate::app::{ActiveBlock, App, RequestDetailsPane};
+use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE,
@@ -519,7 +519,7 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<U
     app.abort_handlers.push(thread_handler.abort_handle());
 }
 
-pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
+pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: HandlerMetadata) {
     match app.active_block {
         ActiveBlock::TracesBlock => {
             let number_of_lines: u16 = app.items.len().try_into().unwrap();
@@ -549,7 +549,7 @@ pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
     }
 }
 
-pub fn handle_go_to_start(app: &mut App, _additional_metadata: HandlerMetadata) {
+pub fn handle_go_to_start(app: &mut App, _key: KeyEvent, _additional_metadata: HandlerMetadata) {
     match app.active_block {
         ActiveBlock::TracesBlock => {
             app.main.index = 0;
@@ -562,4 +562,16 @@ pub fn handle_go_to_start(app: &mut App, _additional_metadata: HandlerMetadata) 
         }
         _ => {}
     }
+}
+
+pub fn handle_delete_item(app: &mut App, _key: KeyEvent) {
+    let cloned_items = app.items.clone();
+
+    let items_as_vector = cloned_items.iter().collect::<Vec<&Trace>>();
+
+    let current_trace = items_as_vector.get(app.main.index).copied().unwrap();
+
+    let _ = &app.items.remove(current_trace);
+
+    ()
 }
