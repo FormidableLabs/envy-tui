@@ -484,20 +484,6 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<U
                     ));
                 }
             }
-
-            app.abort_handlers.iter().for_each(|handler| {
-                handler.abort();
-            });
-
-            app.abort_handlers.clear();
-
-            let thread_handler = tokio::spawn(async move {
-                sleep(Duration::from_millis(5000)).await;
-
-                loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
-            });
-
-            app.abort_handlers.push(thread_handler.abort_handle());
         }
         ActiveBlock::ResponseBody => match &trace.response_body {
             Some(body) => {
@@ -517,6 +503,20 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<U
         },
         _ => {}
     };
+
+    app.abort_handlers.iter().for_each(|handler| {
+        handler.abort();
+    });
+
+    app.abort_handlers.clear();
+
+    let thread_handler = tokio::spawn(async move {
+        sleep(Duration::from_millis(5000)).await;
+
+        loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
+    });
+
+    app.abort_handlers.push(thread_handler.abort_handle());
 }
 
 pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
