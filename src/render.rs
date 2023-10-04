@@ -16,7 +16,7 @@ use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace, UIState};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::utils::{get_currently_selected_request, parse_query_params, truncate};
+use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -126,7 +126,7 @@ pub fn render_response_body(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    match get_currently_selected_request(&app) {
+    match get_currently_selected_trace(&app) {
         Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
                 render_body(
@@ -429,7 +429,7 @@ pub fn render_request_block(
 }
 
 pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    match get_currently_selected_request(&app) {
+    match get_currently_selected_trace(&app) {
         Some(request) => match &request.pretty_request_body {
             Some(pretty_json) => {
                 render_body(

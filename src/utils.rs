@@ -42,7 +42,7 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
     }
 }
 
-pub fn get_currently_selected_request(app: &App) -> Option<&Trace> {
+pub fn get_currently_selected_trace(app: &App) -> Option<&Trace> {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     items_as_vector.get(app.main.index).copied()
@@ -66,7 +66,7 @@ pub struct ContentLength {
 }
 
 pub fn get_content_length(app: &App) -> (Option<ContentLength>, Option<ContentLength>) {
-    let trace = get_currently_selected_request(&app);
+    let trace = get_currently_selected_trace(&app);
 
     if trace.is_none() {
         return (None, None);

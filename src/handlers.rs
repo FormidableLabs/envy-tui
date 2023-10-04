@@ -4,14 +4,14 @@ use crossterm::event::{KeyEvent, KeyModifiers};
 use futures_channel::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
-use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace};
+use crate::app::{ActiveBlock, App, RequestDetailsPane};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE,
 };
 use crate::parser::{generate_curl_command, pretty_parse_body};
 use crate::utils::{
-    calculate_scrollbar_position, get_content_length, get_currently_selected_request,
+    calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
     parse_query_params, set_content_length,
 };
 use crate::UIDispatchEvent;
@@ -52,7 +52,7 @@ fn reset_request_and_response_body_ui_state(app: &mut App) {
 }
 
 fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: Direction) {
-    let trace = get_currently_selected_request(&app).unwrap();
+    let trace = get_currently_selected_trace(&app).unwrap();
 
     let response_body_content_height = rect - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
 
@@ -82,7 +82,7 @@ fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: D
 }
 
 fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Direction) {
-    let trace = get_currently_selected_request(&app).unwrap();
+    let trace = get_currently_selected_trace(&app).unwrap();
 
     let request_body_content_height = rect - REQUEST_BODY_UNUSABLE_VERTICAL_SPACE;
 
@@ -314,9 +314,9 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                 app.selected_params_index = 0
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
-                let index = &app.items.iter().collect::<Vec<&Trace>>()[app.main.index];
+                let item = get_currently_selected_trace(app).unwrap();
 
-                let params = parse_query_params(index.uri.clone());
+                let params = parse_query_params(item.uri.clone());
 
                 let next_index = if app.selected_params_index + 1 >= params.len() {
                     params.len() - 1
@@ -327,7 +327,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                 app.selected_params_index = next_index
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
-                let item = &app.items.iter().collect::<Vec<&Trace>>()[app.main.index];
+                let item = get_currently_selected_trace(app).unwrap();
 
                 let item_length = item.request_headers.len();
 
@@ -340,17 +340,19 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                 app.selected_request_header_index = next_index
             }
             (ActiveBlock::ResponseDetails, _) => {
-                let item = &app.items.iter().collect::<Vec<&Trace>>()[app.main.index];
+                let item = get_currently_selected_trace(app).unwrap();
 
-                let item_length = item.response_headers.len();
+                if item.duration.is_some() {
+                    let item_length = item.response_headers.len();
 
-                let next_index = if app.selected_response_header_index + 1 >= item_length {
-                    item_length - 1
-                } else {
-                    app.selected_response_header_index + 1
-                };
+                    let next_index = if app.selected_response_header_index + 1 >= item_length {
+                        item_length - 1
+                    } else {
+                        app.selected_response_header_index + 1
+                    };
 
-                app.selected_response_header_index = next_index
+                    app.selected_response_header_index = next_index
+                }
             }
             (ActiveBlock::RequestBody, _) => {
                 handle_vertical_request_body_scroll(
@@ -466,14 +468,43 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
 }
 
 pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<UIDispatchEvent>) {
-    match get_currently_selected_request(&app) {
-        Some(request) => match app.active_block {
-            ActiveBlock::TracesBlock => {
-                let cmd = generate_curl_command(request);
+    let trace = get_currently_selected_trace(app).unwrap();
 
-                match clippers::Clipboard::get().write_text(cmd) {
+    match app.active_block {
+        ActiveBlock::TracesBlock => {
+            let cmd = generate_curl_command(&trace);
+
+            match clippers::Clipboard::get().write_text(cmd) {
+                Ok(_) => {
+                    app.status_message = Some(String::from("Request copied as cURL command!"));
+                }
+                Err(_) => {
+                    app.status_message = Some(String::from(
+                        "Something went wrong while copying to the clipboard!",
+                    ));
+                }
+            }
+
+            app.abort_handlers.iter().for_each(|handler| {
+                handler.abort();
+            });
+
+            app.abort_handlers.clear();
+
+            let thread_handler = tokio::spawn(async move {
+                sleep(Duration::from_millis(5000)).await;
+
+                loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
+            });
+
+            app.abort_handlers.push(thread_handler.abort_handle());
+        }
+        ActiveBlock::ResponseBody => match &trace.response_body {
+            Some(body) => {
+                match clippers::Clipboard::get().write_text(pretty_parse_body(body).unwrap()) {
                     Ok(_) => {
-                        app.status_message = Some(String::from("Request copied as cURL command!"));
+                        app.status_message =
+                            Some(String::from("Response body copied to clipboard."));
                     }
                     Err(_) => {
                         app.status_message = Some(String::from(
@@ -481,40 +512,10 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<U
                         ));
                     }
                 }
-
-                app.abort_handlers.iter().for_each(|handler| {
-                    handler.abort();
-                });
-
-                app.abort_handlers.clear();
-
-                let thread_handler = tokio::spawn(async move {
-                    sleep(Duration::from_millis(5000)).await;
-
-                    loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
-                });
-
-                app.abort_handlers.push(thread_handler.abort_handle());
             }
-            ActiveBlock::ResponseBody => match &request.response_body {
-                Some(body) => {
-                    match clippers::Clipboard::get().write_text(pretty_parse_body(body).unwrap()) {
-                        Ok(_) => {
-                            app.status_message =
-                                Some(String::from("Response body copied to clipboard."));
-                        }
-                        Err(_) => {
-                            app.status_message = Some(String::from(
-                                "Something went wrong while copying to the clipboard!",
-                            ));
-                        }
-                    }
-                }
-                None => {}
-            },
-            _ => {}
+            None => {}
         },
-        None => {}
+        _ => {}
     };
 }
 
