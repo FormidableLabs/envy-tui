@@ -4,16 +4,21 @@ use std::io::Stdout;
 use std::ops::Deref;
 
 use http::{HeaderName, HeaderValue};
-use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Rect};
+use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Row, Table, Tabs};
+use ratatui::text::Line;
+use ratatui::widgets::{
+    Block, BorderType, Borders, Clear, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
+    Tabs,
+};
 use ratatui::Frame;
-use serde_json::Value;
 
-use std::error::Error;
-
-use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, ResponseDetailsPane};
-use crate::utils::{parse_query_params, truncate};
+use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, UIState};
+use crate::consts::{
+    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE,
+    RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
+};
+use crate::utils::{get_currently_selected_request, parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -28,41 +33,118 @@ enum HeaderType {
     Response,
 }
 
-fn pretty_parse_body(json: &str) -> Result<String, Box<dyn Error>> {
-    let potential_json_body = serde_json::from_str::<Value>(json)?;
+pub fn render_body(
+    pretty_body: String,
+    ui_state: &mut UIState,
+    active_block: ActiveBlock,
+    frame: &mut Frame<CrosstermBackend<Stdout>>,
+    area: Rect,
+    block: ActiveBlock,
+) {
+    let mut longest_line_length = 0;
 
-    let parsed_json = serde_json::to_string_pretty(&potential_json_body)?;
+    let lines = pretty_body
+        .lines()
+        .into_iter()
+        .map(|lines| {
+            let len = lines.len();
 
-    Ok(parsed_json)
+            longest_line_length = len.max(longest_line_length);
+
+            Line::from(lines)
+        })
+        .collect::<Vec<_>>();
+
+    let number_of_lines = lines.len();
+
+    let has_overflown_x_axis =
+        longest_line_length as u16 > area.width - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+
+    let has_overflown_y_axis =
+        number_of_lines as u16 > area.height - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
+
+    let body_to_render = Paragraph::new(lines)
+        .style(
+            Style::default()
+                .fg(if active_block == block {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                })
+                .add_modifier(Modifier::BOLD),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(if active_block == block {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                }))
+                .title(format!(
+                    "{} body",
+                    if block == ActiveBlock::RequestBody {
+                        "Request"
+                    } else {
+                        "Response"
+                    }
+                ))
+                .border_type(BorderType::Thick),
+        )
+        .scroll((ui_state.offset as u16, ui_state.horizontal_offset as u16));
+
+    frame.render_widget(body_to_render, area);
+
+    if has_overflown_y_axis {
+        let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+        frame.render_stateful_widget(
+            vertical_scroll,
+            area.inner(&Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut ui_state.scroll_state,
+        );
+    }
+
+    if has_overflown_x_axis {
+        let horizontal_scroll = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+            .begin_symbol(Some("<-"))
+            .end_symbol(Some("->"));
+
+        frame.render_stateful_widget(
+            horizontal_scroll,
+            area.inner(&Margin {
+                vertical: 0,
+                horizontal: 1,
+            }),
+            &mut ui_state.horizontal_scroll_state,
+        );
+    }
 }
 
-fn render_body(app: &App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
-
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
-
-    match maybe_selected_item {
-        Some(selected_item) => match &selected_item.response_body {
-            Some(response_body) => match pretty_parse_body(response_body.as_str()) {
-                Ok(pretty_json) => {
-                    let body_to_render = Paragraph::new(pretty_json).style(
-                        Style::default()
-                            .fg(if app.active_block == ActiveBlock::ResponseDetails {
-                                Color::White
-                            } else {
-                                Color::DarkGray
-                            })
-                            .add_modifier(Modifier::BOLD),
-                    );
-
-                    frame.render_widget(body_to_render, area);
-                }
-                Err(_) => {}
-            },
+pub fn render_response_body(
+    app: &mut App,
+    frame: &mut Frame<CrosstermBackend<Stdout>>,
+    area: Rect,
+) {
+    match get_currently_selected_request(&app) {
+        Some(request) => match &request.pretty_response_body {
+            Some(pretty_json) => {
+                render_body(
+                    pretty_json.to_string(),
+                    &mut app.response_body,
+                    app.active_block,
+                    frame,
+                    area,
+                    ActiveBlock::ResponseBody,
+                );
+            }
             _ => {}
         },
-        None => {}
-    };
+        _ => {}
+    }
 }
 
 fn get_row_style(row_style: RowStyle) -> Style {
@@ -103,7 +185,7 @@ fn render_headers(
 ) {
     let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
+    let maybe_selected_item = items_as_vector.get(app.main.index);
 
     let active_block = app.active_block;
 
@@ -178,11 +260,7 @@ fn render_headers(
                 // specify some margin at the bottom.
                 .bottom_margin(1),
         )
-        .widths(&[
-            Constraint::Percentage(10),
-            Constraint::Percentage(70),
-            Constraint::Length(20),
-        ])
+        .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
         // ...and they can be separated by a fixed spacing.
         // .column_spacing(1)
         // If you wish to highlight a row in any specific way when it is selected...
@@ -202,7 +280,7 @@ pub fn render_request_block(
 
     let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
+    let maybe_selected_item = items_as_vector.get(app.main.index);
 
     let uri = match maybe_selected_item {
         Some(item) => item.deref().uri.clone(),
@@ -304,30 +382,6 @@ pub fn render_request_block(
     frame.render_widget(tabs, inner_layout[0]);
 
     match app.request_details_block {
-        // RequestDetailsPane::Body => {
-        //     match maybe_selected_item {
-        //         Some(selected_item) => match &selected_item.request_body {
-        //             Some(request_body) => match pretty_parse_body(request_body.as_str()) {
-        //                 Ok(pretty_json) => {
-        //                     let body_to_render = Paragraph::new(pretty_json).style(
-        //                         Style::default()
-        //                             .fg(if active_block == ActiveBlock::ResponseDetails {
-        //                                 Color::White
-        //                             } else {
-        //                                 Color::DarkGray
-        //                             })
-        //                             .add_modifier(Modifier::BOLD),
-        //                     );
-        //
-        //                     frame.render_widget(body_to_render, inner_layout[1]);
-        //                 }
-        //                 Err(_) => {}
-        //             },
-        //             _ => {}
-        //         },
-        //         None => {}
-        //     };
-        // }
         RequestDetailsPane::Query => {
             frame.render_widget(table, inner_layout[1]);
         }
@@ -338,63 +392,22 @@ pub fn render_request_block(
 }
 
 pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
-
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
-
-    match maybe_selected_item {
-        Some(selected_item) => match &selected_item.request_body {
-            Some(request_body) => match pretty_parse_body(request_body.as_str()) {
-                Ok(pretty_json) => {
-                    let body_to_render = Paragraph::new(pretty_json)
-                        .style(
-                            Style::default()
-                                .fg(if app.active_block == ActiveBlock::RequestDetails {
-                                    Color::White
-                                } else {
-                                    Color::DarkGray
-                                })
-                                .add_modifier(Modifier::BOLD),
-                        )
-                        .block(
-                            Block::default()
-                                .borders(Borders::ALL)
-                                .style(Style::default().fg(
-                                    if app.active_block == ActiveBlock::RequestDetails {
-                                        Color::White
-                                    } else {
-                                        Color::DarkGray
-                                    },
-                                ))
-                                .title("Request body")
-                                .border_type(BorderType::Thick),
-                        );
-
-                    frame.render_widget(body_to_render, area);
-                }
-                Err(_) => {}
-            },
-            _ => {
-                let status_bar = Paragraph::new("This request does not have a body")
-                    .style(get_text_style(
-                        app.active_block == ActiveBlock::RequestDetails,
-                    ))
-                    .alignment(Alignment::Center)
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .style(get_border_style(
-                                app.active_block == ActiveBlock::RequestDetails,
-                            ))
-                            .title("Request Body")
-                            .border_type(BorderType::Plain),
-                    );
-
-                frame.render_widget(status_bar, area);
+    match get_currently_selected_request(&app) {
+        Some(request) => match &request.pretty_request_body {
+            Some(pretty_json) => {
+                render_body(
+                    pretty_json.to_string(),
+                    &mut app.request_body,
+                    app.active_block,
+                    frame,
+                    area,
+                    ActiveBlock::RequestBody,
+                );
             }
+            _ => {}
         },
-        None => {}
-    };
+        _ => {}
+    }
 }
 
 pub fn render_response_block(
@@ -404,7 +417,7 @@ pub fn render_response_block(
 ) {
     let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let maybe_selected_item = items_as_vector.get(app.selection_index);
+    let maybe_selected_item = items_as_vector.get(app.main.index);
 
     let uri = match maybe_selected_item {
         Some(item) => item.deref().uri.clone(),
@@ -443,40 +456,7 @@ pub fn render_response_block(
             name_a.cmp(name_b)
         });
 
-        let tabs = Tabs::new(vec!["Response Body", "Response Header"])
-            .block(
-                Block::default()
-                    .borders(Borders::BOTTOM)
-                    .style(Style::default().fg(Color::DarkGray))
-                    .border_type(BorderType::Thick),
-            )
-            .select(match app.response_details_block {
-                ResponseDetailsPane::Body => 0,
-                ResponseDetailsPane::Headers => 1,
-            })
-            .highlight_style(Style::default().fg(Color::White));
-
-        let inner_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
-            .split(area);
-
-        let main = Block::default()
-            .title("Response details")
-            .borders(Borders::ALL);
-
-        frame.render_widget(main, area);
-        frame.render_widget(tabs, inner_layout[0]);
-
-        match app.response_details_block {
-            ResponseDetailsPane::Body => {
-                render_body(app, frame, inner_layout[1]);
-            }
-            ResponseDetailsPane::Headers => {
-                render_headers(app, frame, inner_layout[1], HeaderType::Response)
-            }
-        }
+        render_headers(app, frame, area, HeaderType::Response)
     }
 }
 
@@ -502,6 +482,10 @@ pub fn render_network_requests(
     let requests = &app.items;
     let re = fuzzy_regex(app.search_query.clone());
 
+    let height = area.height;
+
+    let effective_height = height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+
     let active_block = app.active_block.clone();
 
     let items_as_vector = requests
@@ -509,10 +493,14 @@ pub fn render_network_requests(
         .filter(|i| re.is_match(&i.uri))
         .collect::<Vec<&Request>>();
 
-    let selected_item = items_as_vector.get(app.selection_index);
+    let number_of_lines = items_as_vector.len();
+
+    let selected_item = items_as_vector.get(app.main.index);
 
     let converted_rows: Vec<(Vec<String>, bool)> = items_as_vector
         .iter()
+        .skip(app.main.offset.into())
+        .take(effective_height.into())
         .map(|request| {
             let uri = truncate(request.uri.clone().as_str(), 60);
 
@@ -599,7 +587,22 @@ pub fn render_network_requests(
         // ...and potentially show a symbol in front of the selection.
         .highlight_symbol(">>");
 
+    let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
     frame.render_widget(requests, area);
+
+    let usable_height = area.height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+
+    if number_of_lines > usable_height.into() {
+        frame.render_stateful_widget(
+            vertical_scroll,
+            area.inner(&Margin {
+                horizontal: 0,
+                vertical: 2,
+            }),
+            &mut app.main.scroll_state,
+        );
+    }
 }
 
 pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>) {
@@ -635,6 +638,22 @@ pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
         None => "",
     };
 
+    let help_text = Paragraph::new("For help, press ?")
+        .style(
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Left)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::DarkGray))
+                .title("Status Bar")
+                .padding(Padding::new(1, 0, 0, 0))
+                .border_type(BorderType::Plain),
+        );
+
     let status_bar = Paragraph::new(format!("{} {}", general_status, ws_status))
         .style(
             Style::default()
@@ -647,10 +666,13 @@ pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
                 .borders(Borders::ALL)
                 .style(Style::default().fg(Color::DarkGray))
                 .title("Status Bar")
+                .padding(Padding::new(0, 1, 0, 0))
                 .border_type(BorderType::Plain),
         );
 
     frame.render_widget(status_bar, area);
+
+    frame.render_widget(help_text, area);
 }
 
 pub fn render_request_summary(
@@ -663,7 +685,7 @@ pub fn render_request_summary(
 
     let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
 
-    let selected_item = items_as_vector.get(app.selection_index);
+    let selected_item = items_as_vector.get(app.main.index);
 
     let message = match selected_item {
         Some(item) => item.to_string(),
