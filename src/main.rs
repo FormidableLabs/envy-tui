@@ -295,10 +295,10 @@ async fn run(
                     KeyCode::Down | KeyCode::Char('j') => {
                         handle_down(&mut app, key, metadata);
                     }
-                    KeyCode::Left | KeyCode::Char('h') => {
+                    KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
                         handle_left(&mut app, key, metadata);
                     }
-                    KeyCode::Right | KeyCode::Char('l') => {
+                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => {
                         handle_right(&mut app, key, metadata);
                     }
                     _ => {}

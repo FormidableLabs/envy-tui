@@ -373,13 +373,24 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
     }
 }
 
-pub fn handle_left(app: &mut App, _key: KeyEvent, metadata: HandlerMetadata) {
+pub fn handle_left(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
     match app.active_block {
-        ActiveBlock::ResponseBody => handle_horizontal_response_body_scroll(
-            app,
-            metadata.response_body_rectangle_width as usize,
-            Direction::Left,
-        ),
+        ActiveBlock::ResponseBody => {
+            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                app.response_body.horizontal_offset = 0;
+
+                app.response_body.horizontal_scroll_state =
+                    app.response_body.horizontal_scroll_state.position(0);
+
+                return;
+            }
+
+            handle_horizontal_response_body_scroll(
+                app,
+                metadata.response_body_rectangle_width as usize,
+                Direction::Left,
+            )
+        }
         ActiveBlock::RequestBody => handle_horizontal_request_body_scroll(
             app,
             metadata.response_body_rectangle_width as usize,
@@ -389,9 +400,32 @@ pub fn handle_left(app: &mut App, _key: KeyEvent, metadata: HandlerMetadata) {
     }
 }
 
-pub fn handle_right(app: &mut App, _key: KeyEvent, metadata: HandlerMetadata) {
+pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
     match &app.active_block {
         ActiveBlock::ResponseBody => {
+            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                let (_req, res) = get_content_length(app);
+
+                let content_length = res.unwrap().horizontal;
+
+                let width = metadata.response_body_rectangle_width
+                    - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+
+                app.response_body.horizontal_offset = (content_length - width) as usize;
+
+                let overflown_number_count = content_length - width;
+
+                let position = calculate_scrollbar_position(
+                    content_length,
+                    app.response_body.horizontal_offset,
+                    overflown_number_count,
+                );
+
+                app.response_body.horizontal_scroll_state =
+                    app.response_body.horizontal_scroll_state.position(position);
+
+                return;
+            }
             handle_horizontal_response_body_scroll(
                 app,
                 metadata.response_body_rectangle_width as usize,
