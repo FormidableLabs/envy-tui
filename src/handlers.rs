@@ -391,11 +391,22 @@ pub fn handle_left(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
                 Direction::Left,
             )
         }
-        ActiveBlock::RequestBody => handle_horizontal_request_body_scroll(
-            app,
-            metadata.response_body_rectangle_width as usize,
-            Direction::Left,
-        ),
+        ActiveBlock::RequestBody => {
+            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                app.request_body.horizontal_offset = 0;
+
+                app.request_body.horizontal_scroll_state =
+                    app.request_body.horizontal_scroll_state.position(0);
+
+                return;
+            }
+
+            handle_horizontal_request_body_scroll(
+                app,
+                metadata.response_body_rectangle_width as usize,
+                Direction::Left,
+            )
+        }
         _ => {}
     }
 }
@@ -433,6 +444,30 @@ pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
             );
         }
         ActiveBlock::RequestBody => {
+            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                let (req, _res) = get_content_length(app);
+
+                let content_length = req.unwrap().horizontal;
+
+                let width = metadata.response_body_rectangle_width
+                    - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+
+                app.request_body.horizontal_offset = (content_length - width) as usize;
+
+                let overflown_number_count = content_length - width;
+
+                let position = calculate_scrollbar_position(
+                    content_length,
+                    app.request_body.horizontal_offset,
+                    overflown_number_count,
+                );
+
+                app.request_body.horizontal_scroll_state =
+                    app.request_body.horizontal_scroll_state.position(position);
+
+                return;
+            }
+
             handle_horizontal_request_body_scroll(
                 app,
                 metadata.response_body_rectangle_width as usize,
