@@ -41,7 +41,7 @@ use utils::UIDispatchEvent;
 use wss::handle_connection;
 
 use self::handlers::{handle_delete_item, handle_go_to_end, handle_go_to_start, HandlerMetadata};
-use self::render::render_response_body;
+use self::render::{render_debug, render_response_body};
 use self::utils::set_content_length;
 
 type Tx = UnboundedSender<Message>;
@@ -122,13 +122,16 @@ async fn run(
     let mut response_body_requests_height = 0;
     let mut response_body_requests_width = 0;
 
+    let mut request_body_requests_height = 0;
+    let mut request_body_requests_width = 0;
+
     Ok(loop {
         let mut app = app_raw.lock().await;
 
         let loop_bounded_sender = tx.clone();
 
-        terminal.draw(|frame| {
-            if app.active_block == app::ActiveBlock::Help {
+        terminal.draw(|frame| match app.active_block {
+            app::ActiveBlock::Help => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(3)
@@ -136,7 +139,17 @@ async fn run(
                     .split(frame.size());
 
                 render_help(&mut app, frame, main_layout[0]);
-            } else {
+            }
+            app::ActiveBlock::Debug => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render_debug(&mut app, frame, main_layout[0]);
+            }
+            _ => {
                 let terminal_width = frame.size().width;
 
                 if terminal_width > 200 {
@@ -234,6 +247,10 @@ async fn run(
 
                     response_body_requests_height = response_layout[1].height;
                     response_body_requests_width = response_layout[1].width;
+
+                    request_body_requests_height = request_layout[1].height;
+                    request_body_requests_width = request_layout[1].width;
+
                     network_requests_height = main_layout[0].height;
                 }
             }
@@ -251,7 +268,7 @@ async fn run(
 
         if app.is_first_render {
             // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
-            app.main.index = 0;
+            app.main.index = 4;
             app.main.offset = 0;
 
             set_content_length(&mut app);
@@ -267,11 +284,15 @@ async fn run(
                     main_height: network_requests_height,
                     response_body_rectangle_height: response_body_requests_height,
                     response_body_rectangle_width: response_body_requests_width,
+                    request_body_rectangle_width: request_body_requests_width,
+                    request_body_rectangle_height: request_body_requests_height,
                 };
 
                 match key.code {
                     KeyCode::Char('q') => match app.active_block {
-                        app::ActiveBlock::Help => app.active_block = app::ActiveBlock::TracesBlock,
+                        app::ActiveBlock::Help | app::ActiveBlock::Debug => {
+                            app.active_block = app::ActiveBlock::TracesBlock
+                        }
                         _ => {
                             break;
                         }
@@ -279,6 +300,9 @@ async fn run(
                     KeyCode::Tab => handle_tab(&mut app, key),
                     KeyCode::Char('?') => {
                         app.active_block = app::ActiveBlock::Help;
+                    }
+                    KeyCode::Char('p') => {
+                        app.active_block = app::ActiveBlock::Debug;
                     }
                     KeyCode::Char('d') => handle_delete_item(&mut app, key),
                     KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),

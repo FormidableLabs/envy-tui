@@ -20,6 +20,8 @@ pub struct HandlerMetadata {
     pub main_height: u16,
     pub response_body_rectangle_height: u16,
     pub response_body_rectangle_width: u16,
+    pub request_body_rectangle_height: u16,
+    pub request_body_rectangle_width: u16,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -86,7 +88,7 @@ fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Di
 
     let request_body_content_height = rect - REQUEST_BODY_UNUSABLE_VERTICAL_SPACE;
 
-    let number_of_lines = trace.pretty_response_body_lines.unwrap();
+    let number_of_lines = trace.pretty_request_body_lines.unwrap();
 
     if number_of_lines > request_body_content_height {
         let overflown_number_count = number_of_lines - request_body_content_height;
@@ -239,7 +241,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
             (ActiveBlock::RequestBody, _) => {
                 handle_vertical_request_body_scroll(
                     app,
-                    additinal_metadata.response_body_rectangle_height as usize,
+                    additinal_metadata.request_body_rectangle_height as usize,
                     Direction::Up,
                 );
             }
@@ -357,8 +359,8 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
             (ActiveBlock::RequestBody, _) => {
                 handle_vertical_request_body_scroll(
                     app,
-                    additinal_metadata.response_body_rectangle_height as usize,
-                    Direction::Up,
+                    additinal_metadata.request_body_rectangle_height as usize,
+                    Direction::Down,
                 );
             }
             (ActiveBlock::ResponseBody, _) => {
@@ -614,6 +616,29 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                 reset_request_and_response_body_ui_state(app);
             }
         }
+        ActiveBlock::RequestBody => {
+            let (req, _res) = get_content_length(app);
+
+            if req.is_some() {
+                let v = req.unwrap();
+
+                let request_body_content_height = additional_metadata.request_body_rectangle_height
+                    - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
+
+                app.request_body.offset = (v.vertical - request_body_content_height) as usize;
+
+                let overflown_number_count = v.vertical - request_body_content_height;
+
+                app.request_body.scroll_state =
+                    app.request_body
+                        .scroll_state
+                        .position(calculate_scrollbar_position(
+                            v.vertical,
+                            app.request_body.offset,
+                            overflown_number_count,
+                        ))
+            }
+        }
         ActiveBlock::ResponseBody => {
             let (_req, res) = get_content_length(app);
 
@@ -660,6 +685,15 @@ pub fn handle_go_to_start(app: &mut App, _key: KeyEvent, _additional_metadata: H
                 app.response_body.offset = 0;
 
                 app.response_body.scroll_state = app.response_body.scroll_state.position(0)
+            }
+        }
+        ActiveBlock::RequestBody => {
+            let (req, _res) = get_content_length(app);
+
+            if req.is_some() {
+                app.request_body.offset = 0;
+
+                app.request_body.scroll_state = app.request_body.scroll_state.position(0)
             }
         }
         _ => {}

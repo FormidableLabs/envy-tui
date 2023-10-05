@@ -32,6 +32,7 @@ pub enum ActiveBlock {
     ResponseBody,
     RequestSummary,
     Help,
+    Debug,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -119,6 +120,7 @@ pub struct App {
     pub response_body: UIState,
     pub request_body: UIState,
     pub is_first_render: bool,
+    pub logs: Vec<String>,
 }
 
 impl App {
@@ -160,6 +162,7 @@ impl App {
         });
 
         App {
+            logs: vec![],
             is_first_render: true,
             active_block: ActiveBlock::TracesBlock,
             request_details_block: RequestDetailsPane::Headers,

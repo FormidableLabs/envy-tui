@@ -4,11 +4,11 @@ use std::ops::Deref;
 use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{
-    Block, BorderType, Borders, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
-    Tabs,
+    Block, BorderType, Borders, List, ListItem, Padding, Paragraph, Row, Scrollbar,
+    ScrollbarOrientation, Table, Tabs,
 };
 use ratatui::Frame;
 
@@ -775,4 +775,23 @@ pub fn render_help(_app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, 
         );
 
     frame.render_widget(status_bar, area);
+}
+
+pub fn render_debug(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let debug_lines = app
+        .logs
+        .iter()
+        .map(|item| ListItem::new(Line::from(Span::raw(item))))
+        .collect::<Vec<_>>();
+
+    // TODO: Render different Keybindings that are relevant for the given `active_block`.
+    let list = List::new(debug_lines).style(get_text_style(true)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(get_border_style(true))
+            .title("Debug logs")
+            .border_type(BorderType::Plain),
+    );
+
+    frame.render_widget(list, area);
 }

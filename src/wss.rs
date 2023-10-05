@@ -74,18 +74,13 @@ pub async fn handle_connection(
     addr: SocketAddr,
     app: Arc<Mutex<App>>,
 ) {
-    // println!("Incoming TCP connection from: {}", addr);
-
     let mut path_rewrite_callback = RequestPath::default();
 
     let ws_stream = tokio_tungstenite::accept_hdr_async(raw_stream, &mut path_rewrite_callback)
         .await
         .expect("Error during the websocket handshake occurred");
-    // println!("WebSocket connection established: {}", addr);
-
     let path = path_rewrite_callback.uri;
 
-    // Insert the write part of this peer to the peer map.
     let (tx, rx) = unbounded();
 
     peer_map.lock().unwrap().insert(addr, tx);
