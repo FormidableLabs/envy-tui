@@ -1,22 +1,24 @@
 use std::io::Stdout;
 use std::ops::Deref;
+use std::usize;
 
 use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{
-    Block, BorderType, Borders, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
-    Tabs,
+    Block, BorderType, Borders, List, ListItem, Padding, Paragraph, Row, Scrollbar,
+    ScrollbarOrientation, Table, Tabs,
 };
 use ratatui::Frame;
 
-use crate::app::{ActiveBlock, App, Request, RequestDetailsPane, UIState};
+use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace, UIState};
 use crate::consts::{
-    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE,
-    RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
+    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
+    RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::utils::{get_currently_selected_request, parse_query_params, truncate};
+use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -55,8 +57,7 @@ pub fn render_body(
 
     let number_of_lines = lines.len();
 
-    let has_overflown_x_axis =
-        longest_line_length as u16 > area.width - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+    let has_overflown_x_axis = longest_line_length as u16 > area.width;
 
     let has_overflown_y_axis =
         number_of_lines as u16 > area.height - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
@@ -85,9 +86,9 @@ pub fn render_body(
                         "Request"
                     } else {
                         "Response"
-                    }
+                    },
                 ))
-                .border_type(BorderType::Thick),
+                .border_type(BorderType::Plain),
         )
         .scroll((ui_state.offset as u16, ui_state.horizontal_offset as u16));
 
@@ -127,7 +128,7 @@ pub fn render_response_body(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    match get_currently_selected_request(&app) {
+    match get_currently_selected_trace(&app) {
         Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
                 render_body(
@@ -139,7 +140,39 @@ pub fn render_response_body(
                     ActiveBlock::ResponseBody,
                 );
             }
-            _ => {}
+            _ => {
+                let copy = if request.duration.is_some() {
+                    "This trace does not have a response body."
+                } else {
+                    "Loading..."
+                };
+
+                let body_to_render = Paragraph::new(copy)
+                    .alignment(Alignment::Center)
+                    .style(
+                        Style::default()
+                            .fg(if app.active_block == ActiveBlock::ResponseBody {
+                                Color::White
+                            } else {
+                                Color::DarkGray
+                            })
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .style(Style::default().fg(
+                                if app.active_block == ActiveBlock::ResponseBody {
+                                    Color::White
+                                } else {
+                                    Color::DarkGray
+                                },
+                            ))
+                            .title("Request body")
+                            .border_type(BorderType::Plain),
+                    );
+                frame.render_widget(body_to_render, area)
+            }
         },
         _ => {}
     }
@@ -181,7 +214,7 @@ fn render_headers(
     area: Rect,
     header_type: HeaderType,
 ) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
 
@@ -193,6 +226,12 @@ fn render_headers(
                 &item.request_headers
             } else {
                 &item.response_headers
+            };
+
+            let offset = if header_type == HeaderType::Request {
+                app.request_details.offset
+            } else {
+                app.response_details.offset
             };
 
             let index = if header_type == HeaderType::Request {
@@ -217,6 +256,7 @@ fn render_headers(
 
             let rows = cloned
                 .iter()
+                .skip(offset.into())
                 .map(|(name, value)| {
                     let header_name = name.as_str();
 
@@ -276,7 +316,7 @@ pub fn render_request_block(
 ) {
     let active_block = app.active_block;
 
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
 
@@ -358,7 +398,7 @@ pub fn render_request_block(
                         Color::DarkGray
                     }),
                 )
-                .border_type(BorderType::Thick),
+                .border_type(BorderType::Plain),
         )
         .select(match app.request_details_block {
             RequestDetailsPane::Headers => 0,
@@ -374,6 +414,23 @@ pub fn render_request_block(
 
     let main = Block::default()
         .title("Request details")
+        .title(
+            Title::from(format!(
+                "{} of {}",
+                app.selected_request_header_index + 1,
+                maybe_selected_item.unwrap().request_headers.len()
+            ))
+            .position(Position::Bottom)
+            .alignment(Alignment::Right),
+        )
+        .style(
+            Style::default().fg(if active_block == ActiveBlock::RequestDetails {
+                Color::White
+            } else {
+                Color::DarkGray
+            }),
+        )
+        .border_type(BorderType::Plain)
         .borders(Borders::ALL);
 
     frame.render_widget(main, area);
@@ -384,13 +441,32 @@ pub fn render_request_block(
             frame.render_widget(table, inner_layout[1]);
         }
         RequestDetailsPane::Headers => {
-            render_headers(app, frame, inner_layout[1], HeaderType::Request)
+            render_headers(app, frame, inner_layout[1], HeaderType::Request);
+
+            let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+            let trace = get_currently_selected_trace(app);
+
+            let content_length = trace.unwrap().response_headers.len() as u16;
+
+            let viewport_height = area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+            if content_length > viewport_height {
+                frame.render_stateful_widget(
+                    vertical_scroll,
+                    area.inner(&Margin {
+                        horizontal: 0,
+                        vertical: 2,
+                    }),
+                    &mut app.request_details.scroll_state,
+                );
+            }
         }
     }
 }
 
 pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    match get_currently_selected_request(&app) {
+    match get_currently_selected_trace(&app) {
         Some(request) => match &request.pretty_request_body {
             Some(pretty_json) => {
                 render_body(
@@ -402,7 +478,33 @@ pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Std
                     ActiveBlock::RequestBody,
                 );
             }
-            _ => {}
+            _ => {
+                let body_to_render = Paragraph::new("This trace does not have a request body.")
+                    .alignment(Alignment::Center)
+                    .style(
+                        Style::default()
+                            .fg(if app.active_block == ActiveBlock::RequestBody {
+                                Color::White
+                            } else {
+                                Color::DarkGray
+                            })
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .style(Style::default().fg(
+                                if app.active_block == ActiveBlock::RequestBody {
+                                    Color::White
+                                } else {
+                                    Color::DarkGray
+                                },
+                            ))
+                            .title("Request body")
+                            .border_type(BorderType::Plain),
+                    );
+                frame.render_widget(body_to_render, area)
+            }
         },
         _ => {}
     }
@@ -413,7 +515,7 @@ pub fn render_response_block(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
 
@@ -454,15 +556,71 @@ pub fn render_response_block(
             name_a.cmp(name_b)
         });
 
-        render_headers(app, frame, area, HeaderType::Response)
+        let inner_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
+            .split(area);
+
+        let main = Block::default()
+            .title("Response details")
+            .title(
+                Title::from(format!(
+                    "{} of {}",
+                    app.selected_response_header_index + 1,
+                    maybe_selected_item.unwrap().response_headers.len()
+                ))
+                .position(Position::Bottom)
+                .alignment(Alignment::Right),
+            )
+            .style(
+                Style::default().fg(if app.active_block == ActiveBlock::ResponseDetails {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                }),
+            )
+            .border_type(BorderType::Plain)
+            .borders(Borders::ALL);
+
+        let tabs = Tabs::new(vec!["Response Header"])
+            .block(
+                Block::default()
+                    .borders(Borders::BOTTOM)
+                    .style(Style::default().fg(Color::White))
+                    .border_type(BorderType::Plain),
+            )
+            .select(match app.request_details_block {
+                RequestDetailsPane::Headers => 0,
+                RequestDetailsPane::Query => 1,
+            })
+            .highlight_style(Style::default().fg(Color::LightMagenta));
+
+        frame.render_widget(main, area);
+        frame.render_widget(tabs, inner_layout[0]);
+
+        render_headers(app, frame, inner_layout[1], HeaderType::Response);
+
+        let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+        let trace = get_currently_selected_trace(app);
+
+        let content_length = trace.unwrap().response_headers.len();
+
+        if content_length > area.height as usize - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE {
+            frame.render_stateful_widget(
+                vertical_scroll,
+                area.inner(&Margin {
+                    horizontal: 0,
+                    vertical: 2,
+                }),
+                &mut app.response_details.scroll_state,
+            );
+        }
     }
 }
 
-pub fn render_network_requests(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let requests = &app.items;
 
     let height = area.height;
@@ -471,7 +629,7 @@ pub fn render_network_requests(
 
     let active_block = app.active_block.clone();
 
-    let items_as_vector = requests.iter().collect::<Vec<&Request>>();
+    let items_as_vector = requests.iter().collect::<Vec<&Trace>>();
 
     let number_of_lines = items_as_vector.len();
 
@@ -487,13 +645,13 @@ pub fn render_network_requests(
             let method = request.method.clone().to_string();
 
             let status = match request.status {
-                Some(v) => v.to_string(),
+                Some(v) => v.as_u16().to_string(),
                 None => "...".to_string(),
             };
 
             let duration = match request.duration {
                 Some(v) => {
-                    format!("{} miliseconds", v.to_string())
+                    format!("{:.3} s", ((v as f32) / 1000.0))
                 }
                 None => "...".to_string(),
             };
@@ -525,7 +683,7 @@ pub fn render_network_requests(
                 .clone();
 
             Row::new(str_vec).style(match (*selected, active_block) {
-                (true, ActiveBlock::NetworkRequests) => get_row_style(RowStyle::Selected),
+                (true, ActiveBlock::TracesBlock) => get_row_style(RowStyle::Selected),
                 (true, _) => get_row_style(RowStyle::Inactive),
                 (_, _) => get_row_style(RowStyle::Default),
             })
@@ -539,33 +697,28 @@ pub fn render_network_requests(
         .header(
             Row::new(vec!["Method", "Status", "Request", "Duration"])
                 .style(Style::default().fg(Color::Yellow))
-                // If you want some space between the header and the rest of the rows, you can always
-                // specify some margin at the bottom.
                 .bottom_margin(1),
         )
-        // As any other widget, a Table can be wrapped in a Block.
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .style(get_border_style(
-                    app.active_block == ActiveBlock::NetworkRequests,
+                    app.active_block == ActiveBlock::TracesBlock,
                 ))
-                .title("Network requests")
+                .title("Traces")
+                .title(
+                    Title::from(format!("{} of {}", app.main.index + 1, number_of_lines))
+                        .position(Position::Bottom)
+                        .alignment(Alignment::Right),
+                )
                 .border_type(BorderType::Plain),
         )
-        // Columns widths are constrained in the same way as Layout...
         .widths(&[
             Constraint::Percentage(10),
-            Constraint::Percentage(20),
-            Constraint::Percentage(50),
+            Constraint::Percentage(10),
+            Constraint::Percentage(60),
             Constraint::Length(20),
-        ])
-        // ...and they can be separated by a fixed spacing.
-        // .column_spacing(1)
-        // If you wish to highlight a row in any specific way when it is selected...
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        // ...and potentially show a symbol in front of the selection.
-        .highlight_symbol(">>");
+        ]);
 
     let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
@@ -644,10 +797,7 @@ pub fn render_request_summary(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    // TODO:
-    // let item = &app.items[app.selection_index];
-
-    let items_as_vector = app.items.iter().collect::<Vec<&Request>>();
+    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let selected_item = items_as_vector.get(app.main.index);
 
@@ -688,4 +838,23 @@ pub fn render_help(_app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, 
         );
 
     frame.render_widget(status_bar, area);
+}
+
+pub fn render_debug(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let debug_lines = app
+        .logs
+        .iter()
+        .map(|item| ListItem::new(Line::from(Span::raw(item))))
+        .collect::<Vec<_>>();
+
+    // TODO: Render different Keybindings that are relevant for the given `active_block`.
+    let list = List::new(debug_lines).style(get_text_style(true)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(get_border_style(true))
+            .title("Debug logs")
+            .border_type(BorderType::Plain),
+    );
+
+    frame.render_widget(list, area);
 }

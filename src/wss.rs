@@ -31,15 +31,14 @@ pub async fn client(app: &Arc<Mutex<App>>) {
                 panic!()
             }
         };
-        // println!("Received: {}", msg);
 
         let mut app_guard = app.lock().await;
 
         let _ = match parse_raw_trace(&msg) {
             Ok(request) => {
                 app_guard.items.replace(request);
+                app_guard.is_first_render = true;
 
-                // println!("Trace parsed: {}", request);
                 ()
             }
             Err(err) => println!("Trace NOT parsed!! {:?}", err),
@@ -75,18 +74,13 @@ pub async fn handle_connection(
     addr: SocketAddr,
     app: Arc<Mutex<App>>,
 ) {
-    // println!("Incoming TCP connection from: {}", addr);
-
     let mut path_rewrite_callback = RequestPath::default();
 
     let ws_stream = tokio_tungstenite::accept_hdr_async(raw_stream, &mut path_rewrite_callback)
         .await
         .expect("Error during the websocket handshake occurred");
-    // println!("WebSocket connection established: {}", addr);
-
     let path = path_rewrite_callback.uri;
 
-    // Insert the write part of this peer to the peer map.
     let (tx, rx) = unbounded();
 
     peer_map.lock().unwrap().insert(addr, tx);
