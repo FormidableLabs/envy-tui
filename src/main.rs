@@ -268,7 +268,7 @@ async fn run(
 
         if app.is_first_render {
             // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
-            app.main.index = 4;
+            app.main.index = 0;
             app.main.offset = 0;
 
             set_content_length(&mut app);
@@ -291,7 +291,10 @@ async fn run(
                 match key.code {
                     KeyCode::Char('q') => match app.active_block {
                         app::ActiveBlock::Help | app::ActiveBlock::Debug => {
-                            app.active_block = app::ActiveBlock::TracesBlock
+                            app.active_block =
+                                app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
+
+                            app.previous_block = None;
                         }
                         _ => {
                             break;
@@ -299,9 +302,13 @@ async fn run(
                     },
                     KeyCode::Tab => handle_tab(&mut app, key),
                     KeyCode::Char('?') => {
+                        app.previous_block = Some(app.active_block);
+
                         app.active_block = app::ActiveBlock::Help;
                     }
                     KeyCode::Char('p') => {
+                        app.previous_block = Some(app.active_block);
+
                         app.active_block = app::ActiveBlock::Debug;
                     }
                     KeyCode::Char('d') => handle_delete_item(&mut app, key),

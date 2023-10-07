@@ -107,6 +107,7 @@ pub struct UIState {
 
 pub struct App {
     pub active_block: ActiveBlock,
+    pub previous_block: Option<ActiveBlock>,
     pub request_details_block: RequestDetailsPane,
     pub response_details_block: ResponseDetailsPane,
     pub items: BTreeSet<Trace>,
@@ -119,6 +120,8 @@ pub struct App {
     pub main: UIState,
     pub response_body: UIState,
     pub request_body: UIState,
+    pub request_details: UIState,
+    pub response_details: UIState,
     pub is_first_render: bool,
     pub logs: Vec<String>,
 }
@@ -174,6 +177,7 @@ impl App {
             ws_server_state: WsServerState::Closed,
             status_message: None,
             abort_handlers: vec![],
+            previous_block: None,
             main: UIState {
                 offset: 0,
                 index: 0,
@@ -182,6 +186,20 @@ impl App {
                 horizontal_scroll_state: ScrollbarState::default(),
             },
             response_body: UIState {
+                offset: 0,
+                index: 0,
+                horizontal_offset: 0,
+                scroll_state: ScrollbarState::default(),
+                horizontal_scroll_state: ScrollbarState::default(),
+            },
+            request_details: UIState {
+                offset: 0,
+                index: 0,
+                horizontal_offset: 0,
+                scroll_state: ScrollbarState::default(),
+                horizontal_scroll_state: ScrollbarState::default(),
+            },
+            response_details: UIState {
                 offset: 0,
                 index: 0,
                 horizontal_offset: 0,

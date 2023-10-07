@@ -1,5 +1,6 @@
 use std::io::Stdout;
 use std::ops::Deref;
+use std::usize;
 
 use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Margin, Rect};
@@ -14,7 +15,8 @@ use ratatui::Frame;
 
 use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace, UIState};
 use crate::consts::{
-    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
+    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
+    RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
 
@@ -226,6 +228,12 @@ fn render_headers(
                 &item.response_headers
             };
 
+            let offset = if header_type == HeaderType::Request {
+                app.request_details.offset
+            } else {
+                app.response_details.offset
+            };
+
             let index = if header_type == HeaderType::Request {
                 app.selected_request_header_index
             } else {
@@ -248,6 +256,7 @@ fn render_headers(
 
             let rows = cloned
                 .iter()
+                .skip(offset.into())
                 .map(|(name, value)| {
                     let header_name = name.as_str();
 
@@ -405,6 +414,15 @@ pub fn render_request_block(
 
     let main = Block::default()
         .title("Request details")
+        .title(
+            Title::from(format!(
+                "{} of {}",
+                app.selected_request_header_index + 1,
+                maybe_selected_item.unwrap().request_headers.len()
+            ))
+            .position(Position::Bottom)
+            .alignment(Alignment::Right),
+        )
         .style(
             Style::default().fg(if active_block == ActiveBlock::RequestDetails {
                 Color::White
@@ -423,7 +441,26 @@ pub fn render_request_block(
             frame.render_widget(table, inner_layout[1]);
         }
         RequestDetailsPane::Headers => {
-            render_headers(app, frame, inner_layout[1], HeaderType::Request)
+            render_headers(app, frame, inner_layout[1], HeaderType::Request);
+
+            let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+            let trace = get_currently_selected_trace(app);
+
+            let content_length = trace.unwrap().response_headers.len() as u16;
+
+            let viewport_height = area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+            if content_length > viewport_height {
+                frame.render_stateful_widget(
+                    vertical_scroll,
+                    area.inner(&Margin {
+                        horizontal: 0,
+                        vertical: 2,
+                    }),
+                    &mut app.request_details.scroll_state,
+                );
+            }
         }
     }
 }
@@ -526,7 +563,16 @@ pub fn render_response_block(
             .split(area);
 
         let main = Block::default()
-            .title("Request details")
+            .title("Response details")
+            .title(
+                Title::from(format!(
+                    "{} of {}",
+                    app.selected_response_header_index + 1,
+                    maybe_selected_item.unwrap().response_headers.len()
+                ))
+                .position(Position::Bottom)
+                .alignment(Alignment::Right),
+            )
             .style(
                 Style::default().fg(if app.active_block == ActiveBlock::ResponseDetails {
                     Color::White
@@ -553,7 +599,24 @@ pub fn render_response_block(
         frame.render_widget(main, area);
         frame.render_widget(tabs, inner_layout[0]);
 
-        render_headers(app, frame, inner_layout[1], HeaderType::Response)
+        render_headers(app, frame, inner_layout[1], HeaderType::Response);
+
+        let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+        let trace = get_currently_selected_trace(app);
+
+        let content_length = trace.unwrap().response_headers.len();
+
+        if content_length > area.height as usize - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE {
+            frame.render_stateful_widget(
+                vertical_scroll,
+                area.inner(&Margin {
+                    horizontal: 0,
+                    vertical: 2,
+                }),
+                &mut app.response_details.scroll_state,
+            );
+        }
     }
 }
 

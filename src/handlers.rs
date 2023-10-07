@@ -6,8 +6,10 @@ use tokio::time::sleep;
 
 use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace};
 use crate::consts::{
-    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_VERTICAL_SPACE,
+    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_HORIZONTAL_SPACE,
+    REQUEST_BODY_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE, RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
+    RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::parser::{generate_curl_command, pretty_parse_body};
 use crate::utils::{
@@ -51,6 +53,18 @@ fn reset_request_and_response_body_ui_state(app: &mut App) {
 
     app.request_body.horizontal_scroll_state = app.request_body.horizontal_scroll_state.position(0);
     app.request_body.scroll_state = app.request_body.scroll_state.position(0);
+
+    app.response_details.offset = 0;
+
+    app.response_details.scroll_state = app.response_details.scroll_state.position(0);
+
+    app.selected_response_header_index = 0;
+
+    app.request_details.offset = 0;
+
+    app.request_details.scroll_state = app.request_details.scroll_state.position(0);
+
+    app.selected_request_header_index = 0;
 }
 
 fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: Direction) {
@@ -91,33 +105,37 @@ fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Di
     let number_of_lines = trace.pretty_request_body_lines.unwrap();
 
     if number_of_lines > request_body_content_height {
-        let overflown_number_count = number_of_lines - request_body_content_height;
+        let overflown = number_of_lines > request_body_content_height;
 
-        if request_body_content_height + app.request_body.offset < number_of_lines
-            && direction == Direction::Down
-        {
-            app.request_body.offset = app.request_body.offset.saturating_add(1);
+        if overflown {
+            let overflown_number_count = number_of_lines - request_body_content_height;
+
+            if request_body_content_height + app.request_body.offset < number_of_lines
+                && direction == Direction::Down
+            {
+                app.request_body.offset = app.request_body.offset.saturating_add(1);
+            }
+
+            if app.request_body.offset != 0 && direction == Direction::Up {
+                app.request_body.offset = app.request_body.offset.saturating_sub(1);
+            }
+
+            let position = calculate_scrollbar_position(
+                number_of_lines as u16,
+                app.request_body.offset,
+                overflown_number_count as u16,
+            );
+
+            app.request_body.scroll_state = app.request_body.scroll_state.position(position);
         }
-
-        if app.request_body.offset != 0 && direction == Direction::Up {
-            app.request_body.offset = app.request_body.offset.saturating_sub(1);
-        }
-
-        let position = calculate_scrollbar_position(
-            number_of_lines as u16,
-            app.request_body.offset,
-            overflown_number_count as u16,
-        );
-
-        app.request_body.scroll_state = app.request_body.scroll_state.position(position);
     }
 }
 
 fn handle_horizontal_response_body_scroll(app: &mut App, rect: usize, direction: Direction) {
-    let (_req, res) = get_content_length(app);
+    let content = get_content_length(app);
 
-    if res.is_some() {
-        let horizontal_content_length = res.unwrap().horizontal;
+    if content.response_body.is_some() {
+        let horizontal_content_length = content.response_body.unwrap().horizontal;
 
         if horizontal_content_length > rect as u16 {
             let overflown_number_count = horizontal_content_length - rect as u16;
@@ -147,10 +165,10 @@ fn handle_horizontal_response_body_scroll(app: &mut App, rect: usize, direction:
 }
 
 fn handle_horizontal_request_body_scroll(app: &mut App, rect: usize, direction: Direction) {
-    let (req, _res) = get_content_length(app);
+    let content = get_content_length(app);
 
-    if req.is_some() {
-        let horizontal_content_length = req.unwrap().horizontal;
+    if content.request_body.is_some() {
+        let horizontal_content_length = content.request_body.unwrap().horizontal;
 
         if horizontal_content_length > rect as u16 {
             let overflown_number_count = horizontal_content_length - rect as u16;
@@ -236,6 +254,29 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     app.selected_request_header_index - 1
                 };
 
+                let item_length = get_currently_selected_trace(app)
+                    .unwrap()
+                    .request_headers
+                    .len();
+
+                let usable_height = additinal_metadata.request_body_rectangle_height
+                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                if item_length > usable_height as usize {
+                    if next_index < app.request_details.offset {
+                        app.request_details.offset -= 1;
+                    }
+
+                    let next_position = calculate_scrollbar_position(
+                        item_length as u16,
+                        app.request_details.offset,
+                        item_length as u16 - (usable_height) as u16,
+                    );
+
+                    app.request_details.scroll_state =
+                        app.request_details.scroll_state.position(next_position);
+                }
+
                 app.selected_request_header_index = next_index
             }
             (ActiveBlock::RequestBody, _) => {
@@ -251,6 +292,29 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                 } else {
                     app.selected_response_header_index - 1
                 };
+
+                let item_length = get_currently_selected_trace(app)
+                    .unwrap()
+                    .response_headers
+                    .len();
+
+                let usable_height = additinal_metadata.response_body_rectangle_height
+                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                if item_length > usable_height as usize {
+                    if next_index < app.response_details.offset {
+                        app.response_details.offset -= 1;
+                    }
+
+                    let next_position = calculate_scrollbar_position(
+                        item_length as u16,
+                        app.response_details.offset,
+                        item_length as u16 - (usable_height) as u16,
+                    );
+
+                    app.response_details.scroll_state =
+                        app.response_details.scroll_state.position(next_position);
+                }
 
                 app.selected_response_header_index = next_index
             }
@@ -339,7 +403,33 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                     app.selected_request_header_index + 1
                 };
 
-                app.selected_request_header_index = next_index
+                app.selected_request_header_index = next_index;
+
+                let usable_height = additinal_metadata.request_body_rectangle_height
+                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                let requires_scrollbar = item_length as u16 >= usable_height;
+
+                if requires_scrollbar {
+                    let current_index_hit_viewport_end =
+                        app.selected_request_header_index >= { usable_height as usize };
+
+                    let offset_does_not_intersects_bottom_of_rect =
+                        (app.request_details.offset as u16 + usable_height) < item_length as u16;
+
+                    if current_index_hit_viewport_end && offset_does_not_intersects_bottom_of_rect {
+                        app.request_details.offset += 1;
+                    }
+
+                    let next_position = calculate_scrollbar_position(
+                        item_length as u16,
+                        app.request_details.offset,
+                        item_length as u16 - (usable_height) as u16,
+                    );
+
+                    app.request_details.scroll_state =
+                        app.request_details.scroll_state.position(next_position);
+                }
             }
             (ActiveBlock::ResponseDetails, _) => {
                 let item = get_currently_selected_trace(app).unwrap();
@@ -353,7 +443,36 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                         app.selected_response_header_index + 1
                     };
 
-                    app.selected_response_header_index = next_index
+                    app.selected_response_header_index = next_index;
+
+                    let usable_height = additinal_metadata.response_body_rectangle_height
+                        - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                    let requires_scrollbar = item_length as u16 >= usable_height;
+
+                    if requires_scrollbar {
+                        let current_index_hit_viewport_end =
+                            app.selected_response_header_index >= { usable_height as usize };
+
+                        let offset_does_not_intersects_bottom_of_rect =
+                            (app.response_details.offset as u16 + usable_height)
+                                < item_length as u16;
+
+                        if current_index_hit_viewport_end
+                            && offset_does_not_intersects_bottom_of_rect
+                        {
+                            app.response_details.offset += 1;
+                        }
+
+                        let next_position = calculate_scrollbar_position(
+                            item_length as u16,
+                            app.response_details.offset,
+                            item_length as u16 - (usable_height) as u16,
+                        );
+
+                        app.response_details.scroll_state =
+                            app.response_details.scroll_state.position(next_position);
+                    }
                 }
             }
             (ActiveBlock::RequestBody, _) => {
@@ -417,9 +536,9 @@ pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
     match &app.active_block {
         ActiveBlock::ResponseBody => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
-                let (_req, res) = get_content_length(app);
+                let content = get_content_length(app);
 
-                let content_length = res.unwrap().horizontal;
+                let content_length = content.response_body.unwrap().horizontal;
 
                 let width = metadata.response_body_rectangle_width
                     - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
@@ -447,12 +566,12 @@ pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
         }
         ActiveBlock::RequestBody => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
-                let (req, _res) = get_content_length(app);
+                let content = get_content_length(app);
 
-                let content_length = req.unwrap().horizontal;
+                let content_length = content.request_body.unwrap().horizontal;
 
                 let width = metadata.response_body_rectangle_width
-                    - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+                    - REQUEST_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
 
                 app.request_body.horizontal_offset = (content_length - width) as usize;
 
@@ -617,50 +736,132 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
             }
         }
         ActiveBlock::RequestBody => {
-            let (req, _res) = get_content_length(app);
+            let content = get_content_length(app);
 
-            if req.is_some() {
-                let v = req.unwrap();
+            if content.request_body.is_some() {
+                let length = content.request_body.unwrap();
 
                 let request_body_content_height = additional_metadata.request_body_rectangle_height
                     - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
 
-                app.request_body.offset = (v.vertical - request_body_content_height) as usize;
+                if length.vertical > request_body_content_height {
+                    app.request_body.offset =
+                        (length.vertical - request_body_content_height) as usize;
 
-                let overflown_number_count = v.vertical - request_body_content_height;
+                    let overflown_number_count = length.vertical - request_body_content_height;
 
-                app.request_body.scroll_state =
-                    app.request_body
-                        .scroll_state
-                        .position(calculate_scrollbar_position(
-                            v.vertical,
-                            app.request_body.offset,
-                            overflown_number_count,
-                        ))
+                    app.request_body.scroll_state =
+                        app.request_body
+                            .scroll_state
+                            .position(calculate_scrollbar_position(
+                                length.vertical,
+                                app.request_body.offset,
+                                overflown_number_count,
+                            ))
+                }
             }
         }
         ActiveBlock::ResponseBody => {
-            let (_req, res) = get_content_length(app);
+            let content = get_content_length(app);
 
-            if res.is_some() {
-                let v = res.unwrap();
+            if content.response_body.is_some() {
+                let length = content.response_body.unwrap();
 
                 let response_body_content_height = additional_metadata
                     .response_body_rectangle_height
                     - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
 
-                app.response_body.offset = (v.vertical - response_body_content_height) as usize;
+                if length.vertical > response_body_content_height {
+                    app.response_body.offset =
+                        (length.vertical - response_body_content_height) as usize;
 
-                let overflown_number_count = v.vertical - response_body_content_height;
+                    let overflown_number_count = length.vertical - response_body_content_height;
 
-                app.response_body.scroll_state =
-                    app.response_body
-                        .scroll_state
-                        .position(calculate_scrollbar_position(
-                            v.vertical,
-                            app.response_body.offset,
-                            overflown_number_count,
-                        ))
+                    app.response_body.scroll_state =
+                        app.response_body
+                            .scroll_state
+                            .position(calculate_scrollbar_position(
+                                length.vertical,
+                                app.response_body.offset,
+                                overflown_number_count,
+                            ))
+                }
+            }
+        }
+        ActiveBlock::RequestDetails => {
+            let item = get_currently_selected_trace(app);
+            let item = item.unwrap();
+
+            let content = get_content_length(app);
+
+            if item.duration.is_some() {
+                let item_length = item.request_headers.len();
+
+                let usable_height = additional_metadata.request_body_rectangle_height
+                    - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                let requires_scrollbar = item_length as u16 >= usable_height;
+
+                app.selected_request_header_index = content.request_headers.vertical as usize - 1;
+
+                if requires_scrollbar {
+                    let current_index_hit_viewport_end =
+                        app.selected_request_header_index >= { usable_height as usize };
+
+                    let offset_does_not_intersects_bottom_of_rect =
+                        (app.request_details.offset as u16 + usable_height) < item_length as u16;
+
+                    if current_index_hit_viewport_end && offset_does_not_intersects_bottom_of_rect {
+                        app.request_details.offset = item_length - usable_height as usize;
+                    }
+
+                    let next_position = calculate_scrollbar_position(
+                        item_length as u16,
+                        app.request_details.offset,
+                        item_length as u16 - (usable_height) as u16,
+                    );
+
+                    app.request_details.scroll_state =
+                        app.request_details.scroll_state.position(next_position);
+                }
+            }
+        }
+        ActiveBlock::ResponseDetails => {
+            let item = get_currently_selected_trace(app);
+            let item = item.unwrap();
+            let content = get_content_length(app);
+
+            if item.duration.is_some() {
+                let item_length = item.response_headers.len();
+
+                let usable_height = additional_metadata.response_body_rectangle_height
+                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                let requires_scrollbar = item_length as u16 >= usable_height;
+
+                app.selected_response_header_index =
+                    content.response_headers.unwrap().vertical as usize - 1;
+
+                if requires_scrollbar {
+                    let current_index_hit_viewport_end =
+                        app.selected_response_header_index >= { usable_height as usize };
+
+                    let offset_does_not_intersects_bottom_of_rect =
+                        (app.response_details.offset as u16 + usable_height) < item_length as u16;
+
+                    if current_index_hit_viewport_end && offset_does_not_intersects_bottom_of_rect {
+                        app.response_details.offset = item_length - usable_height as usize;
+                    }
+
+                    let next_position = calculate_scrollbar_position(
+                        item_length as u16,
+                        app.response_details.offset,
+                        item_length as u16 - (usable_height) as u16,
+                    );
+
+                    app.response_details.scroll_state =
+                        app.response_details.scroll_state.position(next_position);
+                }
             }
         }
         _ => {}
@@ -679,21 +880,37 @@ pub fn handle_go_to_start(app: &mut App, _key: KeyEvent, _additional_metadata: H
             reset_request_and_response_body_ui_state(app);
         }
         ActiveBlock::ResponseBody => {
-            let (_req, res) = get_content_length(app);
+            let content = get_content_length(app);
 
-            if res.is_some() {
+            if content.response_body.is_some() {
                 app.response_body.offset = 0;
 
                 app.response_body.scroll_state = app.response_body.scroll_state.position(0)
             }
         }
         ActiveBlock::RequestBody => {
-            let (req, _res) = get_content_length(app);
+            let c = get_content_length(app);
 
-            if req.is_some() {
+            if c.request_body.is_some() {
                 app.request_body.offset = 0;
 
                 app.request_body.scroll_state = app.request_body.scroll_state.position(0)
+            }
+        }
+        ActiveBlock::RequestDetails => {
+            app.request_details.offset = 0;
+            app.selected_request_header_index = 0;
+
+            app.request_details.scroll_state = app.request_details.scroll_state.position(0)
+        }
+        ActiveBlock::ResponseDetails => {
+            let c = get_content_length(app);
+
+            if c.response_headers.is_some() {
+                app.response_details.offset = 0;
+                app.selected_response_header_index = 0;
+
+                app.response_details.scroll_state = app.response_details.scroll_state.position(0)
             }
         }
         _ => {}

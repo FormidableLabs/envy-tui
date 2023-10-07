@@ -65,126 +65,126 @@ pub struct ContentLength {
     pub horizontal: u16,
 }
 
-pub fn get_content_length(app: &App) -> (Option<ContentLength>, Option<ContentLength>) {
+pub struct ContentLengthElements {
+    pub request_headers: ContentLength,
+    pub response_headers: Option<ContentLength>,
+    pub request_body: Option<ContentLength>,
+    pub response_body: Option<ContentLength>,
+}
+
+pub fn get_content_length(app: &App) -> ContentLengthElements {
     let trace = get_currently_selected_trace(&app);
 
+    let mut content_length = ContentLengthElements {
+        request_body: None,
+        response_body: None,
+        response_headers: None,
+        request_headers: ContentLength {
+            vertical: 0,
+            horizontal: 0,
+        },
+    };
+
     if trace.is_none() {
-        return (None, None);
+        return content_length;
     }
 
     let item = trace.unwrap();
+
+    if item.response_headers.len() > 0 {
+        content_length.response_headers = Some(ContentLength {
+            vertical: item.response_headers.len() as u16,
+            horizontal: 0,
+        })
+    }
+
+    if item.request_headers.len() > 0 {
+        content_length.request_headers.vertical = item.request_headers.len() as u16;
+    }
 
     let response_lines = &item.pretty_response_body.as_ref();
 
     let request_lines = &item.pretty_request_body.as_ref();
 
-    match (response_lines, request_lines) {
-        (Some(response_lines), Some(request_lines)) => {
-            let response_longest =
-                response_lines
-                    .lines()
-                    .into_iter()
-                    .fold(0, |longest: u16, lines: &str| {
-                        let len = lines.len() as u16;
+    if response_lines.is_some() {
+        let response_lines = response_lines.unwrap();
 
-                        len.max(longest)
-                    });
-
-            let request_longest =
-                request_lines
-                    .lines()
-                    .into_iter()
-                    .fold(0, |longest: u16, lines: &str| {
-                        let len = lines.len() as u16;
-
-                        len.max(longest)
-                    });
-
-            let response_vertical_content_length: u16 = response_lines
+        let response_longest =
+            response_lines
                 .lines()
                 .into_iter()
-                .collect::<Vec<_>>()
-                .len()
-                .try_into()
-                .unwrap();
+                .fold(0, |longest: u16, lines: &str| {
+                    let len = lines.len() as u16;
 
-            let request_vertical_content_length: u16 = request_lines
-                .lines()
-                .into_iter()
-                .collect::<Vec<_>>()
-                .len()
-                .try_into()
-                .unwrap();
-            (
-                Some(ContentLength {
-                    vertical: request_vertical_content_length,
-                    horizontal: request_longest,
-                }),
-                Some(ContentLength {
-                    vertical: response_vertical_content_length,
-                    horizontal: response_longest,
-                }),
-            )
-        }
-        (Some(response_lines), None) => {
-            let response_longest =
-                response_lines
-                    .lines()
-                    .into_iter()
-                    .fold(0, |longest: u16, lines: &str| {
-                        let len = lines.len() as u16;
+                    len.max(longest)
+                });
 
-                        len.max(longest)
-                    });
+        let response_vertical_content_length: u16 = response_lines
+            .lines()
+            .into_iter()
+            .collect::<Vec<_>>()
+            .len()
+            .try_into()
+            .unwrap();
 
-            let response_vertical_content_length: u16 = response_lines
-                .lines()
-                .into_iter()
-                .collect::<Vec<_>>()
-                .len()
-                .try_into()
-                .unwrap();
-
-            (
-                None,
-                Some(ContentLength {
-                    vertical: response_vertical_content_length,
-                    horizontal: response_longest,
-                }),
-            )
-        }
-        (None, Some(request_lines)) => {
-            let request_longest =
-                request_lines
-                    .lines()
-                    .into_iter()
-                    .fold(0, |longest: u16, lines: &str| {
-                        let len = lines.len() as u16;
-
-                        len.max(longest)
-                    });
-
-            let request_vertical_content_length: u16 = request_lines
-                .lines()
-                .into_iter()
-                .collect::<Vec<_>>()
-                .len()
-                .try_into()
-                .unwrap();
-            (
-                Some(ContentLength {
-                    vertical: request_vertical_content_length,
-                    horizontal: request_longest,
-                }),
-                None,
-            )
-        }
-        _ => (None, None),
+        content_length.response_body = Some(ContentLength {
+            vertical: response_vertical_content_length,
+            horizontal: response_longest,
+        });
     }
+
+    if request_lines.is_some() {
+        let request_lines = request_lines.unwrap();
+
+        let request_longest =
+            request_lines
+                .lines()
+                .into_iter()
+                .fold(0, |longest: u16, lines: &str| {
+                    let len = lines.len() as u16;
+
+                    len.max(longest)
+                });
+
+        let request_vertical_content_length: u16 = request_lines
+            .lines()
+            .into_iter()
+            .collect::<Vec<_>>()
+            .len()
+            .try_into()
+            .unwrap();
+
+        content_length.request_body = Some(ContentLength {
+            vertical: request_vertical_content_length,
+            horizontal: request_longest,
+        });
+    }
+
+    content_length
 }
 
 pub fn set_content_length(app: &mut App) {
-    let (req, res) = get_content_length(&app);
+    let content_length_elements = get_content_length(&app);
+
+    let response_details_content_length = content_length_elements
+        .response_headers
+        .unwrap_or(ContentLength {
+            vertical: 0,
+            horizontal: 0,
+        })
+        .vertical;
+
+    let res = content_length_elements.response_body;
+
+    app.request_details.scroll_state = app
+        .request_details
+        .scroll_state
+        .content_length(content_length_elements.request_headers.vertical);
+
+    app.response_details.scroll_state = app
+        .response_details
+        .scroll_state
+        .content_length(response_details_content_length);
 
     if res.is_some() {
         let res = res.unwrap();
@@ -197,6 +197,8 @@ pub fn set_content_length(app: &mut App) {
             .horizontal_scroll_state
             .content_length(res.horizontal);
     }
+
+    let req = content_length_elements.request_body;
 
     if req.is_some() {
         let req = req.unwrap();
