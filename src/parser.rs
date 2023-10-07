@@ -14,14 +14,23 @@ use crate::app::Trace;
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-struct RawTrace {
-    timestamp: u64,
-    id: String,
+struct HTTPTimings {
+    blocked: f32,
+    dns: f32,
+    connect: f32,
+    send: f32,
+    wait: f32,
+    receive: f32,
+    ssl: f32,
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize, Deserialize, Debug)]
+struct HTTPTrace {
     url: String,
     statusMessage: Option<String>,
     statusCode: Option<usize>,
     method: String,
-    duration: Option<u32>,
     host: String,
     httpVersion: Option<String>,
     path: Option<String>,
@@ -30,6 +39,22 @@ struct RawTrace {
     requestBody: Option<String>,
     responseHeaders: Option<HashMap<String, Value>>,
     requestHeaders: Option<HashMap<String, Value>>,
+    duration: Option<f32>,
+    timings: Option<HTTPTimings>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize, Deserialize, Debug)]
+struct RawTrace {
+    timestamp: u64,
+    id: String,
+    http: HTTPTrace,
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize, Deserialize, Debug)]
+struct Payload {
+    data: RawTrace,
 }
 
 pub fn populate_header_map(
@@ -67,11 +92,11 @@ pub fn populate_header_map(
 }
 
 pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> {
-    let potential_json_body = serde_json::from_str::<RawTrace>(stringified_json)?;
+    let potential_json_body = serde_json::from_str::<Payload>(stringified_json)?;
 
-    let method = http::method::Method::from_str(&potential_json_body.method)?;
+    let method = http::method::Method::from_str(&potential_json_body.data.http.method)?;
 
-    let status = match potential_json_body.statusCode {
+    let status = match potential_json_body.data.http.statusCode {
         Some(code) => {
             let result = http::StatusCode::from_u16(code.try_into().unwrap_or(9999));
 
@@ -83,7 +108,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> 
         None => None,
     };
 
-    let http_version = match potential_json_body.httpVersion {
+    let http_version = match potential_json_body.data.http.httpVersion {
         Some(code) => match code.as_str() {
             "HTTP/0.9" => Some(http::Version::HTTP_09),
             "HTTP/1.0" => Some(http::Version::HTTP_10),
@@ -95,11 +120,19 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> 
         None => None,
     };
 
+    let duration = potential_json_body.data.http.duration;
+
+    let duration = if duration.is_some() {
+        Some(duration.unwrap() as u32)
+    } else {
+        None
+    };
+
     let mut request = Trace {
-        timestamp: potential_json_body.timestamp,
-        duration: potential_json_body.duration,
-        id: potential_json_body.id,
-        uri: potential_json_body.url,
+        timestamp: potential_json_body.data.timestamp,
+        duration,
+        id: potential_json_body.data.id,
+        uri: potential_json_body.data.http.url,
         response_headers: http::HeaderMap::new(),
         request_headers: http::HeaderMap::new(),
         method,
@@ -111,9 +144,10 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> 
         pretty_response_body_lines: None,
         pretty_request_body: None,
         pretty_request_body_lines: None,
+        raw: pretty_parse_body(stringified_json)?,
     };
 
-    match potential_json_body.responseBody {
+    match potential_json_body.data.http.responseBody {
         Some(raw_response_body) => match pretty_parse_body(&raw_response_body) {
             Ok(pretty_response_body) => {
                 let len = pretty_response_body.lines().collect::<Vec<_>>().len();
@@ -129,7 +163,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> 
         None => (),
     };
 
-    match potential_json_body.requestBody {
+    match potential_json_body.data.http.requestBody {
         Some(raw_request_body) => match pretty_parse_body(&raw_request_body) {
             Ok(pretty_request_body) => {
                 let len = pretty_request_body.lines().collect::<Vec<_>>().len();
@@ -146,12 +180,12 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> 
     };
 
     populate_header_map(
-        &potential_json_body.requestHeaders,
+        &potential_json_body.data.http.requestHeaders,
         &mut request.request_headers,
     );
 
     populate_header_map(
-        &potential_json_body.responseHeaders,
+        &potential_json_body.data.http.responseHeaders,
         &mut request.response_headers,
     );
 
