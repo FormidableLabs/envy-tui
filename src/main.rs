@@ -40,12 +40,57 @@ use utils::UIDispatchEvent;
 
 use wss::handle_connection;
 
+use self::app::Mode;
 use self::handlers::{handle_delete_item, handle_go_to_end, handle_go_to_start, HandlerMetadata};
+use self::mock::{
+    TEST_JSON_1, TEST_JSON_10, TEST_JSON_11, TEST_JSON_12, TEST_JSON_13, TEST_JSON_14,
+    TEST_JSON_15, TEST_JSON_16, TEST_JSON_17, TEST_JSON_18, TEST_JSON_2, TEST_JSON_3, TEST_JSON_4,
+    TEST_JSON_5, TEST_JSON_6, TEST_JSON_7, TEST_JSON_8, TEST_JSON_9,
+};
+use self::parser::parse_raw_trace;
 use self::render::{render_debug, render_response_body};
 use self::utils::set_content_length;
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
+
+async fn insert_mock_data(app_raw: &Arc<Mutex<App>>) {
+    let mut app = app_raw.lock().await;
+
+    vec![
+        TEST_JSON_1,
+        TEST_JSON_2,
+        TEST_JSON_3,
+        TEST_JSON_4,
+        TEST_JSON_5,
+        TEST_JSON_6,
+        TEST_JSON_7,
+        TEST_JSON_8,
+        TEST_JSON_9,
+        TEST_JSON_10,
+        TEST_JSON_11,
+        TEST_JSON_12,
+        TEST_JSON_13,
+        TEST_JSON_14,
+        TEST_JSON_15,
+        TEST_JSON_16,
+        TEST_JSON_17,
+        TEST_JSON_18,
+    ]
+    .iter()
+    .map(|raw_json_string| parse_raw_trace(raw_json_string))
+    .for_each(|x| match x {
+        Ok(v) => {
+            app.items.insert(v);
+
+            app.logs.push(String::from("Parsing successful."));
+        }
+        Err(err) => app.logs.push(format!(
+            "Something went wrong while parsing and inserting to the Tree, {:?}",
+            err
+        )),
+    });
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -57,9 +102,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let app_for_ws_server = app.clone();
 
-    start_ws_server(app_for_ws_server).await;
+    insert_mock_data(&app).await;
 
-    start_ws_client(app);
+    let mode = app.lock().await.mode;
+
+    if mode == Mode::Normal {
+        start_ws_server(app_for_ws_server).await;
+
+        start_ws_client(app);
+    }
 
     terminal.clear()?;
 

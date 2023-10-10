@@ -5,13 +5,6 @@ use std::hash::{Hash, Hasher};
 use ratatui::widgets::ScrollbarState;
 use tokio::task::AbortHandle;
 
-use crate::mock::{
-    TEST_JSON_1, TEST_JSON_10, TEST_JSON_11, TEST_JSON_12, TEST_JSON_13, TEST_JSON_14,
-    TEST_JSON_15, TEST_JSON_16, TEST_JSON_17, TEST_JSON_18, TEST_JSON_2, TEST_JSON_3, TEST_JSON_4,
-    TEST_JSON_5, TEST_JSON_6, TEST_JSON_7, TEST_JSON_8, TEST_JSON_9,
-};
-use crate::parser::parse_raw_trace;
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum RequestDetailsPane {
     Query,
@@ -21,6 +14,12 @@ pub enum RequestDetailsPane {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ResponseDetailsPane {
     Body,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Mode {
+    Debug,
+    Normal,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -59,6 +58,7 @@ pub struct Trace {
     pub pretty_request_body: Option<String>,
     pub pretty_request_body_lines: Option<usize>,
     pub http_version: Option<http::Version>,
+    pub raw: String,
 }
 
 impl PartialEq<Trace> for Trace {
@@ -124,47 +124,13 @@ pub struct App {
     pub response_details: UIState,
     pub is_first_render: bool,
     pub logs: Vec<String>,
+    pub mode: Mode,
 }
 
 impl App {
     pub fn new() -> App {
-        let mut items: BTreeSet<Trace> = BTreeSet::new();
-
-        vec![
-            TEST_JSON_1,
-            TEST_JSON_2,
-            TEST_JSON_3,
-            TEST_JSON_4,
-            TEST_JSON_5,
-            TEST_JSON_6,
-            TEST_JSON_7,
-            TEST_JSON_8,
-            TEST_JSON_9,
-            TEST_JSON_10,
-            TEST_JSON_11,
-            TEST_JSON_12,
-            TEST_JSON_13,
-            TEST_JSON_14,
-            TEST_JSON_15,
-            TEST_JSON_16,
-            TEST_JSON_17,
-            TEST_JSON_18,
-        ]
-        .iter()
-        .map(|raw_json_string| parse_raw_trace(raw_json_string))
-        .for_each(|x| match x {
-            Ok(v) => {
-                items.insert(v);
-            }
-            Err(err) => {
-                println!(
-                    "Something went wrong while parsing and inserting to the Tree, {:?}",
-                    err
-                )
-            }
-        });
-
         App {
+            mode: Mode::Debug,
             logs: vec![],
             is_first_render: true,
             active_block: ActiveBlock::TracesBlock,
@@ -173,7 +139,7 @@ impl App {
             selected_params_index: 0,
             selected_request_header_index: 0,
             selected_response_header_index: 0,
-            items,
+            items: BTreeSet::new(),
             ws_server_state: WsServerState::Closed,
             status_message: None,
             abort_handlers: vec![],
