@@ -30,6 +30,7 @@ pub enum ActiveBlock {
     ResponseDetails,
     ResponseBody,
     RequestSummary,
+    SearchQuery,
     Help,
     Debug,
 }
@@ -117,6 +118,7 @@ pub struct App {
     pub ws_server_state: WsServerState,
     pub status_message: Option<String>,
     pub abort_handlers: Vec<AbortHandle>,
+    pub search_query: String,
     pub main: UIState,
     pub response_body: UIState,
     pub request_body: UIState,
@@ -144,6 +146,7 @@ impl App {
             status_message: None,
             abort_handlers: vec![],
             previous_block: None,
+            search_query: String::with_capacity(10),
             main: UIState {
                 offset: 0,
                 index: 0,

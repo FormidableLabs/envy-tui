@@ -1,3 +1,5 @@
+use core::str::FromStr;
+use regex::Regex;
 use std::io::Stdout;
 use std::ops::Deref;
 use std::usize;
@@ -8,7 +10,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{
-    Block, BorderType, Borders, List, ListItem, Padding, Paragraph, Row, Scrollbar,
+    Block, BorderType, Borders, Clear, List, ListItem, Padding, Paragraph, Row, Scrollbar,
     ScrollbarOrientation, Table, Tabs,
 };
 use ratatui::Frame;
@@ -620,8 +622,23 @@ pub fn render_response_block(
     }
 }
 
+fn fuzzy_regex(query: String) -> Regex {
+    if query.is_empty() {
+        return Regex::new(r".*").unwrap();
+    }
+
+    let mut fuzzy_query = String::new();
+
+    for c in query.chars() {
+        fuzzy_query.extend([c, '.', '*']);
+    }
+
+    return Regex::from_str(&fuzzy_query).unwrap();
+}
+
 pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let requests = &app.items;
+    let re = fuzzy_regex(app.search_query.clone());
 
     let height = area.height;
 
@@ -629,7 +646,10 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
 
     let active_block = app.active_block.clone();
 
-    let items_as_vector = requests.iter().collect::<Vec<&Trace>>();
+    let items_as_vector = requests
+        .iter()
+        .filter(|i| re.is_match(&i.uri))
+        .collect::<Vec<&Trace>>();
 
     let number_of_lines = items_as_vector.len();
 
@@ -735,6 +755,22 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
             }),
             &mut app.main.scroll_state,
         );
+    }
+}
+
+pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+    if app.active_block == ActiveBlock::SearchQuery {
+        let area = overlay_area(frame.size());
+        let widget = Paragraph::new(format!("/{}", &app.search_query))
+            .style(
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .alignment(Alignment::Left);
+
+        frame.render_widget(Clear, area);
+        frame.render_widget(widget, area);
     }
 }
 
@@ -857,4 +893,17 @@ pub fn render_debug(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, 
     );
 
     frame.render_widget(list, area);
+}
+
+/// helper function to create an overlay rect `r`
+fn overlay_area(r: Rect) -> Rect {
+    let overlay_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(100), Constraint::Min(0)].as_ref())
+        .split(overlay_layout[1])[0]
 }

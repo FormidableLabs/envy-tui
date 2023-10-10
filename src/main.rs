@@ -30,11 +30,11 @@ use tungstenite::Message;
 use app::{App, WsServerState};
 use handlers::{
     handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
-    handle_pane_prev, handle_right, handle_tab, handle_up, handle_yank,
+    handle_pane_prev, handle_right, handle_search, handle_tab, handle_up, handle_yank,
 };
 use render::{
     render_footer, render_help, render_request_block, render_request_body, render_request_summary,
-    render_response_block, render_traces,
+    render_response_block, render_search, render_traces,
 };
 use utils::UIDispatchEvent;
 
@@ -253,6 +253,8 @@ async fn run(
 
                     render_footer(&mut app, frame, main_layout[1]);
 
+                    render_search(&mut app, frame);
+
                     response_body_requests_height = response_layout[1].height;
                     response_body_requests_width = response_layout[1].width;
                     network_requests_height = split_layout[0].height;
@@ -294,6 +296,7 @@ async fn run(
                     render_response_block(&mut app, frame, response_layout[0]);
                     render_response_body(&mut app, frame, response_layout[1]);
 
+                    render_search(&mut app, frame);
                     render_footer(&mut app, frame, main_layout[4]);
 
                     response_body_requests_height = response_layout[1].height;
@@ -338,52 +341,56 @@ async fn run(
                     request_body_rectangle_width: request_body_requests_width,
                     request_body_rectangle_height: request_body_requests_height,
                 };
+                if app.active_block == app::ActiveBlock::SearchQuery {
+                  handle_search(&mut app, key);
+                } else {
+                    match key.code {
+                        KeyCode::Char('q') => match app.active_block {
+                            app::ActiveBlock::Help | app::ActiveBlock::Debug => {
+                                app.active_block =
+                                    app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
 
-                match key.code {
-                    KeyCode::Char('q') => match app.active_block {
-                        app::ActiveBlock::Help | app::ActiveBlock::Debug => {
-                            app.active_block =
-                                app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
+                                app.previous_block = None;
+                            }
+                            _ => {
+                                break;
+                            }
+                        },
+                        KeyCode::Tab => handle_tab(&mut app, key),
+                        KeyCode::Char('?') => {
+                            app.previous_block = Some(app.active_block);
 
-                            app.previous_block = None;
+                            app.active_block = app::ActiveBlock::Help;
                         }
-                        _ => {
-                            break;
+                        KeyCode::Char('p') => {
+                            app.previous_block = Some(app.active_block);
+
+                            app.active_block = app::ActiveBlock::Debug;
                         }
-                    },
-                    KeyCode::Tab => handle_tab(&mut app, key),
-                    KeyCode::Char('?') => {
-                        app.previous_block = Some(app.active_block);
-
-                        app.active_block = app::ActiveBlock::Help;
+                        KeyCode::Char('d') => handle_delete_item(&mut app, key),
+                        KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
+                        KeyCode::Char('>') => handle_go_to_end(&mut app, key, metadata),
+                        KeyCode::Char('<') => handle_go_to_start(&mut app, key, metadata),
+                        KeyCode::BackTab => handle_back_tab(&mut app, key),
+                        KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
+                        KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
+                        KeyCode::Char('/') => handle_search(&mut app, key),
+                        KeyCode::Enter => handle_enter(&mut app, key),
+                        KeyCode::Esc => handle_esc(&mut app, key),
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            handle_up(&mut app, key, metadata);
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            handle_down(&mut app, key, metadata);
+                        }
+                        KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
+                            handle_left(&mut app, key, metadata);
+                        }
+                        KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => {
+                            handle_right(&mut app, key, metadata);
+                        }
+                        _ => {}
                     }
-                    KeyCode::Char('p') => {
-                        app.previous_block = Some(app.active_block);
-
-                        app.active_block = app::ActiveBlock::Debug;
-                    }
-                    KeyCode::Char('d') => handle_delete_item(&mut app, key),
-                    KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
-                    KeyCode::Char('>') => handle_go_to_end(&mut app, key, metadata),
-                    KeyCode::Char('<') => handle_go_to_start(&mut app, key, metadata),
-                    KeyCode::BackTab => handle_back_tab(&mut app, key),
-                    KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
-                    KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
-                    KeyCode::Enter => handle_enter(&mut app, key),
-                    KeyCode::Esc => handle_esc(&mut app, key),
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        handle_up(&mut app, key, metadata);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        handle_down(&mut app, key, metadata);
-                    }
-                    KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
-                        handle_left(&mut app, key, metadata);
-                    }
-                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => {
-                        handle_right(&mut app, key, metadata);
-                    }
-                    _ => {}
                 }
             }
         }
