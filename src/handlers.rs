@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use futures_channel::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
-use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace};
+use crate::app::{ActiveBlock, App, AppDispatch, RequestDetailsPane, Trace};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_HORIZONTAL_SPACE,
     REQUEST_BODY_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -16,7 +16,6 @@ use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
     parse_query_params, set_content_length,
 };
-use crate::UIDispatchEvent;
 
 pub struct HandlerMetadata {
     pub main_height: u16,
@@ -611,23 +610,21 @@ pub fn handle_esc(app: &mut App, _key: KeyEvent) {
 
 pub fn handle_search(app: &mut App, key: KeyEvent) {
     match app.active_block {
-        ActiveBlock::SearchQuery => {
-            match key.code {
-              KeyCode::Backspace => {
-                  app.search_query.pop();
-                  if app.search_query.is_empty() {
+        ActiveBlock::SearchQuery => match key.code {
+            KeyCode::Backspace => {
+                app.search_query.pop();
+                if app.search_query.is_empty() {
                     app.active_block = ActiveBlock::TracesBlock;
-                  }
-              },
-              KeyCode::Enter | KeyCode::Esc => app.active_block = ActiveBlock::TracesBlock,
-              KeyCode::Char(c) => app.search_query.push(c),
-              _ => app.active_block = ActiveBlock::TracesBlock,
+                }
             }
-        }
+            KeyCode::Enter | KeyCode::Esc => app.active_block = ActiveBlock::TracesBlock,
+            KeyCode::Char(c) => app.search_query.push(c),
+            _ => app.active_block = ActiveBlock::TracesBlock,
+        },
         _ => {
             app.search_query.clear();
             app.active_block = ActiveBlock::SearchQuery;
-        },
+        }
     }
 }
 
@@ -679,7 +676,7 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<UIDispatchEvent>) {
+pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<AppDispatch>) {
     let trace = get_currently_selected_trace(app).unwrap();
 
     match app.active_block {
@@ -725,7 +722,7 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<U
     let thread_handler = tokio::spawn(async move {
         sleep(Duration::from_millis(5000)).await;
 
-        loop_sender.unbounded_send(UIDispatchEvent::ClearStatusMessage)
+        loop_sender.unbounded_send(AppDispatch::ClearStatusMessage)
     });
 
     app.abort_handlers.push(thread_handler.abort_handle());

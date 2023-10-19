@@ -1,4 +1,5 @@
 use core::str::FromStr;
+use crossterm::event::KeyCode;
 use regex::Regex;
 use std::io::Stdout;
 use std::ops::Deref;
@@ -15,7 +16,7 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::app::{ActiveBlock, App, RequestDetailsPane, Trace, UIState};
+use crate::app::{ActiveBlock, App, KeyEntry, KeyMap, RequestDetailsPane, Trace, UIState};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -860,20 +861,66 @@ pub fn render_request_summary(
     frame.render_widget(status_bar, area);
 }
 
-pub fn render_help(_app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    // TODO: Render different Keybindings that are relevant for the given `active_block`.
-    let status_bar = Paragraph::new("Keybindings")
+pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let mut entry_list: Vec<KeyEntry> = app
+        .key_map
+        .clone()
+        .into_iter()
+        .map(|(key_map, key_codes)| KeyEntry { key_map, key_codes })
+        .collect();
+
+    entry_list.sort();
+
+    let debug_lines = entry_list
+        .iter()
+        .map(|entry| {
+            let key_codes = &entry.key_codes;
+            let keymap = entry.key_map;
+
+            let joined_key_codes = key_codes
+                .iter()
+                .map(|key_code| {
+                    let key_code_as_string = match key_code {
+                        KeyCode::PageUp => "Page Up".to_string(),
+                        KeyCode::PageDown => "Page Down".to_string(),
+                        KeyCode::Down => "Down arrow".to_string(),
+                        KeyCode::Up => "Up arrow".to_string(),
+                        KeyCode::Char(c) => c.to_string(),
+                        _ => "Default".to_string(),
+                    };
+
+                    format!(r#""{}""#, key_code_as_string)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let description = match keymap {
+                KeyMap::NavigateUp => "Navigating up, select an entry one above",
+                _ => "",
+            };
+
+            Row::new(vec![String::from(description), joined_key_codes])
+                .style(get_row_style(RowStyle::Default))
+        })
+        .collect::<Vec<_>>();
+
+    let list = Table::new(debug_lines)
         .style(get_text_style(true))
-        .alignment(Alignment::Center)
+        .header(
+            Row::new(vec!["Key", "Map"])
+                .style(Style::default().fg(Color::Yellow))
+                .bottom_margin(1),
+        )
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .style(get_border_style(true))
-                .title("Help")
+                .title("Key Mappings")
                 .border_type(BorderType::Plain),
-        );
+        )
+        .widths(&[Constraint::Percentage(60), Constraint::Percentage(40)]);
 
-    frame.render_widget(status_bar, area);
+    frame.render_widget(list, area);
 }
 
 pub fn render_debug(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {

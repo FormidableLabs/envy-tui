@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, StreamExt, TryStreamExt};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tungstenite::connect;
 use tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 use url::Url;
 
-use crate::app::{App, WsServerState};
+use crate::app::{App, AppDispatch, WsServerState};
 use crate::parser::parse_raw_trace;
 
 use tungstenite::Message;
@@ -18,7 +20,7 @@ use tungstenite::Message;
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
 
-pub async fn client(app: &Arc<Mutex<App>>) {
+pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
     let (mut socket, _response) =
         connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
 
@@ -36,12 +38,26 @@ pub async fn client(app: &Arc<Mutex<App>>) {
 
         let _ = match parse_raw_trace(&msg) {
             Ok(request) => {
+                app_guard.logs.push(request.to_string());
+
+                let id = request.id.clone();
+
+                let cloned_sender = tx.clone();
+
+                tokio::spawn(async move {
+                    sleep(Duration::from_millis(5000)).await;
+
+                    cloned_sender.unbounded_send(AppDispatch::MarkTraceAsTimedOut(id))
+                });
+
                 app_guard.items.replace(request);
                 app_guard.is_first_render = true;
 
                 ()
             }
-            Err(err) => println!("Trace NOT parsed!! {:?}", err),
+            Err(err) => {
+                println!("Trace NOT parsed!! {:?}", err)
+            }
         };
     }
 }

@@ -1,0 +1,5 @@
+mappings:
+  navigate_up:
+    - "<up>"
+    - "k"
+  navigate_down:
