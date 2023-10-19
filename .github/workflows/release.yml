@@ -44,4 +44,7 @@ jobs:
           sudo apt-get install -y -qq pkg-config libssl-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
       - name: Running cargo build
         run: cargo build --release --all-features --target ${{ matrix.target }}
-
+      - uses: actions/upload-artifact@v3
+        with:
+          name: my-artifact
+          path: LICENSE
