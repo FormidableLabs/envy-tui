@@ -1,7 +1,8 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
+use crossterm::event::KeyCode;
 use ratatui::widgets::ScrollbarState;
 use tokio::task::AbortHandle;
 
@@ -47,6 +48,7 @@ pub struct Trace {
     pub id: String,
     pub timestamp: u64,
     pub method: http::method::Method,
+    pub state: State,
     pub status: Option<http::status::StatusCode>,
     pub request_headers: http::HeaderMap,
     pub response_headers: http::HeaderMap,
@@ -98,12 +100,36 @@ impl Display for Trace {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug, Eq, Hash)]
+pub enum KeyMap {
+    NavigateUp,
+    NavigateDown,
+    GoToEnd,
+    GoToStart,
+}
+
+impl Display for KeyMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 pub struct UIState {
     pub index: usize,
     pub offset: usize,
     pub horizontal_offset: usize,
     pub scroll_state: ScrollbarState,
     pub horizontal_scroll_state: ScrollbarState,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum State {
+    Received,
+    Sent,
+    Aborted,
+    Blocked,
+    Timeout,
+    Error,
 }
 
 pub struct App {
@@ -127,12 +153,23 @@ pub struct App {
     pub is_first_render: bool,
     pub logs: Vec<String>,
     pub mode: Mode,
+    pub key_map: HashMap<KeyMap, Vec<KeyCode>>,
 }
 
 impl App {
     pub fn new() -> App {
+        let mut keys: HashMap<KeyMap, Vec<KeyCode>> = HashMap::new();
+
+        keys.insert(
+            KeyMap::NavigateDown,
+            vec![KeyCode::Down, KeyCode::Char('j')],
+        );
+
+        keys.insert(KeyMap::NavigateUp, vec![KeyCode::Up, KeyCode::Char('k')]);
+
         App {
-            mode: Mode::Debug,
+            key_map: keys,
+            mode: Mode::Normal,
             logs: vec![],
             is_first_render: true,
             active_block: ActiveBlock::TracesBlock,
@@ -182,6 +219,43 @@ impl App {
                 scroll_state: ScrollbarState::default(),
                 horizontal_scroll_state: ScrollbarState::default(),
             },
+        }
+    }
+}
+
+pub enum AppDispatch {
+    MarkTraceAsTimedOut(String),
+}
+
+impl App {
+    pub fn log(&mut self, message: String) {
+        self.logs.push(message)
+    }
+
+    pub fn dispatch(&mut self, action: AppDispatch) {
+        match action {
+            AppDispatch::MarkTraceAsTimedOut(id) => {
+                self.mark_trace_as_timed_out(id);
+            }
+            _ => {}
+        }
+    }
+
+    fn mark_trace_as_timed_out(&mut self, id: String) {
+        let selected_trace = self.items.iter().find(|trace| trace.id == id);
+
+        if selected_trace.is_some() {
+            let mut selected_trace = selected_trace.unwrap().clone();
+
+            if selected_trace.state == State::Sent {
+                selected_trace.state = State::Timeout;
+                selected_trace.status = None;
+                selected_trace.response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
+                selected_trace.pretty_response_body =
+                    Some("TIMEOUT WAITING FOR RESPONSE".to_string());
+
+                self.items.replace(selected_trace);
+            };
         }
     }
 }

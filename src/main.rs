@@ -18,7 +18,7 @@ use crossterm::event::{self, Event, KeyCode};
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal::enable_raw_mode};
 
-use futures_channel::mpsc::{unbounded, UnboundedSender};
+use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
@@ -92,11 +92,17 @@ async fn insert_mock_data(app_raw: &Arc<Mutex<App>>) {
     });
 }
 
+pub enum TraceTimeoutPayload {
+    MarkForTimeout(String),
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
 
     let app = Arc::new(Mutex::new(App::new()));
+
+    let (tx, mut rx) = unbounded::<TraceTimeoutPayload>();
 
     let app_for_ui = app.clone();
 
@@ -109,12 +115,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if mode == Mode::Normal {
         start_ws_server(app_for_ws_server).await;
 
-        start_ws_client(app);
+        start_ws_client(app, tx);
     }
 
     terminal.clear()?;
 
-    let _ = run(&mut terminal, &app_for_ui).await;
+    let _ = run(&mut terminal, &app_for_ui, &mut rx).await;
 
     restore_terminal(&mut terminal)?;
     Ok(())
@@ -139,9 +145,9 @@ async fn start_ws_server(app: Arc<Mutex<App>>) {
     });
 }
 
-fn start_ws_client(app: Arc<Mutex<App>>) {
+fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<TraceTimeoutPayload>) {
     tokio::spawn(async move {
-        wss::client(&app).await;
+        wss::client(&app, tx).await;
 
         ()
     });
@@ -165,6 +171,7 @@ fn restore_terminal(
 async fn run(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app_raw: &Arc<Mutex<App>>,
+    timeour_receiver: &mut UnboundedReceiver<TraceTimeoutPayload>,
 ) -> Result<(), Box<dyn Error>> {
     let (tx, mut rx) = unbounded::<UIDispatchEvent>();
 
@@ -320,6 +327,18 @@ async fn run(
             Err(_) => (),
         };
 
+        match timeour_receiver.try_next() {
+            Ok(value) => match value {
+                Some(event) => match event {
+                    TraceTimeoutPayload::MarkForTimeout(id) => {
+                        app.dispatch(app::AppDispatch::MarkTraceAsTimedOut(id))
+                    }
+                },
+                None => {}
+            },
+            Err(_) => {}
+        };
+
         if app.is_first_render {
             // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
             app.main.index = 0;
@@ -342,7 +361,7 @@ async fn run(
                     request_body_rectangle_height: request_body_requests_height,
                 };
                 if app.active_block == app::ActiveBlock::SearchQuery {
-                  handle_search(&mut app, key);
+                    handle_search(&mut app, key);
                 } else {
                     match key.code {
                         KeyCode::Char('q') => match app.active_block {

@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use regex::Regex;
 
-use crate::app::Trace;
+use crate::app::{State, Trace};
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
@@ -28,13 +28,14 @@ struct HTTPTimings {
 #[derive(Serialize, Deserialize, Debug)]
 struct HTTPTrace {
     url: String,
+    state: String,
     statusMessage: Option<String>,
     statusCode: Option<usize>,
     method: String,
     host: String,
     httpVersion: Option<String>,
     path: Option<String>,
-    port: Option<usize>,
+    port: Option<Value>,
     responseBody: Option<String>,
     requestBody: Option<String>,
     responseHeaders: Option<HashMap<String, Value>>,
@@ -120,6 +121,15 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> 
         None => None,
     };
 
+    let state = match potential_json_body.data.http.state.as_str() {
+        "received" => State::Received,
+        "sent" => State::Sent,
+        "timeout" => State::Timeout,
+        "aborted" => State::Aborted,
+        "blocked" => State::Blocked,
+        _ => State::Error,
+    };
+
     let duration = potential_json_body.data.http.duration;
 
     let duration = if duration.is_some() {
@@ -144,6 +154,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Trace, Box<dyn Error>> 
         pretty_response_body_lines: None,
         pretty_request_body: None,
         pretty_request_body_lines: None,
+        state,
         raw: pretty_parse_body(stringified_json)?,
     };
 
