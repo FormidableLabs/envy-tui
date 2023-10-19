@@ -1,4 +1,5 @@
 mod app;
+mod config;
 mod consts;
 mod handlers;
 mod mock;
@@ -27,7 +28,7 @@ use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tungstenite::Message;
 
-use app::{App, WsServerState};
+use app::{App, AppDispatch, WsServerState};
 use handlers::{
     handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
     handle_pane_prev, handle_right, handle_search, handle_tab, handle_up, handle_yank,
@@ -102,7 +103,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let app = Arc::new(Mutex::new(App::new()));
 
-    let (tx, mut rx) = unbounded::<TraceTimeoutPayload>();
+    let (tx, mut rx) = unbounded::<AppDispatch>();
 
     let app_for_ui = app.clone();
 
@@ -112,15 +113,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mode = app.lock().await.mode;
 
+    let ws_client_sender = tx.clone();
+
     if mode == Mode::Normal {
         start_ws_server(app_for_ws_server).await;
 
-        start_ws_client(app, tx);
+        start_ws_client(app, ws_client_sender);
     }
 
     terminal.clear()?;
 
-    let _ = run(&mut terminal, &app_for_ui, &mut rx).await;
+    let _ = run(&mut terminal, &app_for_ui, &mut rx, tx).await;
 
     restore_terminal(&mut terminal)?;
     Ok(())
@@ -145,7 +148,7 @@ async fn start_ws_server(app: Arc<Mutex<App>>) {
     });
 }
 
-fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<TraceTimeoutPayload>) {
+fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
     tokio::spawn(async move {
         wss::client(&app, tx).await;
 
@@ -171,10 +174,9 @@ fn restore_terminal(
 async fn run(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app_raw: &Arc<Mutex<App>>,
-    timeour_receiver: &mut UnboundedReceiver<TraceTimeoutPayload>,
+    receiver: &mut UnboundedReceiver<AppDispatch>,
+    sender: UnboundedSender<AppDispatch>,
 ) -> Result<(), Box<dyn Error>> {
-    let (tx, mut rx) = unbounded::<UIDispatchEvent>();
-
     let mut network_requests_height = 0;
 
     let mut response_body_requests_height = 0;
@@ -186,7 +188,7 @@ async fn run(
     Ok(loop {
         let mut app = app_raw.lock().await;
 
-        let loop_bounded_sender = tx.clone();
+        let loop_bounded_sender = sender.clone();
 
         terminal.draw(|frame| match app.active_block {
             app::ActiveBlock::Help => {
@@ -317,22 +319,13 @@ async fn run(
             }
         })?;
 
-        match rx.try_next() {
+        match receiver.try_next() {
             Ok(value) => match value {
                 Some(event) => match event {
-                    UIDispatchEvent::ClearStatusMessage => app.status_message = None,
-                },
-                None => {}
-            },
-            Err(_) => (),
-        };
-
-        match timeour_receiver.try_next() {
-            Ok(value) => match value {
-                Some(event) => match event {
-                    TraceTimeoutPayload::MarkForTimeout(id) => {
-                        app.dispatch(app::AppDispatch::MarkTraceAsTimedOut(id))
+                    AppDispatch::MarkTraceAsTimedOut(id) => {
+                        app.dispatch(AppDispatch::MarkTraceAsTimedOut(id))
                     }
+                    AppDispatch::ClearStatusMessage => app.status_message = None,
                 },
                 None => {}
             },

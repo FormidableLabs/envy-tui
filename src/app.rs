@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 
 use crossterm::event::KeyCode;
 use ratatui::widgets::ScrollbarState;
-use tokio::task::AbortHandle;
+use tokio::task::{AbortHandle, JoinHandle};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum RequestDetailsPane {
@@ -106,6 +106,9 @@ pub enum KeyMap {
     NavigateDown,
     GoToEnd,
     GoToStart,
+    CopyToClipBoard,
+    NavigateLeft,
+    NavigateRight,
 }
 
 impl Display for KeyMap {
@@ -156,6 +159,31 @@ pub struct App {
     pub key_map: HashMap<KeyMap, Vec<KeyCode>>,
 }
 
+pub struct KeyEntry {
+    pub key_map: KeyMap,
+    pub key_codes: Vec<KeyCode>,
+}
+
+impl PartialEq for KeyEntry {
+    fn eq(&self, other: &KeyEntry) -> bool {
+        self.key_map == other.key_map
+    }
+}
+
+impl Eq for KeyEntry {}
+
+impl PartialOrd for KeyEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(other.key_map.to_string().cmp(&self.key_map.to_string()))
+    }
+}
+
+impl Ord for KeyEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other.key_map.to_string().cmp(&self.key_map.to_string())
+    }
+}
+
 impl App {
     pub fn new() -> App {
         let mut keys: HashMap<KeyMap, Vec<KeyCode>> = HashMap::new();
@@ -166,6 +194,22 @@ impl App {
         );
 
         keys.insert(KeyMap::NavigateUp, vec![KeyCode::Up, KeyCode::Char('k')]);
+
+        keys.insert(
+            KeyMap::GoToEnd,
+            vec![KeyCode::Char('>'), KeyCode::Char('K')],
+        );
+
+        keys.insert(
+            KeyMap::GoToStart,
+            vec![KeyCode::Char('<'), KeyCode::Char('J')],
+        );
+
+        keys.insert(KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]);
+
+        keys.insert(KeyMap::NavigateLeft, vec![KeyCode::Char('h')]);
+
+        keys.insert(KeyMap::NavigateRight, vec![KeyCode::Char('l')]);
 
         App {
             key_map: keys,
@@ -225,6 +269,7 @@ impl App {
 
 pub enum AppDispatch {
     MarkTraceAsTimedOut(String),
+    ClearStatusMessage,
 }
 
 impl App {

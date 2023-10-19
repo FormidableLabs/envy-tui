@@ -12,16 +12,15 @@ use tungstenite::connect;
 use tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 use url::Url;
 
-use crate::app::{App, WsServerState};
+use crate::app::{App, AppDispatch, WsServerState};
 use crate::parser::parse_raw_trace;
-use crate::TraceTimeoutPayload;
 
 use tungstenite::Message;
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
 
-pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<TraceTimeoutPayload>) {
+pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
     let (mut socket, _response) =
         connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
 
@@ -48,7 +47,7 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<TraceTimeoutPaylo
                 tokio::spawn(async move {
                     sleep(Duration::from_millis(5000)).await;
 
-                    cloned_sender.unbounded_send(TraceTimeoutPayload::MarkForTimeout(id))
+                    cloned_sender.unbounded_send(AppDispatch::MarkTraceAsTimedOut(id))
                 });
 
                 app_guard.items.replace(request);
