@@ -50,7 +50,7 @@ jobs:
         run: |
           cd target/${{ matrix.target }}/release
 
-          BINARY_NAME=cnv${{ matrix.binary_postfix }}
+          BINARY_NAME=cli-network-viewer${{ matrix.binary_postfix }}
 
           RELEASE_NAME=cli-network-viewer-${{ matrix.artifact_prefix }}
           tar czvf $RELEASE_NAME.tar.gz $BINARY_NAME
