@@ -70,3 +70,9 @@ jobs:
         with:
           name: ${{ matrix.target }} sha
           path: target/${{ matrix.target }}/release/cli-network-viewer-${{ matrix.artifact_prefix }}.sha256
+      - name: Releasing assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/${{ matrix.target }}/release/cli-network-viewer-${{ matrix.artifact_prefix }}.tar.gz
+            target/${{ matrix.target }}/release/cli-network-viewer-${{ matrix.artifact_prefix }}.sha256
