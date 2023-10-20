@@ -63,10 +63,10 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v3
         with:
-          name: my-artifact
+          name: ${{ matrix.target }} binary
           path: target/${{ matrix.target }}/release/cli-network-viewer-${{ matrix.artifact_prefix }}.tar.gz
       - name: Upload sha
         uses: actions/upload-artifact@v3
         with:
-          name: my-artifact
+          name: ${{ matrix.target }} sha
           path: target/${{ matrix.target }}/release/cli-network-viewer-${{ matrix.artifact_prefix }}.sha256
