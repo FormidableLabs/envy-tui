@@ -111,6 +111,7 @@ pub enum KeyMap {
     NavigateRight,
     NextSection,
     PreviousSection,
+    Search,
     Quit,
 }
 
@@ -209,6 +210,7 @@ impl App {
             (KeyMap::NextSection, vec![KeyCode::Tab]),
             (KeyMap::PreviousSection, vec![KeyCode::BackTab]),
             (KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]),
+            (KeyMap::Search, vec![KeyCode::Char('/')]),
         ]);
 
         App {
