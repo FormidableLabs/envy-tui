@@ -38,6 +38,8 @@ Follow the Envy documentation to [install a telemetry package for your applicati
 cargo run
 ```
 
+If you prefer, you can install [cargo watch](https://watchexec.github.io/#cargo-watch) to speed up the development cycle.
+
 ## Contributing
 
 Please see the [Contributing guide](CONTRIBUTING.md).
