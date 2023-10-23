@@ -11,7 +11,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, Padding, Paragraph, Row, Scrollbar,
+    Block, BorderType, Borders, Cell, Clear, List, ListItem, Padding, Paragraph, Row, Scrollbar,
     ScrollbarOrientation, Table, Tabs,
 };
 use ratatui::Frame;
@@ -877,7 +877,24 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
             let key_codes = &entry.key_codes;
             let keymap = entry.key_map;
 
-            let joined_key_codes = key_codes
+            let description = match keymap {
+                KeyMap::NavigateUp => "Move up and select an entry one above",
+                KeyMap::NavigateDown => "Move down and select entry below",
+                KeyMap::NavigateLeft => "Move cursor left",
+                KeyMap::NavigateRight => "Move cursor right",
+                KeyMap::NextSection => "Focus on next section",
+                KeyMap::PreviousSection => "Focus on previous section",
+                KeyMap::Quit => "Quit",
+                KeyMap::CopyToClipBoard => "Copy selection to OS clipboard",
+                KeyMap::GoToEnd => "Move to bottom of section",
+                KeyMap::GoToStart => "Move to top of section",
+                KeyMap::Search => "Search",
+            };
+            let joiner = ':';
+            let mut description = String::from(description);
+            description.push(joiner);
+
+            let mapped_keys = key_codes
                 .iter()
                 .map(|key_code| {
                     let key_code_as_string = match key_code {
@@ -885,6 +902,9 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                         KeyCode::PageDown => "Page Down".to_string(),
                         KeyCode::Down => "Down arrow".to_string(),
                         KeyCode::Up => "Up arrow".to_string(),
+                        KeyCode::Tab => "Tab".to_string(),
+                        KeyCode::BackTab => "Tab + Shift".to_string(),
+                        KeyCode::Char('/') => "/{pattern}[/]<CR>".to_string(),
                         KeyCode::Char(c) => c.to_string(),
                         _ => "Default".to_string(),
                     };
@@ -894,20 +914,17 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            let description = match keymap {
-                KeyMap::NavigateUp => "Navigating up, select an entry one above",
-                _ => "",
-            };
-
-            Row::new(vec![String::from(description), joined_key_codes])
-                .style(get_row_style(RowStyle::Default))
+            let column_a =
+                Cell::from(Line::from(vec![Span::raw(description)]).alignment(Alignment::Right));
+            let column_b = Cell::from(mapped_keys);
+            Row::new(vec![column_a, column_b]).style(get_row_style(RowStyle::Default))
         })
         .collect::<Vec<_>>();
 
     let list = Table::new(debug_lines)
         .style(get_text_style(true))
         .header(
-            Row::new(vec!["Key", "Map"])
+            Row::new(vec!["Action", "Map"])
                 .style(Style::default().fg(Color::Yellow))
                 .bottom_margin(1),
         )
@@ -918,7 +935,8 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 .title("Key Mappings")
                 .border_type(BorderType::Plain),
         )
-        .widths(&[Constraint::Percentage(60), Constraint::Percentage(40)]);
+        .widths(&[Constraint::Percentage(20), Constraint::Percentage(80)])
+        .column_spacing(10);
 
     frame.render_widget(list, area);
 }

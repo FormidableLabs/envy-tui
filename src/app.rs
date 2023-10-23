@@ -109,6 +109,10 @@ pub enum KeyMap {
     CopyToClipBoard,
     NavigateLeft,
     NavigateRight,
+    NextSection,
+    PreviousSection,
+    Search,
+    Quit,
 }
 
 impl Display for KeyMap {
@@ -186,30 +190,28 @@ impl Ord for KeyEntry {
 
 impl App {
     pub fn new() -> App {
-        let mut keys: HashMap<KeyMap, Vec<KeyCode>> = HashMap::new();
-
-        keys.insert(
-            KeyMap::NavigateDown,
-            vec![KeyCode::Down, KeyCode::Char('j')],
-        );
-
-        keys.insert(KeyMap::NavigateUp, vec![KeyCode::Up, KeyCode::Char('k')]);
-
-        keys.insert(
-            KeyMap::GoToEnd,
-            vec![KeyCode::Char('>'), KeyCode::Char('K')],
-        );
-
-        keys.insert(
-            KeyMap::GoToStart,
-            vec![KeyCode::Char('<'), KeyCode::Char('J')],
-        );
-
-        keys.insert(KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]);
-
-        keys.insert(KeyMap::NavigateLeft, vec![KeyCode::Char('h')]);
-
-        keys.insert(KeyMap::NavigateRight, vec![KeyCode::Char('l')]);
+        let keys: HashMap<KeyMap, Vec<KeyCode>> = HashMap::from([
+            (KeyMap::NavigateLeft, vec![KeyCode::Char('h')]),
+            (
+                KeyMap::NavigateDown,
+                vec![KeyCode::Down, KeyCode::Char('j')],
+            ),
+            (KeyMap::NavigateUp, vec![KeyCode::Up, KeyCode::Char('k')]),
+            (KeyMap::NavigateRight, vec![KeyCode::Char('l')]),
+            (
+                KeyMap::GoToEnd,
+                vec![KeyCode::Char('>'), KeyCode::Char('K')],
+            ),
+            (
+                KeyMap::GoToStart,
+                vec![KeyCode::Char('<'), KeyCode::Char('J')],
+            ),
+            (KeyMap::Quit, vec![KeyCode::Char('q')]),
+            (KeyMap::NextSection, vec![KeyCode::Tab]),
+            (KeyMap::PreviousSection, vec![KeyCode::BackTab]),
+            (KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]),
+            (KeyMap::Search, vec![KeyCode::Char('/')]),
+        ]);
 
         App {
             key_map: keys,
