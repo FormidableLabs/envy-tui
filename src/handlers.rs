@@ -819,8 +819,9 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
             if item.duration.is_some() {
                 let item_length = item.request_headers.len();
 
-                let usable_height = additional_metadata.request_body_rectangle_height
-                    - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                let usable_height = additional_metadata.request_body_rectangle_height.checked_sub(
+                    REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16
+                ).unwrap_or_default();
 
                 let requires_scrollbar = item_length as u16 >= usable_height;
 
