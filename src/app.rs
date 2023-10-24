@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 
 use crossterm::event::KeyCode;
 use ratatui::widgets::ScrollbarState;
-use tokio::task::{AbortHandle, JoinHandle};
+use tokio::task::AbortHandle;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum RequestDetailsPane {
@@ -102,17 +102,18 @@ impl Display for Trace {
 
 #[derive(Clone, Copy, PartialEq, Debug, Eq, Hash)]
 pub enum KeyMap {
-    NavigateUp,
+    CopyToClipBoard,
+    Esc,
+    NavigateLeft,
     NavigateDown,
+    NavigateUp,
+    NavigateRight,
     GoToEnd,
     GoToStart,
-    CopyToClipBoard,
-    NavigateLeft,
-    NavigateRight,
     NextSection,
     PreviousSection,
-    Search,
     Quit,
+    Search,
 }
 
 impl Display for KeyMap {
@@ -211,6 +212,7 @@ impl App {
             (KeyMap::PreviousSection, vec![KeyCode::BackTab]),
             (KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]),
             (KeyMap::Search, vec![KeyCode::Char('/')]),
+            (KeyMap::Esc, vec![KeyCode::Esc]),
         ]);
 
         App {

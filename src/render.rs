@@ -878,16 +878,17 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
             let keymap = entry.key_map;
 
             let description = match keymap {
+                KeyMap::CopyToClipBoard => "Copy selection to OS clipboard",
+                KeyMap::Esc => "Exit",
                 KeyMap::NavigateUp => "Move up and select an entry one above",
                 KeyMap::NavigateDown => "Move down and select entry below",
                 KeyMap::NavigateLeft => "Move cursor left",
                 KeyMap::NavigateRight => "Move cursor right",
                 KeyMap::NextSection => "Focus on next section",
-                KeyMap::PreviousSection => "Focus on previous section",
-                KeyMap::Quit => "Quit",
-                KeyMap::CopyToClipBoard => "Copy selection to OS clipboard",
                 KeyMap::GoToEnd => "Move to bottom of section",
                 KeyMap::GoToStart => "Move to top of section",
+                KeyMap::PreviousSection => "Focus on previous section",
+                KeyMap::Quit => "Quit",
                 KeyMap::Search => "Search",
             };
             let joiner = ':';
@@ -902,6 +903,7 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                         KeyCode::PageDown => "Page Down".to_string(),
                         KeyCode::Down => "Down arrow".to_string(),
                         KeyCode::Up => "Up arrow".to_string(),
+                        KeyCode::Esc => "Esc".to_string(),
                         KeyCode::Tab => "Tab".to_string(),
                         KeyCode::BackTab => "Tab + Shift".to_string(),
                         KeyCode::Char('/') => "/{pattern}[/]<CR>".to_string(),
