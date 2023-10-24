@@ -258,8 +258,9 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     .request_headers
                     .len();
 
-                let usable_height = additinal_metadata.request_body_rectangle_height
-                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                let usable_height = additinal_metadata.request_body_rectangle_height.checked_sub(
+                    RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16
+                ).unwrap_or_default();
 
                 if item_length > usable_height as usize {
                     if next_index < app.request_details.offset {
@@ -404,8 +405,9 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
 
                 app.selected_request_header_index = next_index;
 
-                let usable_height = additinal_metadata.request_body_rectangle_height
-                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                let usable_height = additinal_metadata.request_body_rectangle_height.checked_sub(
+                    RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16
+                ).unwrap_or_default();
 
                 let requires_scrollbar = item_length as u16 >= usable_height;
 
@@ -444,8 +446,9 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
 
                     app.selected_response_header_index = next_index;
 
-                    let usable_height = additinal_metadata.response_body_rectangle_height
-                        - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                    let usable_height = additinal_metadata.response_body_rectangle_height.checked_sub(
+                        RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16
+                    ).unwrap_or_default();
 
                     let requires_scrollbar = item_length as u16 >= usable_height;
 
