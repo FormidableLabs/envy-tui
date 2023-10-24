@@ -12,20 +12,19 @@ use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{error::Error, io::Stdout};
 
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, KeyCode, KeyEvent};
 use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal::enable_raw_mode};
 
+use futures_util::{FutureExt, StreamExt};
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
 
-use tokio::net::TcpListener;
-use tokio::sync::Mutex;
+use tokio::{net::TcpListener, sync::{Mutex, mpsc}, task::JoinHandle};
 use tungstenite::Message;
 
 use app::{App, AppDispatch, WsServerState};
@@ -37,7 +36,6 @@ use render::{
     render_footer, render_help, render_request_block, render_request_body, render_request_summary,
     render_response_block, render_search, render_traces,
 };
-use utils::UIDispatchEvent;
 
 use wss::handle_connection;
 
@@ -171,6 +169,68 @@ fn restore_terminal(
     Ok(terminal.show_cursor()?)
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Event {
+    Error,
+    Tick,
+    Key(KeyEvent)
+}
+
+#[derive(Debug)]
+struct EventHandler {
+    _tx: mpsc::UnboundedSender<Event>,
+    rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
+    task: Option<JoinHandle<()>>,
+}
+
+impl EventHandler {
+    fn new() -> Self {
+      let tick_rate = std::time::Duration::from_millis(250);
+
+      let (tx, mut rx) =  mpsc::unbounded_channel();
+      let _tx = tx.clone();
+
+      let task = tokio::spawn(async move {
+          let mut reader = crossterm::event::EventStream::new();
+          let mut interval = tokio::time::interval(tick_rate);
+
+          loop {
+              let delay = interval.tick();
+              let crossterm_event = reader.next().fuse();
+              tokio::select! {
+                  maybe_event = crossterm_event => {
+                      match maybe_event {
+                          Some(Ok(evt)) => {
+                              match evt {
+                                  crossterm::event::Event::Key(key) => {
+                                      if key.kind == crossterm::event::KeyEventKind::Press {
+                                          tx.send(Event::Key(key)).unwrap();
+                                      }
+                                  },
+                                  _ => {},
+                              }
+                          }
+                          Some(Err(_)) => {
+                              tx.send(Event::Error).unwrap();
+                          }
+                          None => {},
+                      }
+                  },
+                  _ = delay => {
+                      tx.send(Event::Tick).unwrap();
+                  }
+              }
+          }
+      });
+
+      Self { _tx, rx, task: Some(task) }
+    }
+
+    async fn next(&mut self) -> Option<Event> {
+         self.rx.recv().await
+    }
+}
+
 async fn run(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app_raw: &Arc<Mutex<App>>,
@@ -185,7 +245,9 @@ async fn run(
     let mut request_body_requests_height = 0;
     let mut request_body_requests_width = 0;
 
-    Ok(loop {
+    let mut events = EventHandler::new();
+
+    loop {
         let mut app = app_raw.lock().await;
 
         let loop_bounded_sender = sender.clone();
@@ -344,8 +406,9 @@ async fn run(
             app.is_first_render = false;
         }
 
-        if event::poll(Duration::from_millis(250))? {
-            if let Event::Key(key) = event::read()? {
+        let event = events.next().await;
+        match event {
+            Some(Event::Key(key)) => {
                 let metadata = HandlerMetadata {
                     main_height: network_requests_height,
                     response_body_rectangle_height: response_body_requests_height,
@@ -404,7 +467,10 @@ async fn run(
                         _ => {}
                     }
                 }
-            }
+            },
+            _ => {}
         }
-    })
+    }
+
+    Ok(())
 }
