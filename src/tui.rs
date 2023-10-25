@@ -1,62 +1,97 @@
-use crossterm::event::KeyEvent;
+use crossterm::{event::KeyEvent, execute, terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}};
 use futures_util::{FutureExt, StreamExt};
+use ratatui::{prelude::CrosstermBackend, terminal::Terminal};
+use std::io::{stdout, Stdout};
+use std::error::Error;
 use tokio::{sync::mpsc, task::JoinHandle};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Event {
     Error,
+    Key(KeyEvent),
+    Render,
     Tick,
-    Key(KeyEvent)
 }
 
 #[derive(Debug)]
-pub struct EventHandler {
-    _tx: mpsc::UnboundedSender<Event>,
-    rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
-    task: Option<JoinHandle<()>>,
+pub struct Tui {
+    pub terminal: Terminal<CrosstermBackend<Stdout>>,
+    pub event_tx: mpsc::UnboundedSender<Event>,
+    pub rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
+    pub task: JoinHandle<()>,
+    pub frame_rate: f64,
+    pub tick_rate: f64,
 }
 
-impl EventHandler {
+impl Tui {
     pub fn new() -> Self {
-      let tick_rate = std::time::Duration::from_millis(250);
+        let tick_rate = 4.0;
+        let frame_rate = 60.0;
+        let (tx, rx) =  mpsc::unbounded_channel();
+        let event_tx = tx.clone();
+        let task = tokio::spawn(async {});
+        let terminal = Terminal::new(CrosstermBackend::new(stdout())).unwrap();
 
-      let (tx, mut rx) =  mpsc::unbounded_channel();
-      let _tx = tx.clone();
+        Self { event_tx, rx, frame_rate, task, terminal, tick_rate }
+    }
 
-      let task = tokio::spawn(async move {
-          let mut reader = crossterm::event::EventStream::new();
-          let mut interval = tokio::time::interval(tick_rate);
+    pub fn enter(&mut self) -> Result<(), Box<dyn Error>> {
+        enable_raw_mode()?;
+        execute!(stdout(), EnterAlternateScreen)?;
+        self.terminal.clear()?;
+        self.start();
+        Ok(())
+    }
 
-          loop {
-              let delay = interval.tick();
-              let crossterm_event = reader.next().fuse();
-              tokio::select! {
-                  maybe_event = crossterm_event => {
-                      match maybe_event {
-                          Some(Ok(evt)) => {
-                              match evt {
-                                  crossterm::event::Event::Key(key) => {
-                                      if key.kind == crossterm::event::KeyEventKind::Press {
-                                          tx.send(Event::Key(key)).unwrap();
-                                      }
-                                  },
-                                  _ => {},
-                              }
-                          }
-                          Some(Err(_)) => {
-                              tx.send(Event::Error).unwrap();
-                          }
-                          None => {},
-                      }
-                  },
-                  _ = delay => {
-                      tx.send(Event::Tick).unwrap();
-                  }
-              }
-          }
-      });
+    pub fn exit(&mut self) -> Result<(), Box<dyn Error>> {
+        disable_raw_mode()?;
+        execute!(self.terminal.backend_mut(), LeaveAlternateScreen,)?;
+        self.terminal.show_cursor()?;
+        Ok(())
+    }
 
-      Self { _tx, rx, task: Some(task) }
+    pub fn start(&mut self) {
+        let tick_delay = std::time::Duration::from_secs_f64(1.0 / self.tick_rate);
+        let render_delay = std::time::Duration::from_secs_f64(1.0 / self.frame_rate);
+        let _tx = self.event_tx.clone();
+
+        self.task = tokio::spawn(async move {
+            let mut reader = crossterm::event::EventStream::new();
+            let mut interval = tokio::time::interval(tick_delay);
+            let mut render_interval = tokio::time::interval(render_delay);
+
+            loop {
+                let delay = interval.tick();
+                let render_delay = render_interval.tick();
+                let crossterm_event = reader.next().fuse();
+                tokio::select! {
+                    maybe_event = crossterm_event => {
+                        match maybe_event {
+                            Some(Ok(evt)) => {
+                                match evt {
+                                    crossterm::event::Event::Key(key) => {
+                                        if key.kind == crossterm::event::KeyEventKind::Press {
+                                            _tx.send(Event::Key(key)).unwrap();
+                                        }
+                                    },
+                                    _ => {},
+                                }
+                            }
+                            Some(Err(_)) => {
+                                _tx.send(Event::Error).unwrap();
+                            }
+                            None => {},
+                        }
+                    },
+                    _ = delay => {
+                        _tx.send(Event::Tick).unwrap();
+                    },
+                    _ = render_delay => {
+                        _tx.send(Event::Render).unwrap();
+                    }
+                }
+            }
+        });
     }
 
     pub async fn next(&mut self) -> Option<Event> {

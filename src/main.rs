@@ -10,19 +10,15 @@ mod utils;
 mod wss;
 
 use std::collections::HashMap;
-use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::{error::Error, io::Stdout};
+use std::error::Error;
 
 use crossterm::event::KeyCode;
-use crossterm::terminal::{disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
-use crossterm::{execute, terminal::enable_raw_mode};
 
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use ratatui::layout::Layout;
-use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
-use ratatui::terminal::Terminal;
+use ratatui::prelude::{Constraint, Direction};
 
 use tokio::{net::TcpListener, sync::Mutex};
 use tungstenite::Message;
@@ -97,8 +93,6 @@ pub enum TraceTimeoutPayload {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let mut terminal = setup_terminal()?;
-
     let app = Arc::new(Mutex::new(App::new()));
 
     let (tx, mut rx) = unbounded::<AppDispatch>();
@@ -119,11 +113,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         start_ws_client(app, ws_client_sender);
     }
 
-    terminal.clear()?;
+    let _ = run(&app_for_ui, &mut rx, tx).await;
 
-    let _ = run(&mut terminal, &app_for_ui, &mut rx, tx).await;
-
-    restore_terminal(&mut terminal)?;
     Ok(())
 }
 
@@ -154,23 +145,7 @@ fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
     });
 }
 
-fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>, Box<dyn Error>> {
-    let mut stdout = io::stdout();
-    enable_raw_mode()?;
-    execute!(stdout, EnterAlternateScreen)?;
-    Ok(Terminal::new(CrosstermBackend::new(stdout))?)
-}
-
-fn restore_terminal(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-) -> Result<(), Box<dyn Error>> {
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen,)?;
-    Ok(terminal.show_cursor()?)
-}
-
 async fn run(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app_raw: &Arc<Mutex<App>>,
     receiver: &mut UnboundedReceiver<AppDispatch>,
     sender: UnboundedSender<AppDispatch>,
@@ -183,14 +158,15 @@ async fn run(
     let mut request_body_requests_height = 0;
     let mut request_body_requests_width = 0;
 
-    let mut events = tui::EventHandler::new();
+    let mut events = tui::Tui::new();
+    events.enter()?;
 
     loop {
         let mut app = app_raw.lock().await;
 
         let loop_bounded_sender = sender.clone();
 
-        terminal.draw(|frame| match app.active_block {
+        events.terminal.draw(|frame| match app.active_block {
             app::ActiveBlock::Help => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
@@ -409,6 +385,8 @@ async fn run(
             _ => {}
         }
     }
+
+    events.exit()?;
 
     Ok(())
 }
