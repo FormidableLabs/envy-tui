@@ -898,6 +898,8 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 KeyMap::GoToEnd => "Move to bottom of section",
                 KeyMap::GoToStart => "Move to top of section",
                 KeyMap::Search => "Search",
+                KeyMap::StartWebSocketServer => "Start the Collector Server",
+                KeyMap::StopWebSocketServer => "Stop the Collector Server",
             };
             let joiner = ':';
             let mut description = String::from(description);
@@ -944,7 +946,7 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 .title("Key Mappings")
                 .border_type(BorderType::Plain),
         )
-        .widths(&[Constraint::Percentage(20), Constraint::Percentage(80)])
+        .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
         .column_spacing(10);
 
     frame.render_widget(list, area);

@@ -108,6 +108,8 @@ pub enum KeyMap {
     PreviousSection,
     Search,
     Quit,
+    StopWebSocketServer,
+    StartWebSocketServer,
 }
 
 impl Display for KeyMap {
@@ -206,6 +208,8 @@ impl App {
             (KeyMap::PreviousSection, vec![KeyCode::BackTab]),
             (KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]),
             (KeyMap::Search, vec![KeyCode::Char('/')]),
+            (KeyMap::StopWebSocketServer, vec![KeyCode::Char('x')]),
+            (KeyMap::StartWebSocketServer, vec![KeyCode::Char('X')]),
         ]);
 
         App {
