@@ -19,7 +19,12 @@ use crate::parser::parse_raw_trace;
 use tungstenite::Message;
 
 type Tx = UnboundedSender<Message>;
-pub type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
+
+pub struct ConnectionMeta {
+    tx: Tx,
+    path: String,
+}
+pub type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, ConnectionMeta>>>;
 
 struct RequestPath {
     uri: String,
@@ -43,12 +48,7 @@ impl Callback for &mut RequestPath {
     }
 }
 
-struct ConnectionMeta {
-    path: String,
-}
-
-struct WebSocketState {
-    connections: Vec<ConnectionMeta>,
+pub struct WebSocketState {
     main_abort_handle: Option<AbortHandle>,
     handles: Vec<AbortHandle>,
 }
@@ -71,7 +71,6 @@ impl WebSocket {
             address,
             peer_map,
             web_socket_state: Arc::new(Mutex::new(WebSocketState {
-                connections: vec![],
                 handles: vec![],
                 main_abort_handle: None,
             })),
@@ -92,7 +91,7 @@ impl WebSocket {
 
             let cloned_peer_map = peer_map.clone();
 
-            let websocket_state = &mut self.web_socket_state;
+            let websocket_state = &self.web_socket_state;
 
             let cloned_websocket_state = websocket_state.clone();
 
@@ -164,20 +163,28 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
 
                         let _ = match parse_raw_trace(&s) {
                             Ok(request) => {
-                                app_guard.logs.push(request.to_string());
+                                match request {
+                                    crate::parser::Payload::Trace(trace) => {
+                                        let port = trace.port.clone().unwrap_or("0".to_string());
 
-                                let id = request.id.clone();
+                                        let id = trace.id.clone();
 
-                                let cloned_sender = tx.clone();
+                                        let cloned_sender = tx.clone();
 
-                                tokio::spawn(async move {
-                                    sleep(Duration::from_millis(5000)).await;
+                                        tokio::spawn(async move {
+                                            sleep(Duration::from_millis(5000)).await;
 
-                                    cloned_sender
-                                        .unbounded_send(AppDispatch::MarkTraceAsTimedOut(id))
-                                });
+                                            cloned_sender.unbounded_send(
+                                                AppDispatch::MarkTraceAsTimedOut(id),
+                                            )
+                                        });
 
-                                app_guard.items.replace(request);
+                                        if port != "9999" {
+                                            app_guard.items.replace(trace);
+                                        }
+                                    }
+                                    _ => {}
+                                }
                                 app_guard.is_first_render = true;
 
                                 ()
@@ -212,9 +219,17 @@ pub async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: S
 
     let path = path_rewrite_callback.uri;
 
+    let cloned_path = path.clone();
+
     let (tx, rx) = unbounded();
 
-    peer_map.lock().unwrap().insert(addr, tx);
+    peer_map.lock().unwrap().insert(
+        addr,
+        ConnectionMeta {
+            tx,
+            path: cloned_path.clone(),
+        },
+    );
 
     // if path != "/inner_client" {
     //     let number_of_connections = peer_map.lock().unwrap().len();
@@ -237,7 +252,7 @@ pub async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: S
             .map(|(_, ws_sink)| ws_sink);
 
         for recp in broadcast_recipients {
-            recp.unbounded_send(msg.clone()).unwrap();
+            recp.tx.unbounded_send(msg.clone()).unwrap();
         }
 
         future::ok(())
@@ -247,9 +262,6 @@ pub async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: S
 
     pin_mut!(broadcast_incoming, receive_from_others);
     future::select(broadcast_incoming, receive_from_others).await;
-    // tokio::select! {
-    //
-    // }
 
     // println!("{} disconnected", &addr);
     peer_map.lock().unwrap().remove(&addr);

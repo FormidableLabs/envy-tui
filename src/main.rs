@@ -71,11 +71,13 @@ async fn insert_mock_data(app_raw: &Arc<Mutex<App>>) {
     .iter()
     .map(|raw_json_string| parse_raw_trace(raw_json_string))
     .for_each(|x| match x {
-        Ok(v) => {
-            app.items.insert(v);
+        Ok(v) => match v {
+            parser::Payload::Trace(trace) => {
+                app.items.insert(trace);
+            }
 
-            app.logs.push(String::from("Parsing successful."));
-        }
+            _ => {}
+        },
         Err(err) => app.logs.push(format!(
             "Something went wrong while parsing and inserting to the Tree, {:?}",
             err

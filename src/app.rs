@@ -57,6 +57,7 @@ pub struct Trace {
     pub pretty_request_body_lines: Option<usize>,
     pub http_version: Option<http::Version>,
     pub raw: String,
+    pub port: Option<String>,
 }
 
 impl PartialEq<Trace> for Trace {
