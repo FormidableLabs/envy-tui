@@ -285,6 +285,31 @@ impl App {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum Action {
+    CopyToClipBoard,
+    NavigateLeft(crossterm::event::KeyEvent),
+    NavigateDown(crossterm::event::KeyEvent),
+    NavigateUp(crossterm::event::KeyEvent),
+    NavigateRight(crossterm::event::KeyEvent),
+    GoToEnd,
+    GoToStart,
+    NextSection,
+    PreviousSection,
+    Quit,
+    NewSearch,
+    UpdateSearchQuery(char),
+    DeleteSearchQuery,
+    ExitSearch,
+    Help,
+    ToggleDebug,
+    DeleteItem,
+    FocusOnTraces,
+    ShowTraceDetails,
+    NextPane,
+    PreviousPane,
+}
+
 pub enum AppDispatch {
     MarkTraceAsTimedOut(String),
     ClearStatusMessage,
@@ -319,6 +344,19 @@ impl App {
 
                 self.items.replace(selected_trace);
             };
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        let app = App::new();
+        if 2 + 2 == 4 {
+            Ok(())
+        } else {
+            Err(String::from("two plus two does not equal four"))
         }
     }
 }

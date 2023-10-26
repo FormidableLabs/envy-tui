@@ -1,4 +1,3 @@
-mod action;
 mod app;
 mod config;
 mod consts;
@@ -24,8 +23,7 @@ use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use tokio::{net::TcpListener, sync::Mutex};
 use tungstenite::Message;
 
-use action::Action;
-use app::{App, AppDispatch, WsServerState};
+use app::{Action, App, AppDispatch, WsServerState};
 use handlers::{
     handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
     handle_pane_prev, handle_right, handle_tab, handle_up, handle_yank,
@@ -147,37 +145,37 @@ fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
     });
 }
 
-fn map_event(app: &mut App, event: Option<tui::Event>) -> Result<Option<action::Action>, Box<dyn Error>> {
+fn map_event(app: &mut App, event: Option<tui::Event>) -> Result<Option<Action>, Box<dyn Error>> {
     match event {
         Some(tui::Event::Key(key)) => {
             // TODO: handle multiple modes (like for search)
             if app.active_block == app::ActiveBlock::SearchQuery {
                 match key.code {
-                    KeyCode::Enter | KeyCode::Esc => return Ok(Some(action::Action::ExitSearch)),
-                    KeyCode::Backspace => return Ok(Some(action::Action::DeleteSearchQuery)),
-                    KeyCode::Char(char) => return Ok(Some(action::Action::UpdateSearchQuery(char))),
+                    KeyCode::Enter | KeyCode::Esc => return Ok(Some(Action::ExitSearch)),
+                    KeyCode::Backspace => return Ok(Some(Action::DeleteSearchQuery)),
+                    KeyCode::Char(char) => return Ok(Some(Action::UpdateSearchQuery(char))),
                     _ => return Ok(None),
                 }
             }
             let action = match key.code {
-                KeyCode::Char('q') => action::Action::Quit,
-                KeyCode::Char('?') => action::Action::Help,
-                KeyCode::Char('p') => action::Action::ToggleDebug,
-                KeyCode::Char('d') => action::Action::DeleteItem,
-                KeyCode::Char('y') => action::Action::CopyToClipBoard,
-                KeyCode::Char('>') => action::Action::GoToEnd,
-                KeyCode::Char('<') => action::Action::GoToStart,
-                KeyCode::Tab => action::Action::NextSection,
-                KeyCode::BackTab => action::Action::PreviousSection,
-                KeyCode::Char(']') | KeyCode::PageUp => action::Action::NextPane,
-                KeyCode::Char('[') | KeyCode::PageDown => action::Action::PreviousPane,
-                KeyCode::Char('/') => action::Action::NewSearch,
-                KeyCode::Enter => action::Action::ShowTraceDetails,
-                KeyCode::Esc => action::Action::FocusOnTraces,
-                KeyCode::Up | KeyCode::Char('k') => action::Action::NavigateUp(key),
-                KeyCode::Down | KeyCode::Char('j') => action::Action::NavigateDown(key),
-                KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => action::Action::NavigateLeft(key),
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => action::Action::NavigateRight(key),
+                KeyCode::Char('q') => Action::Quit,
+                KeyCode::Char('?') => Action::Help,
+                KeyCode::Char('p') => Action::ToggleDebug,
+                KeyCode::Char('d') => Action::DeleteItem,
+                KeyCode::Char('y') => Action::CopyToClipBoard,
+                KeyCode::Char('>') => Action::GoToEnd,
+                KeyCode::Char('<') => Action::GoToStart,
+                KeyCode::Tab => Action::NextSection,
+                KeyCode::BackTab => Action::PreviousSection,
+                KeyCode::Char(']') | KeyCode::PageUp => Action::NextPane,
+                KeyCode::Char('[') | KeyCode::PageDown => Action::PreviousPane,
+                KeyCode::Char('/') => Action::NewSearch,
+                KeyCode::Enter => Action::ShowTraceDetails,
+                KeyCode::Esc => Action::FocusOnTraces,
+                KeyCode::Up | KeyCode::Char('k') => Action::NavigateUp(key),
+                KeyCode::Down | KeyCode::Char('j') => Action::NavigateDown(key),
+                KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => Action::NavigateLeft(key),
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => Action::NavigateRight(key),
                 _ => return Ok(None),
             };
             return Ok(Some(action));
@@ -188,7 +186,7 @@ fn map_event(app: &mut App, event: Option<tui::Event>) -> Result<Option<action::
 
 fn update(
     app: &mut App,
-    action: Option<action::Action>,
+    action: Option<Action>,
     sender: UnboundedSender<AppDispatch>,
 ) {
     let metadata = HandlerMetadata {
@@ -199,7 +197,7 @@ fn update(
         request_body_rectangle_width: app.request_body.width,
     };
     match action {
-        Some(action::Action::Quit) => match app.active_block {
+        Some(Action::Quit) => match app.active_block {
             app::ActiveBlock::Help | app::ActiveBlock::Debug => {
                 app.active_block =
                     app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
