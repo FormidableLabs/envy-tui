@@ -323,77 +323,112 @@ pub fn render_request_block(
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
 
-    let uri = match maybe_selected_item {
-        Some(item) => item.deref().uri.clone(),
-        None => String::from("Could not find request."),
-    };
+    match maybe_selected_item {
+        Some(maybe_selected_item) => {
+            let uri = maybe_selected_item.deref().uri.clone();
 
-    let raw_params = parse_query_params(uri);
+            let raw_params = parse_query_params(uri);
 
-    let mut cloned = raw_params.clone();
+            let mut cloned = raw_params.clone();
 
-    cloned.sort_by(|a, b| {
-        let (name_a, _) = a;
-        let (name_b, _) = b;
+            cloned.sort_by(|a, b| {
+                let (name_a, _) = a;
+                let (name_b, _) = b;
 
-        name_a.cmp(name_b)
-    });
+                name_a.cmp(name_b)
+            });
 
-    let current_param_selected = cloned.get(app.selected_params_index);
+            let current_param_selected = cloned.get(app.selected_params_index);
 
-    let rows = cloned
-        .iter()
-        .map(|param| {
-            let (name, value) = param;
-            let cloned_name = name.deref().clone();
-            let cloned_value = value.deref().clone();
+            let rows = cloned
+                .iter()
+                .map(|param| {
+                    let (name, value) = param;
+                    let cloned_name = name.deref().clone();
+                    let cloned_value = value.deref().clone();
 
-            let is_selected = match current_param_selected {
-                Some(v) => {
-                    let (current_name, _) = v;
+                    let is_selected = match current_param_selected {
+                        Some(v) => {
+                            let (current_name, _) = v;
 
-                    current_name.deref() == name
-                }
-                None => false,
-            };
+                            current_name.deref() == name
+                        }
+                        None => false,
+                    };
 
-            Row::new(vec![cloned_name, cloned_value]).style(match (is_selected, active_block) {
-                (true, ActiveBlock::RequestDetails) => get_row_style(RowStyle::Selected),
-                (true, _) => get_row_style(RowStyle::Inactive),
-                (_, _) => get_row_style(RowStyle::Default),
-            })
-        })
-        .collect::<Vec<Row>>();
+                    Row::new(vec![cloned_name, cloned_value]).style(
+                        match (is_selected, active_block) {
+                            (true, ActiveBlock::RequestDetails) => {
+                                get_row_style(RowStyle::Selected)
+                            }
+                            (true, _) => get_row_style(RowStyle::Inactive),
+                            (_, _) => get_row_style(RowStyle::Default),
+                        },
+                    )
+                })
+                .collect::<Vec<Row>>();
 
-    let table = Table::new(rows)
-        // You can set the style of the entire Table.
-        .style(Style::default().fg(Color::White))
-        // It has an optional header, which is simply a Row always visible at the top.
-        .header(
-            Row::new(vec!["Query name", "Query Param value"])
-                .style(Style::default().fg(Color::Yellow))
-                // If you want some space between the header and the rest of the rows, you can always
-                // specify some margin at the bottom.
-                .bottom_margin(1),
-        )
-        .widths(&[
-            Constraint::Percentage(10),
-            Constraint::Percentage(70),
-            Constraint::Length(20),
-        ])
-        // ...and they can be separated by a fixed spacing.
-        // .column_spacing(1)
-        // If you wish to highlight a row in any specific way when it is selected...
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        // ...and potentially show a symbol in front of the selection.
-        //
-        //
-        .highlight_symbol(">>");
+            let table = Table::new(rows)
+                // You can set the style of the entire Table.
+                .style(Style::default().fg(Color::White))
+                // It has an optional header, which is simply a Row always visible at the top.
+                .header(
+                    Row::new(vec!["Query name", "Query Param value"])
+                        .style(Style::default().fg(Color::Yellow))
+                        // If you want some space between the header and the rest of the rows, you can always
+                        // specify some margin at the bottom.
+                        .bottom_margin(1),
+                )
+                .widths(&[
+                    Constraint::Percentage(10),
+                    Constraint::Percentage(70),
+                    Constraint::Length(20),
+                ])
+                // ...and they can be separated by a fixed spacing.
+                // .column_spacing(1)
+                // If you wish to highlight a row in any specific way when it is selected...
+                .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+                // ...and potentially show a symbol in front of the selection.
+                //
+                //
+                .highlight_symbol(">>");
 
-    let tabs = Tabs::new(vec!["Request Header", "Request Params"])
-        .block(
-            Block::default()
-                .borders(Borders::BOTTOM)
+            let tabs = Tabs::new(vec!["Request Header", "Request Params"])
+                .block(
+                    Block::default()
+                        .borders(Borders::BOTTOM)
+                        .style(Style::default().fg(
+                            if active_block == ActiveBlock::RequestDetails {
+                                Color::White
+                            } else {
+                                Color::DarkGray
+                            },
+                        ))
+                        .border_type(BorderType::Plain),
+                )
+                .select(match app.request_details_block {
+                    RequestDetailsPane::Headers => 0,
+                    RequestDetailsPane::Query => 1,
+                })
+                .highlight_style(Style::default().fg(Color::LightMagenta));
+
+            let inner_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
+                .split(area);
+
+            let main = Block::default()
+                .title("Request details")
+                .title(
+                    Title::from(format!(
+                        "{} of {}",
+                        app.selected_request_header_index + 1,
+                        maybe_selected_item.request_headers.len()
+                    ))
+                    .position(Position::Bottom)
+                    .alignment(Alignment::Right),
+                )
                 .style(
                     Style::default().fg(if active_block == ActiveBlock::RequestDetails {
                         Color::White
@@ -401,71 +436,43 @@ pub fn render_request_block(
                         Color::DarkGray
                     }),
                 )
-                .border_type(BorderType::Plain),
-        )
-        .select(match app.request_details_block {
-            RequestDetailsPane::Headers => 0,
-            RequestDetailsPane::Query => 1,
-        })
-        .highlight_style(Style::default().fg(Color::LightMagenta));
+                .border_type(BorderType::Plain)
+                .borders(Borders::ALL);
 
-    let inner_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
-        .split(area);
+            frame.render_widget(main, area);
+            frame.render_widget(tabs, inner_layout[0]);
 
-    let main = Block::default()
-        .title("Request details")
-        .title(
-            Title::from(format!(
-                "{} of {}",
-                app.selected_request_header_index + 1,
-                maybe_selected_item.unwrap().request_headers.len()
-            ))
-            .position(Position::Bottom)
-            .alignment(Alignment::Right),
-        )
-        .style(
-            Style::default().fg(if active_block == ActiveBlock::RequestDetails {
-                Color::White
-            } else {
-                Color::DarkGray
-            }),
-        )
-        .border_type(BorderType::Plain)
-        .borders(Borders::ALL);
+            match app.request_details_block {
+                RequestDetailsPane::Query => {
+                    frame.render_widget(table, inner_layout[1]);
+                }
+                RequestDetailsPane::Headers => {
+                    render_headers(app, frame, inner_layout[1], HeaderType::Request);
 
-    frame.render_widget(main, area);
-    frame.render_widget(tabs, inner_layout[0]);
+                    let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
-    match app.request_details_block {
-        RequestDetailsPane::Query => {
-            frame.render_widget(table, inner_layout[1]);
-        }
-        RequestDetailsPane::Headers => {
-            render_headers(app, frame, inner_layout[1], HeaderType::Request);
+                    let trace = get_currently_selected_trace(app);
 
-            let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+                    let content_length = trace.unwrap().response_headers.len() as u16;
 
-            let trace = get_currently_selected_trace(app);
+                    let viewport_height =
+                        area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
 
-            let content_length = trace.unwrap().response_headers.len() as u16;
-
-            let viewport_height = area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
-
-            if content_length > viewport_height {
-                frame.render_stateful_widget(
-                    vertical_scroll,
-                    area.inner(&Margin {
-                        horizontal: 0,
-                        vertical: 2,
-                    }),
-                    &mut app.request_details.scroll_state,
-                );
+                    if content_length > viewport_height {
+                        frame.render_stateful_widget(
+                            vertical_scroll,
+                            area.inner(&Margin {
+                                horizontal: 0,
+                                vertical: 2,
+                            }),
+                            &mut app.request_details.scroll_state,
+                        );
+                    }
+                }
             }
         }
-    }
+        None => (),
+    };
 }
 
 pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
@@ -776,15 +783,23 @@ pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>)
 }
 
 pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let ws_status = match app.ws_server_state {
-        crate::app::WsServerState::Open => "🟠 Waiting for connection".to_string(),
-        crate::app::WsServerState::Closed => "⭕ Server closed".to_string(),
-        crate::app::WsServerState::HasConnections(1) => {
-            format!("🟢 {:?} client connected", 1)
+    let ws_status = if app.collector_server.is_open() {
+        if app
+            .collector_server
+            .get_connections()
+            .checked_sub(1)
+            .is_some()
+            && app.collector_server.get_connections() - 1 > 0
+        {
+            format!(
+                "🟢 {:?} clients connected",
+                app.collector_server.get_connections()
+            )
+        } else {
+            "🟠 Waiting for connection".to_string()
         }
-        crate::app::WsServerState::HasConnections(clients) => {
-            format!("🟢 {:?} clients connected", clients)
-        }
+    } else {
+        "⭕ Server closed".to_string()
     };
 
     let general_status = match &app.status_message {
@@ -889,6 +904,8 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 KeyMap::GoToEnd => "Move to bottom of section",
                 KeyMap::GoToStart => "Move to top of section",
                 KeyMap::Search => "Search",
+                KeyMap::StartWebSocketServer => "Start the Collector Server",
+                KeyMap::StopWebSocketServer => "Stop the Collector Server",
             };
             let joiner = ':';
             let mut description = String::from(description);
@@ -935,7 +952,7 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 .title("Key Mappings")
                 .border_type(BorderType::Plain),
         )
-        .widths(&[Constraint::Percentage(20), Constraint::Percentage(80)])
+        .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
         .column_spacing(10);
 
     frame.render_widget(list, area);

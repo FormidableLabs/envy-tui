@@ -8,9 +8,7 @@ mod render;
 mod utils;
 mod wss;
 
-use std::collections::HashMap;
 use std::io;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{error::Error, io::Stdout};
@@ -24,11 +22,9 @@ use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use ratatui::terminal::Terminal;
 
-use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tungstenite::Message;
 
-use app::{App, AppDispatch, WsServerState};
+use app::{App, AppDispatch};
 use handlers::{
     handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
     handle_pane_prev, handle_right, handle_search, handle_tab, handle_up, handle_yank,
@@ -37,9 +33,6 @@ use render::{
     render_footer, render_help, render_request_block, render_request_body, render_request_summary,
     render_response_block, render_search, render_traces,
 };
-use utils::UIDispatchEvent;
-
-use wss::handle_connection;
 
 use self::app::Mode;
 use self::handlers::{handle_delete_item, handle_go_to_end, handle_go_to_start, HandlerMetadata};
@@ -51,9 +44,6 @@ use self::mock::{
 use self::parser::parse_raw_trace;
 use self::render::{render_debug, render_response_body};
 use self::utils::set_content_length;
-
-type Tx = UnboundedSender<Message>;
-type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
 
 async fn insert_mock_data(app_raw: &Arc<Mutex<App>>) {
     let mut app = app_raw.lock().await;
@@ -81,11 +71,13 @@ async fn insert_mock_data(app_raw: &Arc<Mutex<App>>) {
     .iter()
     .map(|raw_json_string| parse_raw_trace(raw_json_string))
     .for_each(|x| match x {
-        Ok(v) => {
-            app.items.insert(v);
+        Ok(v) => match v {
+            parser::Payload::Trace(trace) => {
+                app.items.insert(trace);
+            }
 
-            app.logs.push(String::from("Parsing successful."));
-        }
+            _ => {}
+        },
         Err(err) => app.logs.push(format!(
             "Something went wrong while parsing and inserting to the Tree, {:?}",
             err
@@ -97,17 +89,21 @@ pub enum TraceTimeoutPayload {
     MarkForTimeout(String),
 }
 
+pub struct WebSocketClientState {
+    open: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
 
     let app = Arc::new(Mutex::new(App::new()));
 
+    let ui_client = Arc::new(Mutex::new(WebSocketClientState { open: false }));
+
     let (tx, mut rx) = unbounded::<AppDispatch>();
 
     let app_for_ui = app.clone();
-
-    let app_for_ws_server = app.clone();
 
     insert_mock_data(&app).await;
 
@@ -116,36 +112,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let ws_client_sender = tx.clone();
 
     if mode == Mode::Normal {
-        start_ws_server(app_for_ws_server).await;
+        app.lock().await.collector_server.start().await;
 
         start_ws_client(app, ws_client_sender);
+        ui_client.lock().await.open = true;
     }
 
     terminal.clear()?;
 
-    let _ = run(&mut terminal, &app_for_ui, &mut rx, tx).await;
+    let _ = run(&mut terminal, &app_for_ui, &mut rx, tx, ui_client.clone()).await;
 
     restore_terminal(&mut terminal)?;
     Ok(())
-}
-
-async fn start_ws_server(app: Arc<Mutex<App>>) {
-    let state = PeerMap::new(std::sync::Mutex::new(HashMap::new()));
-
-    let addr = "127.0.0.1:9999";
-
-    let try_socket = TcpListener::bind(addr).await;
-    let listener = try_socket.expect("Failed to bind");
-
-    app.lock().await.ws_server_state = WsServerState::Open;
-
-    tokio::spawn(async move {
-        while let Ok((stream, addr)) = listener.accept().await {
-            tokio::spawn(handle_connection(state.clone(), stream, addr, app.clone()));
-        }
-
-        ()
-    });
 }
 
 fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
@@ -176,6 +154,7 @@ async fn run(
     app_raw: &Arc<Mutex<App>>,
     receiver: &mut UnboundedReceiver<AppDispatch>,
     sender: UnboundedSender<AppDispatch>,
+    ui_client: Arc<Mutex<WebSocketClientState>>,
 ) -> Result<(), Box<dyn Error>> {
     let mut network_requests_height = 0;
 
@@ -325,7 +304,9 @@ async fn run(
                     AppDispatch::MarkTraceAsTimedOut(id) => {
                         app.dispatch(AppDispatch::MarkTraceAsTimedOut(id))
                     }
-                    AppDispatch::ClearStatusMessage => app.status_message = None,
+                    AppDispatch::ClearStatusMessage => {
+                        app.status_message = None;
+                    }
                 },
                 None => {}
             },
@@ -369,6 +350,24 @@ async fn run(
                             }
                         },
                         KeyCode::Tab => handle_tab(&mut app, key),
+                        KeyCode::Char('x') => {
+                            let collector_server = &mut app.collector_server;
+
+                            let _ = collector_server.stop().await;
+
+                            ui_client.lock().await.open = false;
+                        }
+                        KeyCode::Char('X') => {
+                            let cloned_app_state = app_raw.clone();
+
+                            app.collector_server.start().await;
+
+                            if !ui_client.lock().await.open {
+                                start_ws_client(cloned_app_state, loop_bounded_sender.clone());
+
+                                ui_client.lock().await.open = true;
+                            }
+                        }
                         KeyCode::Char('?') => {
                             app.previous_block = Some(app.active_block);
 

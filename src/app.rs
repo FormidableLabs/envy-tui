@@ -4,7 +4,9 @@ use std::hash::{Hash, Hasher};
 
 use crossterm::event::KeyCode;
 use ratatui::widgets::ScrollbarState;
-use tokio::task::{AbortHandle, JoinHandle};
+use tokio::task::AbortHandle;
+
+use crate::wss::WebSocket;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum RequestDetailsPane {
@@ -36,13 +38,6 @@ pub enum ActiveBlock {
     Debug,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum WsServerState {
-    Closed,
-    Open,
-    HasConnections(usize),
-}
-
 #[derive(Clone, Debug)]
 pub struct Trace {
     pub id: String,
@@ -62,6 +57,7 @@ pub struct Trace {
     pub pretty_request_body_lines: Option<usize>,
     pub http_version: Option<http::Version>,
     pub raw: String,
+    pub port: Option<String>,
 }
 
 impl PartialEq<Trace> for Trace {
@@ -113,6 +109,8 @@ pub enum KeyMap {
     PreviousSection,
     Search,
     Quit,
+    StopWebSocketServer,
+    StartWebSocketServer,
 }
 
 impl Display for KeyMap {
@@ -148,7 +146,6 @@ pub struct App {
     pub selected_request_header_index: usize,
     pub selected_response_header_index: usize,
     pub selected_params_index: usize,
-    pub ws_server_state: WsServerState,
     pub status_message: Option<String>,
     pub abort_handlers: Vec<AbortHandle>,
     pub search_query: String,
@@ -161,6 +158,7 @@ pub struct App {
     pub logs: Vec<String>,
     pub mode: Mode,
     pub key_map: HashMap<KeyMap, Vec<KeyCode>>,
+    pub collector_server: WebSocket,
 }
 
 pub struct KeyEntry {
@@ -211,9 +209,12 @@ impl App {
             (KeyMap::PreviousSection, vec![KeyCode::BackTab]),
             (KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]),
             (KeyMap::Search, vec![KeyCode::Char('/')]),
+            (KeyMap::StopWebSocketServer, vec![KeyCode::Char('x')]),
+            (KeyMap::StartWebSocketServer, vec![KeyCode::Char('X')]),
         ]);
 
         App {
+            collector_server: WebSocket::new(),
             key_map: keys,
             mode: Mode::Normal,
             logs: vec![],
@@ -225,7 +226,6 @@ impl App {
             selected_request_header_index: 0,
             selected_response_header_index: 0,
             items: BTreeSet::new(),
-            ws_server_state: WsServerState::Closed,
             status_message: None,
             abort_handlers: vec![],
             previous_block: None,
