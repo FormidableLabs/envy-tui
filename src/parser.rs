@@ -3,11 +3,23 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use http::HeaderMap;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use regex::Regex;
 
 use crate::app::{State, Trace};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct HTTPTimings {
+    blocked: f32,
+    dns: f32,
+    connect: f32,
+    send: f32,
+    wait: f32,
+    receive: f32,
+    ssl: f32,
+}
 
 pub fn populate_header_map(raw_headers: &Map<String, Value>, map: &mut HeaderMap) {
     raw_headers.iter().for_each(|(key, value)| {
@@ -165,6 +177,8 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
                 _ => Err("".to_string()),
             }
             .ok();
+
+            let timings = serde_json::from_value::<HTTPTimings>(http["timings"].clone()).ok();
 
             let mut request = Trace {
                 port,
