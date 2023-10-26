@@ -18,7 +18,7 @@ use crossterm::event::KeyCode;
 
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use ratatui::layout::Layout;
-use ratatui::prelude::{Constraint, Direction};
+use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 
 use tokio::{net::TcpListener, sync::Mutex};
 use tungstenite::Message;
@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         start_ws_client(app, ws_client_sender);
     }
 
-    let _ = run(&app_for_ui, &mut rx, tx).await;
+    run(&app_for_ui, &mut rx, tx).await?;
 
     Ok(())
 }
@@ -145,155 +145,230 @@ fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
     });
 }
 
+fn update(
+    app: &mut App,
+    event: Option<tui::Event>,
+    sender: UnboundedSender<AppDispatch>,
+) {
+    match event {
+        Some(tui::Event::Key(key)) => {
+            let metadata = HandlerMetadata {
+                main_height: app.main.height,
+                response_body_rectangle_height: app.response_body.height,
+                response_body_rectangle_width: app.response_body.width,
+                request_body_rectangle_height: app.request_body.height,
+                request_body_rectangle_width: app.request_body.width,
+            };
+            if app.active_block == app::ActiveBlock::SearchQuery {
+                handle_search(app, key);
+            } else {
+                match key.code {
+                    KeyCode::Char('q') => match app.active_block {
+                        app::ActiveBlock::Help | app::ActiveBlock::Debug => {
+                            app.active_block =
+                                app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
+
+                            app.previous_block = None;
+                        }
+                        _ => app.should_quit = true,
+                    },
+                    KeyCode::Tab => handle_tab(app, key),
+                    KeyCode::Char('?') => {
+                        app.previous_block = Some(app.active_block);
+
+                        app.active_block = app::ActiveBlock::Help;
+                    }
+                    KeyCode::Char('p') => {
+                        app.previous_block = Some(app.active_block);
+
+                        app.active_block = app::ActiveBlock::Debug;
+                    }
+                    KeyCode::Char('d') => handle_delete_item(app, key),
+                    KeyCode::Char('y') => handle_yank(app, key, sender),
+                    KeyCode::Char('>') => handle_go_to_end(app, key, metadata),
+                    KeyCode::Char('<') => handle_go_to_start(app, key, metadata),
+                    KeyCode::BackTab => handle_back_tab(app, key),
+                    KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(app, key),
+                    KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(app, key),
+                    KeyCode::Char('/') => handle_search(app, key),
+                    KeyCode::Enter => handle_enter(app, key),
+                    KeyCode::Esc => handle_esc(app, key),
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        handle_up(app, key, metadata);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        handle_down(app, key, metadata);
+                    }
+                    KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
+                        handle_left(app, key, metadata);
+                    }
+                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => {
+                        handle_right(app, key, metadata);
+                    }
+                    _ => {}
+                }
+            }
+        },
+        _ => {}
+    }
+}
+
+pub type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stdout>>;
+
+fn render(
+    frame: &mut Frame<'_>,
+    app: &mut App,
+) {
+    match app.active_block {
+        app::ActiveBlock::Help => {
+            let main_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(3)
+                .constraints([Constraint::Percentage(100)].as_ref())
+                .split(frame.size());
+
+            render_help(app, frame, main_layout[0]);
+        }
+        app::ActiveBlock::Debug => {
+            let main_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(3)
+                .constraints([Constraint::Percentage(100)].as_ref())
+                .split(frame.size());
+
+            render_debug(app, frame, main_layout[0]);
+        }
+        _ => {
+            let terminal_width = frame.size().width;
+
+            if terminal_width > 200 {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(1)
+                    .constraints([Constraint::Percentage(95), Constraint::Length(3)].as_ref())
+                    .split(frame.size());
+
+                let split_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(
+                        [Constraint::Percentage(30), Constraint::Percentage(70)].as_ref(),
+                    )
+                    .split(main_layout[0]);
+
+                let details_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints(
+                        [
+                            Constraint::Length(3),
+                            Constraint::Percentage(45),
+                            Constraint::Percentage(45),
+                        ]
+                        .as_ref(),
+                    )
+                    .split(split_layout[1]);
+
+                let request_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(
+                        [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                    )
+                    .split(details_layout[1]);
+
+                let response_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(
+                        [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                    )
+                    .split(details_layout[2]);
+
+                render_request_block(app, frame, request_layout[0]);
+                render_request_body(app, frame, request_layout[1]);
+                render_traces(app, frame, split_layout[0]);
+
+                render_request_summary(app, frame, details_layout[0]);
+                render_response_block(app, frame, response_layout[0]);
+                render_response_body(app, frame, response_layout[1]);
+
+                render_footer(app, frame, main_layout[1]);
+
+                render_search(app, frame);
+
+                app.response_body.height = response_layout[1].height;
+                app.response_body.width = response_layout[1].width;
+                app.main.height = split_layout[0].height;
+            } else {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(1)
+                    .constraints(
+                        [
+                            Constraint::Percentage(30),
+                            Constraint::Min(3),
+                            Constraint::Percentage(30),
+                            Constraint::Percentage(30),
+                            Constraint::Min(3),
+                        ]
+                        .as_ref(),
+                    )
+                    .split(frame.size());
+
+                let request_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(
+                        [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                    )
+                    .split(main_layout[2]);
+
+                let response_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints(
+                        [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                    )
+                    .split(main_layout[3]);
+
+                render_request_block(app, frame, request_layout[0]);
+                render_request_body(app, frame, request_layout[1]);
+                render_traces(app, frame, main_layout[0]);
+
+                render_request_summary(app, frame, main_layout[1]);
+                render_response_block(app, frame, response_layout[0]);
+                render_response_body(app, frame, response_layout[1]);
+
+                render_search(app, frame);
+                render_footer(app, frame, main_layout[4]);
+
+                app.response_body.height = response_layout[1].height;
+                app.response_body.width = response_layout[1].width;
+
+                app.request_body.height = request_layout[1].height;
+                app.request_body.width = request_layout[1].width;
+
+                app.main.height = main_layout[0].height;
+            }
+        }
+    };
+}
+
 async fn run(
     app_raw: &Arc<Mutex<App>>,
     receiver: &mut UnboundedReceiver<AppDispatch>,
     sender: UnboundedSender<AppDispatch>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut network_requests_height = 0;
-
-    let mut response_body_requests_height = 0;
-    let mut response_body_requests_width = 0;
-
-    let mut request_body_requests_height = 0;
-    let mut request_body_requests_width = 0;
-
-    let mut events = tui::Tui::new();
-    events.enter()?;
+    let mut t = tui::Tui::new();
+    t.enter()?;
 
     loop {
         let mut app = app_raw.lock().await;
 
         let loop_bounded_sender = sender.clone();
 
-        events.terminal.draw(|frame| match app.active_block {
-            app::ActiveBlock::Help => {
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(3)
-                    .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+        let event = t.next().await;
 
-                render_help(&mut app, frame, main_layout[0]);
-            }
-            app::ActiveBlock::Debug => {
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(3)
-                    .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
-
-                render_debug(&mut app, frame, main_layout[0]);
-            }
-            _ => {
-                let terminal_width = frame.size().width;
-
-                if terminal_width > 200 {
-                    let main_layout = Layout::default()
-                        .direction(Direction::Vertical)
-                        .margin(1)
-                        .constraints([Constraint::Percentage(95), Constraint::Length(3)].as_ref())
-                        .split(frame.size());
-
-                    let split_layout = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints(
-                            [Constraint::Percentage(30), Constraint::Percentage(70)].as_ref(),
-                        )
-                        .split(main_layout[0]);
-
-                    let details_layout = Layout::default()
-                        .direction(Direction::Vertical)
-                        .constraints(
-                            [
-                                Constraint::Length(3),
-                                Constraint::Percentage(45),
-                                Constraint::Percentage(45),
-                            ]
-                            .as_ref(),
-                        )
-                        .split(split_layout[1]);
-
-                    let request_layout = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints(
-                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
-                        )
-                        .split(details_layout[1]);
-
-                    let response_layout = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints(
-                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
-                        )
-                        .split(details_layout[2]);
-
-                    render_request_block(&mut app, frame, request_layout[0]);
-                    render_request_body(&mut app, frame, request_layout[1]);
-                    render_traces(&mut app, frame, split_layout[0]);
-
-                    render_request_summary(&mut app, frame, details_layout[0]);
-                    render_response_block(&mut app, frame, response_layout[0]);
-                    render_response_body(&mut app, frame, response_layout[1]);
-
-                    render_footer(&mut app, frame, main_layout[1]);
-
-                    render_search(&mut app, frame);
-
-                    response_body_requests_height = response_layout[1].height;
-                    response_body_requests_width = response_layout[1].width;
-                    network_requests_height = split_layout[0].height;
-                } else {
-                    let main_layout = Layout::default()
-                        .direction(Direction::Vertical)
-                        .margin(1)
-                        .constraints(
-                            [
-                                Constraint::Percentage(30),
-                                Constraint::Min(3),
-                                Constraint::Percentage(30),
-                                Constraint::Percentage(30),
-                                Constraint::Min(3),
-                            ]
-                            .as_ref(),
-                        )
-                        .split(frame.size());
-
-                    let request_layout = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints(
-                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
-                        )
-                        .split(main_layout[2]);
-
-                    let response_layout = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints(
-                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
-                        )
-                        .split(main_layout[3]);
-
-                    render_request_block(&mut app, frame, request_layout[0]);
-                    render_request_body(&mut app, frame, request_layout[1]);
-                    render_traces(&mut app, frame, main_layout[0]);
-
-                    render_request_summary(&mut app, frame, main_layout[1]);
-                    render_response_block(&mut app, frame, response_layout[0]);
-                    render_response_body(&mut app, frame, response_layout[1]);
-
-                    render_search(&mut app, frame);
-                    render_footer(&mut app, frame, main_layout[4]);
-
-                    response_body_requests_height = response_layout[1].height;
-                    response_body_requests_width = response_layout[1].width;
-
-                    request_body_requests_height = request_layout[1].height;
-                    request_body_requests_width = request_layout[1].width;
-
-                    network_requests_height = main_layout[0].height;
-                }
-            }
-        })?;
+        if let Some(tui::Event::Render) = event.clone() {
+            t.terminal.draw(|frame| {
+                render(frame, &mut app);
+            })?;
+        };
 
         match receiver.try_next() {
             Ok(value) => match value {
@@ -320,73 +395,14 @@ async fn run(
             app.is_first_render = false;
         }
 
-        let event = events.next().await;
-        match event {
-            Some(tui::Event::Key(key)) => {
-                let metadata = HandlerMetadata {
-                    main_height: network_requests_height,
-                    response_body_rectangle_height: response_body_requests_height,
-                    response_body_rectangle_width: response_body_requests_width,
-                    request_body_rectangle_width: request_body_requests_width,
-                    request_body_rectangle_height: request_body_requests_height,
-                };
-                if app.active_block == app::ActiveBlock::SearchQuery {
-                    handle_search(&mut app, key);
-                } else {
-                    match key.code {
-                        KeyCode::Char('q') => match app.active_block {
-                            app::ActiveBlock::Help | app::ActiveBlock::Debug => {
-                                app.active_block =
-                                    app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
+        update(&mut app, event, loop_bounded_sender);
 
-                                app.previous_block = None;
-                            }
-                            _ => {
-                                break;
-                            }
-                        },
-                        KeyCode::Tab => handle_tab(&mut app, key),
-                        KeyCode::Char('?') => {
-                            app.previous_block = Some(app.active_block);
-
-                            app.active_block = app::ActiveBlock::Help;
-                        }
-                        KeyCode::Char('p') => {
-                            app.previous_block = Some(app.active_block);
-
-                            app.active_block = app::ActiveBlock::Debug;
-                        }
-                        KeyCode::Char('d') => handle_delete_item(&mut app, key),
-                        KeyCode::Char('y') => handle_yank(&mut app, key, loop_bounded_sender),
-                        KeyCode::Char('>') => handle_go_to_end(&mut app, key, metadata),
-                        KeyCode::Char('<') => handle_go_to_start(&mut app, key, metadata),
-                        KeyCode::BackTab => handle_back_tab(&mut app, key),
-                        KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(&mut app, key),
-                        KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(&mut app, key),
-                        KeyCode::Char('/') => handle_search(&mut app, key),
-                        KeyCode::Enter => handle_enter(&mut app, key),
-                        KeyCode::Esc => handle_esc(&mut app, key),
-                        KeyCode::Up | KeyCode::Char('k') => {
-                            handle_up(&mut app, key, metadata);
-                        }
-                        KeyCode::Down | KeyCode::Char('j') => {
-                            handle_down(&mut app, key, metadata);
-                        }
-                        KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
-                            handle_left(&mut app, key, metadata);
-                        }
-                        KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => {
-                            handle_right(&mut app, key, metadata);
-                        }
-                        _ => {}
-                    }
-                }
-            },
-            _ => {}
+        if app.should_quit {
+            break;
         }
     }
 
-    events.exit()?;
+    t.exit()?;
 
     Ok(())
 }

@@ -125,6 +125,8 @@ impl Display for KeyMap {
 pub struct UIState {
     pub index: usize,
     pub offset: usize,
+    pub height: u16,
+    pub width: u16,
     pub horizontal_offset: usize,
     pub scroll_state: ScrollbarState,
     pub horizontal_scroll_state: ScrollbarState,
@@ -162,6 +164,7 @@ pub struct App {
     pub logs: Vec<String>,
     pub mode: Mode,
     pub key_map: HashMap<KeyMap, Vec<KeyCode>>,
+    pub should_quit: bool,
 }
 
 pub struct KeyEntry {
@@ -235,6 +238,8 @@ impl App {
             main: UIState {
                 offset: 0,
                 index: 0,
+                height: 0,
+                width: 0,
                 horizontal_offset: 0,
                 scroll_state: ScrollbarState::default(),
                 horizontal_scroll_state: ScrollbarState::default(),
@@ -242,6 +247,8 @@ impl App {
             response_body: UIState {
                 offset: 0,
                 index: 0,
+                height: 0,
+                width: 0,
                 horizontal_offset: 0,
                 scroll_state: ScrollbarState::default(),
                 horizontal_scroll_state: ScrollbarState::default(),
@@ -249,6 +256,8 @@ impl App {
             request_details: UIState {
                 offset: 0,
                 index: 0,
+                height: 0,
+                width: 0,
                 horizontal_offset: 0,
                 scroll_state: ScrollbarState::default(),
                 horizontal_scroll_state: ScrollbarState::default(),
@@ -256,6 +265,8 @@ impl App {
             response_details: UIState {
                 offset: 0,
                 index: 0,
+                height: 0,
+                width: 0,
                 horizontal_offset: 0,
                 scroll_state: ScrollbarState::default(),
                 horizontal_scroll_state: ScrollbarState::default(),
@@ -263,10 +274,13 @@ impl App {
             request_body: UIState {
                 offset: 0,
                 index: 0,
+                height: 0,
+                width: 0,
                 horizontal_offset: 0,
                 scroll_state: ScrollbarState::default(),
                 horizontal_scroll_state: ScrollbarState::default(),
             },
+            should_quit: false,
         }
     }
 }

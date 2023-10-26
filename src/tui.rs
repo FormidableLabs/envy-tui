@@ -57,11 +57,11 @@ impl Tui {
 
         self.task = tokio::spawn(async move {
             let mut reader = crossterm::event::EventStream::new();
-            let mut interval = tokio::time::interval(tick_delay);
+            let mut tick_interval = tokio::time::interval(tick_delay);
             let mut render_interval = tokio::time::interval(render_delay);
 
             loop {
-                let delay = interval.tick();
+                let tick_delay = tick_interval.tick();
                 let render_delay = render_interval.tick();
                 let crossterm_event = reader.next().fuse();
                 tokio::select! {
@@ -83,7 +83,7 @@ impl Tui {
                             None => {},
                         }
                     },
-                    _ = delay => {
+                    _ = tick_delay => {
                         _tx.send(Event::Tick).unwrap();
                     },
                     _ = render_delay => {
