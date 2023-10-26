@@ -1,3 +1,4 @@
+mod action;
 mod app;
 mod config;
 mod consts;
@@ -23,10 +24,11 @@ use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 use tokio::{net::TcpListener, sync::Mutex};
 use tungstenite::Message;
 
+use action::Action;
 use app::{App, AppDispatch, WsServerState};
 use handlers::{
     handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
-    handle_pane_prev, handle_right, handle_search, handle_tab, handle_up, handle_yank,
+    handle_pane_prev, handle_right, handle_tab, handle_up, handle_yank,
 };
 use render::{
     render_footer, render_help, render_request_block, render_request_body, render_request_summary,
@@ -145,71 +147,88 @@ fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
     });
 }
 
-fn update(
-    app: &mut App,
-    event: Option<tui::Event>,
-    sender: UnboundedSender<AppDispatch>,
-) {
+fn map_event(app: &mut App, event: Option<tui::Event>) -> Result<Option<action::Action>, Box<dyn Error>> {
     match event {
         Some(tui::Event::Key(key)) => {
-            let metadata = HandlerMetadata {
-                main_height: app.main.height,
-                response_body_rectangle_height: app.response_body.height,
-                response_body_rectangle_width: app.response_body.width,
-                request_body_rectangle_height: app.request_body.height,
-                request_body_rectangle_width: app.request_body.width,
-            };
+            // TODO: handle multiple modes (like for search)
             if app.active_block == app::ActiveBlock::SearchQuery {
-                handle_search(app, key);
-            } else {
                 match key.code {
-                    KeyCode::Char('q') => match app.active_block {
-                        app::ActiveBlock::Help | app::ActiveBlock::Debug => {
-                            app.active_block =
-                                app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
-
-                            app.previous_block = None;
-                        }
-                        _ => app.should_quit = true,
-                    },
-                    KeyCode::Tab => handle_tab(app, key),
-                    KeyCode::Char('?') => {
-                        app.previous_block = Some(app.active_block);
-
-                        app.active_block = app::ActiveBlock::Help;
-                    }
-                    KeyCode::Char('p') => {
-                        app.previous_block = Some(app.active_block);
-
-                        app.active_block = app::ActiveBlock::Debug;
-                    }
-                    KeyCode::Char('d') => handle_delete_item(app, key),
-                    KeyCode::Char('y') => handle_yank(app, key, sender),
-                    KeyCode::Char('>') => handle_go_to_end(app, key, metadata),
-                    KeyCode::Char('<') => handle_go_to_start(app, key, metadata),
-                    KeyCode::BackTab => handle_back_tab(app, key),
-                    KeyCode::Char(']') | KeyCode::PageUp => handle_pane_next(app, key),
-                    KeyCode::Char('[') | KeyCode::PageDown => handle_pane_prev(app, key),
-                    KeyCode::Char('/') => handle_search(app, key),
-                    KeyCode::Enter => handle_enter(app, key),
-                    KeyCode::Esc => handle_esc(app, key),
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        handle_up(app, key, metadata);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        handle_down(app, key, metadata);
-                    }
-                    KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
-                        handle_left(app, key, metadata);
-                    }
-                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => {
-                        handle_right(app, key, metadata);
-                    }
-                    _ => {}
+                    KeyCode::Enter | KeyCode::Esc => return Ok(Some(action::Action::ExitSearch)),
+                    KeyCode::Backspace => return Ok(Some(action::Action::DeleteSearchQuery)),
+                    KeyCode::Char(char) => return Ok(Some(action::Action::UpdateSearchQuery(char))),
+                    _ => return Ok(None),
                 }
             }
+            let action = match key.code {
+                KeyCode::Char('q') => action::Action::Quit,
+                KeyCode::Char('?') => action::Action::Help,
+                KeyCode::Char('p') => action::Action::ToggleDebug,
+                KeyCode::Char('d') => action::Action::DeleteItem,
+                KeyCode::Char('y') => action::Action::CopyToClipBoard,
+                KeyCode::Char('>') => action::Action::GoToEnd,
+                KeyCode::Char('<') => action::Action::GoToStart,
+                KeyCode::Tab => action::Action::NextSection,
+                KeyCode::BackTab => action::Action::PreviousSection,
+                KeyCode::Char(']') | KeyCode::PageUp => action::Action::NextPane,
+                KeyCode::Char('[') | KeyCode::PageDown => action::Action::PreviousPane,
+                KeyCode::Char('/') => action::Action::NewSearch,
+                KeyCode::Enter => action::Action::ShowTraceDetails,
+                KeyCode::Esc => action::Action::FocusOnTraces,
+                KeyCode::Up | KeyCode::Char('k') => action::Action::NavigateUp(key),
+                KeyCode::Down | KeyCode::Char('j') => action::Action::NavigateDown(key),
+                KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => action::Action::NavigateLeft(key),
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => action::Action::NavigateRight(key),
+                _ => return Ok(None),
+            };
+            return Ok(Some(action));
         },
-        _ => {}
+        _ => Ok(None),
+    }
+}
+
+fn update(
+    app: &mut App,
+    action: Option<action::Action>,
+    sender: UnboundedSender<AppDispatch>,
+) {
+    let metadata = HandlerMetadata {
+        main_height: app.main.height,
+        response_body_rectangle_height: app.response_body.height,
+        response_body_rectangle_width: app.response_body.width,
+        request_body_rectangle_height: app.request_body.height,
+        request_body_rectangle_width: app.request_body.width,
+    };
+    match action {
+        Some(action::Action::Quit) => match app.active_block {
+            app::ActiveBlock::Help | app::ActiveBlock::Debug => {
+                app.active_block =
+                    app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
+
+                app.previous_block = None;
+            }
+            _ => app.should_quit = true,
+        },
+        Some(Action::NextSection) => handle_tab(app),
+        Some(Action::Help) => handlers::handle_help(app),
+        Some(Action::ToggleDebug) => handlers::handle_debug(app),
+        Some(Action::DeleteItem) => handle_delete_item(app),
+        Some(Action::CopyToClipBoard) => handle_yank(app, sender),
+        Some(Action::GoToEnd) => handle_go_to_end(app, metadata),
+        Some(Action::GoToStart) => handle_go_to_start(app),
+        Some(Action::PreviousSection) => handle_back_tab(app),
+        Some(Action::NextPane) => handle_pane_next(app),
+        Some(Action::PreviousPane) => handle_pane_prev(app),
+        Some(Action::NewSearch) => handlers::handle_new_search(app),
+        Some(Action::UpdateSearchQuery(c)) => handlers::handle_search_push(app, c),
+        Some(Action::DeleteSearchQuery) => handlers::handle_search_pop(app),
+        Some(Action::ExitSearch) => handlers::handle_search_exit(app),
+        Some(Action::ShowTraceDetails) => handle_enter(app),
+        Some(Action::FocusOnTraces) => handle_esc(app),
+        Some(Action::NavigateUp(key)) => handle_up(app, key, metadata),
+        Some(Action::NavigateDown(key)) => handle_down(app, key, metadata),
+        Some(Action::NavigateLeft(key)) => handle_left(app, key, metadata),
+        Some(Action::NavigateRight(key)) => handle_right(app, key, metadata),
+        None => {},
     }
 }
 
@@ -395,7 +414,9 @@ async fn run(
             app.is_first_render = false;
         }
 
-        update(&mut app, event, loop_bounded_sender);
+        let action = map_event(&mut app, event)?;
+
+        update(&mut app, action, loop_bounded_sender);
 
         if app.should_quit {
             break;

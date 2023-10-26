@@ -196,6 +196,16 @@ fn handle_horizontal_request_body_scroll(app: &mut App, rect: usize, direction: 
     }
 }
 
+pub fn handle_debug(app: &mut App) {
+    app.previous_block = Some(app.active_block);
+    app.active_block = ActiveBlock::Debug;
+}
+
+pub fn handle_help(app: &mut App) {
+    app.previous_block = Some(app.active_block);
+    app.active_block = ActiveBlock::Help;
+}
+
 pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetadata) {
     match key.modifiers {
         KeyModifiers::CONTROL => match app.active_block {
@@ -601,37 +611,37 @@ pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
     };
 }
 
-pub fn handle_enter(app: &mut App, _key: KeyEvent) {
+pub fn handle_enter(app: &mut App) {
     if app.active_block == ActiveBlock::TracesBlock {
         app.active_block = ActiveBlock::RequestDetails
     }
 }
 
-pub fn handle_esc(app: &mut App, _key: KeyEvent) {
+pub fn handle_esc(app: &mut App) {
     app.active_block = ActiveBlock::TracesBlock
 }
 
-pub fn handle_search(app: &mut App, key: KeyEvent) {
-    match app.active_block {
-        ActiveBlock::SearchQuery => match key.code {
-            KeyCode::Backspace => {
-                app.search_query.pop();
-                if app.search_query.is_empty() {
-                    app.active_block = ActiveBlock::TracesBlock;
-                }
-            }
-            KeyCode::Enter | KeyCode::Esc => app.active_block = ActiveBlock::TracesBlock,
-            KeyCode::Char(c) => app.search_query.push(c),
-            _ => app.active_block = ActiveBlock::TracesBlock,
-        },
-        _ => {
-            app.search_query.clear();
-            app.active_block = ActiveBlock::SearchQuery;
-        }
+pub fn handle_new_search(app: &mut App) {
+    app.search_query.clear();
+    app.active_block = ActiveBlock::SearchQuery;
+}
+
+pub fn handle_search_push(app: &mut App, c: char) {
+    app.search_query.push(c);
+}
+
+pub fn handle_search_pop(app: &mut App) {
+    app.search_query.pop();
+    if app.search_query.is_empty() {
+        handle_search_exit(app);
     }
 }
 
-pub fn handle_tab(app: &mut App, _key: KeyEvent) {
+pub fn handle_search_exit(app: &mut App) {
+    app.active_block = ActiveBlock::TracesBlock
+}
+
+pub fn handle_tab(app: &mut App) {
     match app.active_block {
         ActiveBlock::TracesBlock => app.active_block = ActiveBlock::RequestSummary,
         ActiveBlock::RequestSummary => app.active_block = ActiveBlock::RequestDetails,
@@ -643,7 +653,7 @@ pub fn handle_tab(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_back_tab(app: &mut App, _key: KeyEvent) {
+pub fn handle_back_tab(app: &mut App) {
     match app.active_block {
         ActiveBlock::TracesBlock => app.active_block = ActiveBlock::ResponseBody,
         ActiveBlock::RequestSummary => app.active_block = ActiveBlock::TracesBlock,
@@ -655,7 +665,7 @@ pub fn handle_back_tab(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_pane_next(app: &mut App, _key: KeyEvent) {
+pub fn handle_pane_next(app: &mut App) {
     match (app.active_block, app.request_details_block) {
         (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
             app.request_details_block = RequestDetailsPane::Query
@@ -667,7 +677,7 @@ pub fn handle_pane_next(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
+pub fn handle_pane_prev(app: &mut App) {
     match (app.active_block, app.request_details_block) {
         (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
             app.request_details_block = RequestDetailsPane::Query
@@ -679,7 +689,7 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<AppDispatch>) {
+pub fn handle_yank(app: &mut App, loop_sender: UnboundedSender<AppDispatch>) {
     let trace = get_currently_selected_trace(app).unwrap();
 
     match app.active_block {
@@ -731,7 +741,7 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<A
     app.abort_handlers.push(thread_handler.abort_handle());
 }
 
-pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: HandlerMetadata) {
+pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
     match app.active_block {
         ActiveBlock::TracesBlock => {
             let number_of_lines: u16 = app.items.len().try_into().unwrap();
@@ -891,7 +901,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
     }
 }
 
-pub fn handle_go_to_start(app: &mut App, _key: KeyEvent, _additional_metadata: HandlerMetadata) {
+pub fn handle_go_to_start(app: &mut App) {
     match app.active_block {
         ActiveBlock::TracesBlock => {
             app.main.index = 0;
@@ -940,7 +950,7 @@ pub fn handle_go_to_start(app: &mut App, _key: KeyEvent, _additional_metadata: H
     }
 }
 
-pub fn handle_delete_item(app: &mut App, _key: KeyEvent) {
+pub fn handle_delete_item(app: &mut App) {
     let cloned_items = app.items.clone();
 
     let items_as_vector = cloned_items.iter().collect::<Vec<&Trace>>();
