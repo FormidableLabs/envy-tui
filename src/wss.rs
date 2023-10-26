@@ -187,7 +187,9 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
                             }
                         };
                     }
-                    tungstenite::Message::Close(_) => {}
+                    tungstenite::Message::Close(_) => {
+                        break;
+                    }
                     _ => {
                         panic!()
                     }
@@ -195,6 +197,7 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
             }
             Err(e) => {
                 app.lock().await.log(e.to_string());
+                break;
             }
         }
     }

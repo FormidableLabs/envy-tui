@@ -87,11 +87,17 @@ pub enum TraceTimeoutPayload {
     MarkForTimeout(String),
 }
 
+pub struct WebSocketClientState {
+    open: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = setup_terminal()?;
 
     let app = Arc::new(Mutex::new(App::new()));
+
+    let ui_client = Arc::new(Mutex::new(WebSocketClientState { open: false }));
 
     let (tx, mut rx) = unbounded::<AppDispatch>();
 
@@ -107,11 +113,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         app.lock().await.collector_server.start().await;
 
         start_ws_client(app, ws_client_sender);
+        ui_client.lock().await.open = true;
     }
 
     terminal.clear()?;
 
-    let _ = run(&mut terminal, &app_for_ui, &mut rx, tx).await;
+    let _ = run(&mut terminal, &app_for_ui, &mut rx, tx, ui_client.clone()).await;
 
     restore_terminal(&mut terminal)?;
     Ok(())
@@ -145,6 +152,7 @@ async fn run(
     app_raw: &Arc<Mutex<App>>,
     receiver: &mut UnboundedReceiver<AppDispatch>,
     sender: UnboundedSender<AppDispatch>,
+    ui_client: Arc<Mutex<WebSocketClientState>>,
 ) -> Result<(), Box<dyn Error>> {
     let mut network_requests_height = 0;
 
@@ -344,13 +352,19 @@ async fn run(
                             let collector_server = &mut app.collector_server;
 
                             let _ = collector_server.stop().await;
+
+                            ui_client.lock().await.open = false;
                         }
                         KeyCode::Char('X') => {
                             let cloned_app_state = app_raw.clone();
 
                             app.collector_server.start().await;
 
-                            start_ws_client(cloned_app_state, loop_bounded_sender.clone());
+                            if !ui_client.lock().await.open {
+                                start_ws_client(cloned_app_state, loop_bounded_sender.clone());
+
+                                ui_client.lock().await.open = true;
+                            }
                         }
                         KeyCode::Char('?') => {
                             app.previous_block = Some(app.active_block);

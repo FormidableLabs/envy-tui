@@ -784,7 +784,13 @@ pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>)
 
 pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let ws_status = if app.collector_server.is_open() {
-        if app.collector_server.get_connections() - 1 > 0 {
+        if app
+            .collector_server
+            .get_connections()
+            .checked_sub(1)
+            .is_some()
+            && app.collector_server.get_connections() - 1 > 0
+        {
             format!(
                 "🟢 {:?} clients connected",
                 app.collector_server.get_connections()
