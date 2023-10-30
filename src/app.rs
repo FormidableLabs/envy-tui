@@ -2,8 +2,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use ratatui::widgets::ScrollbarState;
+use serde::{Deserialize, Serialize};
 use tokio::task::AbortHandle;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -285,13 +286,13 @@ impl App {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Action {
     CopyToClipBoard,
-    NavigateLeft(crossterm::event::KeyEvent),
-    NavigateDown(crossterm::event::KeyEvent),
-    NavigateUp(crossterm::event::KeyEvent),
-    NavigateRight(crossterm::event::KeyEvent),
+    NavigateLeft(KeyEvent),
+    NavigateDown(KeyEvent),
+    NavigateUp(KeyEvent),
+    NavigateRight(KeyEvent),
     GoToEnd,
     GoToStart,
     NextSection,
@@ -344,19 +345,6 @@ impl App {
 
                 self.items.replace(selected_trace);
             };
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let app = App::new();
-        if 2 + 2 == 4 {
-            Ok(())
-        } else {
-            Err(String::from("two plus two does not equal four"))
         }
     }
 }
