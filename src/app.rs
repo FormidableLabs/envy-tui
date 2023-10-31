@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyEvent;
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
 use tokio::task::AbortHandle;
@@ -142,18 +142,16 @@ pub struct App {
     pub is_first_render: bool,
     pub logs: Vec<String>,
     pub mode: Mode,
-    pub key_map: Mapping,
+    pub key_map: HashMap<KeyEvent, Action>,
     pub should_quit: bool,
 }
-
-pub type Mapping = HashMap<KeyEvent, Action>;
 
 impl App {
     pub fn new() -> App {
         let config = crate::config::Config::new();
 
         App {
-            key_map: config.mapping,
+            key_map: config.mapping.0,
             mode: Mode::Normal,
             logs: vec![],
             is_first_render: true,

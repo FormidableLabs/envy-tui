@@ -1,0 +1,9 @@
+q: Quit
+">": GoToEnd
+<: GoToStart
+q: Quit
+Tab: NextSection
+BackTab: PreviousSection
+y: CopyToClipBoard
+/: NewSearch
+Esc: FocusOnTraces

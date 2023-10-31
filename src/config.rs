@@ -3,9 +3,30 @@ use std::error::Error;
 use std::fs;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use serde::Deserialize;
+use serde::{de::Deserializer, Deserialize};
 
-use crate::app::{Action, Mapping};
+use crate::app::Action;
+
+const CONFIG: &str = include_str!("../.config/config.yml");
+
+#[derive(Clone, Debug, Default)]
+pub struct Mapping(pub HashMap<KeyEvent, Action>);
+
+impl<'de> Deserialize<'de> for Mapping {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let parsed_map = HashMap::<String, Action>::deserialize(deserializer)?;
+
+        let keybindings = parsed_map
+            .into_iter()
+            .map(|(key_str, cmd)| (parse_key_event(&key_str).unwrap(), cmd))
+            .collect();
+
+        Ok(Mapping(keybindings))
+    }
+}
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Config {
@@ -13,22 +34,30 @@ pub struct Config {
     pub mapping: Mapping,
 }
 
+pub fn parse(contents: &str) -> Result<Mapping, Box<dyn Error>> {
+    let mapping = serde_yaml::from_str::<Mapping>(&contents)?;
+    Ok(mapping)
+}
+
 pub fn load(path: &str) -> Result<Mapping, Box<dyn Error>> {
     let abs_path = fs::canonicalize(path)?;
-    let file_contents = fs::read_to_string(abs_path)?;
-    let mapping = serde_yaml::from_str::<Mapping>(&file_contents)?;
-    Ok(mapping)
+    let contents = fs::read_to_string(abs_path)?;
+    parse(&contents)
 }
 
 impl Config {
     pub fn new() -> Config {
         let mut cfg = Config { mapping: default() };
-        let config_files = ["config.yaml", "config.yml"];
 
-        for file in &config_files {
+        match parse(CONFIG) {
+            Ok(right) => cfg.mapping.0.extend(right.0.into_iter()),
+            Err(e) => println!("failed to load default config: {}, err: {}", CONFIG, e),
+        }
+
+        for file in &["config.yaml", "config.yml"] {
             match load(file) {
-                Ok(right) => cfg.mapping.extend(right.into_iter()),
-                _ => {}
+                Ok(right) => cfg.mapping.0.extend(right.0.into_iter()),
+                Err(e) => println!("failed to load file: {}, err: {}", file, e),
             }
         }
 
@@ -36,8 +65,12 @@ impl Config {
     }
 }
 
+fn default_event(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, KeyModifiers::empty())
+}
+
 fn default() -> Mapping {
-    HashMap::from([
+    Mapping(HashMap::from([
         (
             default_event(KeyCode::Char('h')),
             Action::NavigateLeft(default_event(KeyCode::Char('h'))),
@@ -62,21 +95,7 @@ fn default() -> Mapping {
             default_event(KeyCode::Char('l')),
             Action::NavigateRight(default_event(KeyCode::Char('l'))),
         ),
-        (default_event(KeyCode::Char('>')), Action::GoToEnd),
-        (default_event(KeyCode::Char('K')), Action::GoToEnd),
-        (default_event(KeyCode::Char('<')), Action::GoToStart),
-        (default_event(KeyCode::Char('J')), Action::GoToStart),
-        (default_event(KeyCode::Char('q')), Action::Quit),
-        (default_event(KeyCode::Tab), Action::NextSection),
-        (default_event(KeyCode::BackTab), Action::PreviousSection),
-        (default_event(KeyCode::Char('y')), Action::CopyToClipBoard),
-        (default_event(KeyCode::Char('/')), Action::NewSearch),
-        (default_event(KeyCode::Esc), Action::FocusOnTraces),
-    ])
-}
-
-fn default_event(code: KeyCode) -> KeyEvent {
-    KeyEvent::new(code, KeyModifiers::empty())
+    ]))
 }
 
 fn parse_key_event(raw: &str) -> Result<KeyEvent, String> {
