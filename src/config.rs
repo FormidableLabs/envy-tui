@@ -1,15 +1,11 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::io::{Error as StdError, ErrorKind};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::Deserialize;
 
-use crate::app::Action;
-
-#[derive(Debug, Default, Deserialize)]
-pub struct Mapping(HashMap<KeyEvent, Action>);
+use crate::app::{Action, Mapping};
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Config {
@@ -25,23 +21,23 @@ pub fn load(path: &str) -> Result<Mapping, Box<dyn Error>> {
 }
 
 impl Config {
-    pub fn new() -> Result<Config, StdError> {
+    pub fn new() -> Config {
         let mut cfg = Config { mapping: default() };
         let config_files = ["config.yaml", "config.yml"];
 
         for file in &config_files {
             match load(file) {
-                Ok(right) => cfg.mapping.0.extend(right.0.into_iter()),
+                Ok(right) => cfg.mapping.extend(right.into_iter()),
                 _ => {}
             }
         }
 
-        Ok(cfg)
+        cfg
     }
 }
 
 fn default() -> Mapping {
-    Mapping(HashMap::from([
+    HashMap::from([
         (
             default_event(KeyCode::Char('h')),
             Action::NavigateLeft(default_event(KeyCode::Char('h'))),
@@ -76,7 +72,7 @@ fn default() -> Mapping {
         (default_event(KeyCode::Char('y')), Action::CopyToClipBoard),
         (default_event(KeyCode::Char('/')), Action::NewSearch),
         (default_event(KeyCode::Esc), Action::FocusOnTraces),
-    ]))
+    ])
 }
 
 fn default_event(code: KeyCode) -> KeyEvent {
@@ -148,6 +144,6 @@ mod tests {
         let c = Config::new();
         let k = &parse_key_event("q").unwrap();
 
-        assert_eq!(c.unwrap().mapping.0.get(k).unwrap(), &Action::Quit);
+        assert_eq!(c.mapping.get(k).unwrap(), &Action::Quit);
     }
 }

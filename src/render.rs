@@ -1,5 +1,5 @@
 use core::str::FromStr;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use regex::Regex;
 use std::io::Stdout;
 use std::ops::Deref;
@@ -16,7 +16,7 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::app::{ActiveBlock, App, KeyEntry, KeyMap, RequestDetailsPane, Trace, UIState};
+use crate::app::{Action, ActiveBlock, App, RequestDetailsPane, Trace, UIState};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -862,63 +862,80 @@ pub fn render_request_summary(
 }
 
 pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let mut entry_list: Vec<KeyEntry> = app
-        .key_map
-        .clone()
-        .into_iter()
-        .map(|(key_map, key_codes)| KeyEntry { key_map, key_codes })
+    let mut entry_list: Vec<(KeyEvent, Action)> = vec![];
+    for (k, v) in app.key_map.iter() {
+        entry_list.push((k.clone(), v.clone()));
+    }
+
+    let key_mappings: Vec<(String, String)> = entry_list
+        .iter()
+        .map(|(key_event, action)| {
+            let description_str = match action {
+                Action::CopyToClipBoard => "Copy selection to OS clipboard",
+                Action::FocusOnTraces => "Focus on traces section OR exit current window",
+                Action::NavigateUp(_) => "Move up and select an entry one above",
+                Action::NavigateDown(_) => "Move down and select entry below",
+                Action::NavigateLeft(_) => "Move cursor left",
+                Action::NavigateRight(_) => "Move cursor right",
+                Action::NextSection => "Focus on next section",
+                Action::GoToEnd => "Move to bottom of section",
+                Action::GoToStart => "Move to top of section",
+                Action::PreviousSection => "Focus on previous section",
+                Action::Quit => "Quit",
+                Action::NewSearch => "Search",
+                Action::ExitSearch => "Cancel Search",
+                Action::UpdateSearchQuery(_) => "Update Search Query",
+                Action::DeleteSearchQuery => "Delete Last Search Char",
+                Action::Help => "Open Help Window",
+                Action::ToggleDebug => "Toggle Debug Window",
+                Action::DeleteItem => "Delete Trace",
+                Action::ShowTraceDetails => "Focus On Trace",
+                Action::NextPane => "Focus On Next Pane",
+                Action::PreviousPane => "Go To Previous Pane",
+            };
+            let description = format!("{}:", description_str.to_string());
+
+            let mut b = [0; 2];
+            let key_code_str = match key_event.code {
+                KeyCode::PageUp => "Page Up",
+                KeyCode::PageDown => "Page Down",
+                KeyCode::Down => "Down arrow",
+                KeyCode::Up => "Up arrow",
+                KeyCode::Esc => "Esc",
+                KeyCode::Tab => "Tab",
+                KeyCode::BackTab => "Tab + Shift",
+                KeyCode::Char('/') => "/{pattern}[/]<CR>",
+                KeyCode::Char(c) => c.encode_utf8(&mut b),
+                _ => "Default",
+            };
+            let key_code = format!(r#""{}""#, key_code_str.to_string());
+
+            (description, key_code)
+        })
         .collect();
 
-    entry_list.sort();
+    let mut grouped: Vec<(String, Vec<String>)> =
+        key_mappings.iter().fold(vec![], |mut acc, (rk, rv)| {
+            for (lk, lv) in acc.iter_mut() {
+                if lk.eq(&rk) {
+                    lv.push(rv.to_string());
+                    return acc;
+                }
+            }
 
-    let debug_lines = entry_list
+            acc.push((rk.to_string(), vec![rv.to_string()]));
+            return acc;
+        });
+
+    grouped.sort();
+
+    let debug_lines = grouped
         .iter()
-        .map(|entry| {
-            let key_codes = &entry.key_codes;
-            let keymap = entry.key_map;
-
-            let description = match keymap {
-                KeyMap::CopyToClipBoard => "Copy selection to OS clipboard",
-                KeyMap::Esc => "Exit",
-                KeyMap::NavigateUp => "Move up and select an entry one above",
-                KeyMap::NavigateDown => "Move down and select entry below",
-                KeyMap::NavigateLeft => "Move cursor left",
-                KeyMap::NavigateRight => "Move cursor right",
-                KeyMap::NextSection => "Focus on next section",
-                KeyMap::GoToEnd => "Move to bottom of section",
-                KeyMap::GoToStart => "Move to top of section",
-                KeyMap::PreviousSection => "Focus on previous section",
-                KeyMap::Quit => "Quit",
-                KeyMap::Search => "Search",
-            };
-            let joiner = ':';
-            let mut description = String::from(description);
-            description.push(joiner);
-
-            let mapped_keys = key_codes
-                .iter()
-                .map(|key_code| {
-                    let key_code_as_string = match key_code {
-                        KeyCode::PageUp => "Page Up".to_string(),
-                        KeyCode::PageDown => "Page Down".to_string(),
-                        KeyCode::Down => "Down arrow".to_string(),
-                        KeyCode::Up => "Up arrow".to_string(),
-                        KeyCode::Esc => "Esc".to_string(),
-                        KeyCode::Tab => "Tab".to_string(),
-                        KeyCode::BackTab => "Tab + Shift".to_string(),
-                        KeyCode::Char('/') => "/{pattern}[/]<CR>".to_string(),
-                        KeyCode::Char(c) => c.to_string(),
-                        _ => "Default".to_string(),
-                    };
-
-                    format!(r#""{}""#, key_code_as_string)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-
+        .map(|(description, key_code)| {
             let column_a =
                 Cell::from(Line::from(vec![Span::raw(description)]).alignment(Alignment::Right));
-            let column_b = Cell::from(mapped_keys);
+            let column_b = Cell::from(key_code.join(", "));
+
             Row::new(vec![column_a, column_b]).style(get_row_style(RowStyle::Default))
         })
         .collect::<Vec<_>>();

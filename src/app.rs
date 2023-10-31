@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
 use tokio::task::AbortHandle;
@@ -101,28 +101,6 @@ impl Display for Trace {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Eq, Hash)]
-pub enum KeyMap {
-    CopyToClipBoard,
-    Esc,
-    NavigateLeft,
-    NavigateDown,
-    NavigateUp,
-    NavigateRight,
-    GoToEnd,
-    GoToStart,
-    NextSection,
-    PreviousSection,
-    Quit,
-    Search,
-}
-
-impl Display for KeyMap {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
 pub struct UIState {
     pub index: usize,
     pub offset: usize,
@@ -164,63 +142,18 @@ pub struct App {
     pub is_first_render: bool,
     pub logs: Vec<String>,
     pub mode: Mode,
-    pub key_map: HashMap<KeyMap, Vec<KeyCode>>,
+    pub key_map: Mapping,
     pub should_quit: bool,
 }
 
-pub struct KeyEntry {
-    pub key_map: KeyMap,
-    pub key_codes: Vec<KeyCode>,
-}
-
-impl PartialEq for KeyEntry {
-    fn eq(&self, other: &KeyEntry) -> bool {
-        self.key_map == other.key_map
-    }
-}
-
-impl Eq for KeyEntry {}
-
-impl PartialOrd for KeyEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.key_map.to_string().cmp(&self.key_map.to_string()))
-    }
-}
-
-impl Ord for KeyEntry {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.key_map.to_string().cmp(&self.key_map.to_string())
-    }
-}
+pub type Mapping = HashMap<KeyEvent, Action>;
 
 impl App {
     pub fn new() -> App {
-        let keys: HashMap<KeyMap, Vec<KeyCode>> = HashMap::from([
-            (KeyMap::NavigateLeft, vec![KeyCode::Char('h')]),
-            (
-                KeyMap::NavigateDown,
-                vec![KeyCode::Down, KeyCode::Char('j')],
-            ),
-            (KeyMap::NavigateUp, vec![KeyCode::Up, KeyCode::Char('k')]),
-            (KeyMap::NavigateRight, vec![KeyCode::Char('l')]),
-            (
-                KeyMap::GoToEnd,
-                vec![KeyCode::Char('>'), KeyCode::Char('K')],
-            ),
-            (
-                KeyMap::GoToStart,
-                vec![KeyCode::Char('<'), KeyCode::Char('J')],
-            ),
-            (KeyMap::Quit, vec![KeyCode::Char('q')]),
-            (KeyMap::NextSection, vec![KeyCode::Tab]),
-            (KeyMap::PreviousSection, vec![KeyCode::BackTab]),
-            (KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]),
-            (KeyMap::Search, vec![KeyCode::Char('/')]),
-            (KeyMap::Esc, vec![KeyCode::Esc]),
-        ]);
+        let config = crate::config::Config::new();
 
         App {
-            key_map: keys,
+            key_map: config.mapping,
             mode: Mode::Normal,
             logs: vec![],
             is_first_render: true,
