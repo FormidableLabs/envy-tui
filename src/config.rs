@@ -46,13 +46,10 @@ pub fn load(path: &str) -> Result<Mapping, Box<dyn Error>> {
 }
 
 impl Config {
-    pub fn new() -> Config {
-        let mut cfg = Config { mapping: default() };
+    pub fn new() -> Result<Config, Box<dyn Error>> {
+        let default = parse(CONFIG)?;
 
-        match parse(CONFIG) {
-            Ok(right) => cfg.mapping.0.extend(right.0.into_iter()),
-            Err(e) => println!("failed to load default config: {}, err: {}", CONFIG, e),
-        }
+        let mut cfg = Config { mapping: default };
 
         for file in &["config.yaml", "config.yml"] {
             match load(file) {
@@ -61,41 +58,8 @@ impl Config {
             }
         }
 
-        cfg
+        Ok(cfg)
     }
-}
-
-fn default_event(code: KeyCode) -> KeyEvent {
-    KeyEvent::new(code, KeyModifiers::empty())
-}
-
-fn default() -> Mapping {
-    Mapping(HashMap::from([
-        (
-            default_event(KeyCode::Char('h')),
-            Action::NavigateLeft(default_event(KeyCode::Char('h'))),
-        ),
-        (
-            default_event(KeyCode::Down),
-            Action::NavigateDown(default_event(KeyCode::Down)),
-        ),
-        (
-            default_event(KeyCode::Char('j')),
-            Action::NavigateDown(default_event(KeyCode::Char('j'))),
-        ),
-        (
-            default_event(KeyCode::Up),
-            Action::NavigateUp(default_event(KeyCode::Up)),
-        ),
-        (
-            default_event(KeyCode::Char('k')),
-            Action::NavigateUp(default_event(KeyCode::Char('k'))),
-        ),
-        (
-            default_event(KeyCode::Char('l')),
-            Action::NavigateRight(default_event(KeyCode::Char('l'))),
-        ),
-    ]))
 }
 
 fn parse_key_event(raw: &str) -> Result<KeyEvent, String> {

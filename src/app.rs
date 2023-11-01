@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
+use std::error::Error;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
@@ -121,6 +122,31 @@ pub enum State {
     Error,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Action {
+    CopyToClipBoard,
+    NavigateLeft(Option<KeyEvent>),
+    NavigateDown(Option<KeyEvent>),
+    NavigateUp(Option<KeyEvent>),
+    NavigateRight(Option<KeyEvent>),
+    GoToEnd,
+    GoToStart,
+    NextSection,
+    PreviousSection,
+    Quit,
+    NewSearch,
+    UpdateSearchQuery(char),
+    DeleteSearchQuery,
+    ExitSearch,
+    Help,
+    ToggleDebug,
+    DeleteItem,
+    FocusOnTraces,
+    ShowTraceDetails,
+    NextPane,
+    PreviousPane,
+}
+
 pub struct App {
     pub active_block: ActiveBlock,
     pub previous_block: Option<ActiveBlock>,
@@ -147,10 +173,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> App {
-        let config = crate::config::Config::new();
+    pub fn new() -> Result<App, Box<dyn Error>> {
+        let config = crate::config::Config::new()?;
 
-        App {
+        Ok(App {
             key_map: config.mapping.0,
             mode: Mode::Normal,
             logs: vec![],
@@ -213,33 +239,8 @@ impl App {
                 horizontal_scroll_state: ScrollbarState::default(),
             },
             should_quit: false,
-        }
+        })
     }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum Action {
-    CopyToClipBoard,
-    NavigateLeft(KeyEvent),
-    NavigateDown(KeyEvent),
-    NavigateUp(KeyEvent),
-    NavigateRight(KeyEvent),
-    GoToEnd,
-    GoToStart,
-    NextSection,
-    PreviousSection,
-    Quit,
-    NewSearch,
-    UpdateSearchQuery(char),
-    DeleteSearchQuery,
-    ExitSearch,
-    Help,
-    ToggleDebug,
-    DeleteItem,
-    FocusOnTraces,
-    ShowTraceDetails,
-    NextPane,
-    PreviousPane,
 }
 
 pub enum AppDispatch {

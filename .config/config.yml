@@ -2,8 +2,14 @@ q: Quit
 ">": GoToEnd
 <: GoToStart
 q: Quit
-Tab: NextSection
-BackTab: PreviousSection
+tab: NextSection
+backtab: PreviousSection
 y: CopyToClipBoard
 /: NewSearch
-Esc: FocusOnTraces
+esc: FocusOnTraces
+down: !NavigateDown
+up: !NavigateUp
+h: !NavigateLeft
+j: !NavigateDown
+k: !NavigateUp
+l: !NavigateRight

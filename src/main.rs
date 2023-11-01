@@ -93,7 +93,8 @@ pub enum TraceTimeoutPayload {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let app = Arc::new(Mutex::new(App::new()));
+    let app_instance = App::new()?;
+    let app = Arc::new(Mutex::new(app_instance));
 
     let (tx, mut rx) = unbounded::<AppDispatch>();
 
@@ -172,10 +173,10 @@ fn map_event(app: &mut App, event: Option<tui::Event>) -> Result<Option<Action>,
                 KeyCode::Char('/') => Action::NewSearch,
                 KeyCode::Enter => Action::ShowTraceDetails,
                 KeyCode::Esc => Action::FocusOnTraces,
-                KeyCode::Up | KeyCode::Char('k') => Action::NavigateUp(key),
-                KeyCode::Down | KeyCode::Char('j') => Action::NavigateDown(key),
-                KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => Action::NavigateLeft(key),
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => Action::NavigateRight(key),
+                KeyCode::Up | KeyCode::Char('k') => Action::NavigateUp(Some(key)),
+                KeyCode::Down | KeyCode::Char('j') => Action::NavigateDown(Some(key)),
+                KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => Action::NavigateLeft(Some(key)),
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => Action::NavigateRight(Some(key)),
                 _ => return Ok(None),
             };
             return Ok(Some(action));
@@ -196,37 +197,43 @@ fn update(
         request_body_rectangle_height: app.request_body.height,
         request_body_rectangle_width: app.request_body.width,
     };
-    match action {
-        Some(Action::Quit) => match app.active_block {
-            app::ActiveBlock::Help | app::ActiveBlock::Debug => {
-                app.active_block =
-                    app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
 
-                app.previous_block = None;
-            }
-            _ => app.should_quit = true,
-        },
-        Some(Action::NextSection) => handle_tab(app),
-        Some(Action::Help) => handlers::handle_help(app),
-        Some(Action::ToggleDebug) => handlers::handle_debug(app),
-        Some(Action::DeleteItem) => handle_delete_item(app),
-        Some(Action::CopyToClipBoard) => handle_yank(app, sender),
-        Some(Action::GoToEnd) => handle_go_to_end(app, metadata),
-        Some(Action::GoToStart) => handle_go_to_start(app),
-        Some(Action::PreviousSection) => handle_back_tab(app),
-        Some(Action::NextPane) => handle_pane_next(app),
-        Some(Action::PreviousPane) => handle_pane_prev(app),
-        Some(Action::NewSearch) => handlers::handle_new_search(app),
-        Some(Action::UpdateSearchQuery(c)) => handlers::handle_search_push(app, c),
-        Some(Action::DeleteSearchQuery) => handlers::handle_search_pop(app),
-        Some(Action::ExitSearch) => handlers::handle_search_exit(app),
-        Some(Action::ShowTraceDetails) => handle_enter(app),
-        Some(Action::FocusOnTraces) => handle_esc(app),
-        Some(Action::NavigateUp(key)) => handle_up(app, key, metadata),
-        Some(Action::NavigateDown(key)) => handle_down(app, key, metadata),
-        Some(Action::NavigateLeft(key)) => handle_left(app, key, metadata),
-        Some(Action::NavigateRight(key)) => handle_right(app, key, metadata),
-        None => {},
+    if let Some(a) = action {
+        match a {
+            Action::Quit => match app.active_block {
+                app::ActiveBlock::Help | app::ActiveBlock::Debug => {
+                    app.active_block =
+                        app.previous_block.unwrap_or(app::ActiveBlock::TracesBlock);
+
+                    app.previous_block = None;
+                }
+                _ => app.should_quit = true,
+            },
+            Action::NextSection => handle_tab(app),
+            Action::Help => handlers::handle_help(app),
+            Action::ToggleDebug => handlers::handle_debug(app),
+            Action::DeleteItem => handle_delete_item(app),
+            Action::CopyToClipBoard => handle_yank(app, sender),
+            Action::GoToEnd => handle_go_to_end(app, metadata),
+            Action::GoToStart => handle_go_to_start(app),
+            Action::PreviousSection => handle_back_tab(app),
+            Action::NextPane => handle_pane_next(app),
+            Action::PreviousPane => handle_pane_prev(app),
+            Action::NewSearch => handlers::handle_new_search(app),
+            Action::UpdateSearchQuery(c) => handlers::handle_search_push(app, c),
+            Action::DeleteSearchQuery => handlers::handle_search_pop(app),
+            Action::ExitSearch => handlers::handle_search_exit(app),
+            Action::ShowTraceDetails => handle_enter(app),
+            Action::FocusOnTraces => handle_esc(app),
+            Action::NavigateUp(Some(key)) => handle_up(app, key, metadata),
+            Action::NavigateDown(Some(key)) => handle_down(app, key, metadata),
+            Action::NavigateLeft(Some(key)) => handle_left(app, key, metadata),
+            Action::NavigateRight(Some(key)) => handle_right(app, key, metadata),
+            Action::NavigateUp(None) => {},
+            Action::NavigateDown(None) => {},
+            Action::NavigateLeft(None) => {},
+            Action::NavigateRight(None) => {},
+        }
     }
 }
 
