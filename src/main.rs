@@ -9,8 +9,6 @@ mod tui;
 mod utils;
 mod wss;
 
-use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::error::Error;
 
@@ -20,10 +18,9 @@ use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 
-use tokio::{net::TcpListener, sync::Mutex};
-use tungstenite::Message;
+use tokio::sync::Mutex;
 
-use app::{Action, App, AppDispatch, WsServerState};
+use app::{Action, App, AppDispatch};
 use handlers::{
     handle_back_tab, handle_down, handle_enter, handle_esc, handle_left, handle_pane_next,
     handle_pane_prev, handle_right, handle_tab, handle_up, handle_yank,
@@ -32,8 +29,6 @@ use render::{
     render_footer, render_help, render_request_block, render_request_body, render_request_summary,
     render_response_block, render_search, render_traces,
 };
-
-use wss::handle_connection;
 
 use self::app::Mode;
 use self::handlers::{handle_delete_item, handle_go_to_end, handle_go_to_start, HandlerMetadata};
@@ -45,9 +40,6 @@ use self::mock::{
 use self::parser::parse_raw_trace;
 use self::render::{render_debug, render_response_body};
 use self::utils::set_content_length;
-
-type Tx = UnboundedSender<Message>;
-type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, Tx>>>;
 
 async fn insert_mock_data(app_raw: &Arc<Mutex<App>>) {
     let mut app = app_raw.lock().await;
@@ -75,11 +67,13 @@ async fn insert_mock_data(app_raw: &Arc<Mutex<App>>) {
     .iter()
     .map(|raw_json_string| parse_raw_trace(raw_json_string))
     .for_each(|x| match x {
-        Ok(v) => {
-            app.items.insert(v);
+        Ok(v) => match v {
+            parser::Payload::Trace(trace) => {
+                app.items.insert(trace);
+            }
 
-            app.logs.push(String::from("Parsing successful."));
-        }
+            _ => {}
+        },
         Err(err) => app.logs.push(format!(
             "Something went wrong while parsing and inserting to the Tree, {:?}",
             err
@@ -91,16 +85,20 @@ pub enum TraceTimeoutPayload {
     MarkForTimeout(String),
 }
 
+pub struct WebSocketClientState {
+    open: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let app_instance = App::new()?;
     let app = Arc::new(Mutex::new(app_instance));
 
+    let ui_client = Arc::new(Mutex::new(WebSocketClientState { open: false }));
+
     let (tx, mut rx) = unbounded::<AppDispatch>();
 
     let app_for_ui = app.clone();
-
-    let app_for_ws_server = app.clone();
 
     insert_mock_data(&app).await;
 
@@ -109,33 +107,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let ws_client_sender = tx.clone();
 
     if mode == Mode::Normal {
-        start_ws_server(app_for_ws_server).await;
+        app.lock().await.collector_server.start().await;
 
         start_ws_client(app, ws_client_sender);
+        ui_client.lock().await.open = true;
     }
 
-    run(&app_for_ui, &mut rx, tx).await?;
+    run(&app_for_ui, &mut rx, tx, ui_client.clone()).await?;
 
     Ok(())
-}
-
-async fn start_ws_server(app: Arc<Mutex<App>>) {
-    let state = PeerMap::new(std::sync::Mutex::new(HashMap::new()));
-
-    let addr = "127.0.0.1:9999";
-
-    let try_socket = TcpListener::bind(addr).await;
-    let listener = try_socket.expect("Failed to bind");
-
-    app.lock().await.ws_server_state = WsServerState::Open;
-
-    tokio::spawn(async move {
-        while let Ok((stream, addr)) = listener.accept().await {
-            tokio::spawn(handle_connection(state.clone(), stream, addr, app.clone()));
-        }
-
-        ()
-    });
 }
 
 fn start_ws_client(app: Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
@@ -177,6 +157,8 @@ fn map_event(app: &mut App, event: Option<tui::Event>) -> Result<Option<Action>,
                 KeyCode::Down | KeyCode::Char('j') => Action::NavigateDown(Some(key)),
                 KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => Action::NavigateLeft(Some(key)),
                 KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => Action::NavigateRight(Some(key)),
+                KeyCode::Char('X') => Action::StopWebSocketServer,
+                KeyCode::Char('x') => Action::StartWebSocketServer,
                 _ => return Ok(None),
             };
             return Ok(Some(action));
@@ -185,11 +167,14 @@ fn map_event(app: &mut App, event: Option<tui::Event>) -> Result<Option<Action>,
     }
 }
 
-fn update(
-    app: &mut App,
+async fn update(
+    app_mutex: Arc<Mutex<App>>,
+    ui_client: &mut WebSocketClientState,
     action: Option<Action>,
     sender: UnboundedSender<AppDispatch>,
 ) {
+    let app = app_mutex.get_mut();
+
     let metadata = HandlerMetadata {
         main_height: app.main.height,
         response_body_rectangle_height: app.response_body.height,
@@ -225,6 +210,21 @@ fn update(
             Action::ExitSearch => handlers::handle_search_exit(app),
             Action::ShowTraceDetails => handle_enter(app),
             Action::FocusOnTraces => handle_esc(app),
+            Action::StopWebSocketServer => {
+                tokio::spawn(async move {
+                    let app = app_mutex.clone();
+                    app.lock().await.collector_server.start().await;
+                    if !ui_client.open {
+                        ui_client.open = true;
+                    }
+                });
+            },
+            Action::StartWebSocketServer => {
+                tokio::spawn(async move {
+                    app.collector_server.stop().await;
+                    ui_client.open = false;
+                });
+            },
             Action::NavigateUp(Some(key)) => handle_up(app, key, metadata),
             Action::NavigateDown(Some(key)) => handle_down(app, key, metadata),
             Action::NavigateLeft(Some(key)) => handle_left(app, key, metadata),
@@ -371,24 +371,35 @@ fn render(
             }
         }
     };
+    if app.is_first_render {
+        // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
+        app.main.index = 0;
+        app.main.offset = 0;
+
+        set_content_length(&mut app);
+
+        app.main.scroll_state = app.main.scroll_state.content_length(app.items.len() as u16);
+
+        app.is_first_render = false;
+    }
 }
 
 async fn run(
     app_raw: &Arc<Mutex<App>>,
     receiver: &mut UnboundedReceiver<AppDispatch>,
     sender: UnboundedSender<AppDispatch>,
+    ui_client_raw: Arc<Mutex<WebSocketClientState>>,
 ) -> Result<(), Box<dyn Error>> {
     let mut t = tui::Tui::new();
     t.enter()?;
 
     loop {
-        let mut app = app_raw.lock().await;
-
         let loop_bounded_sender = sender.clone();
 
         let event = t.next().await;
 
         if let Some(tui::Event::Render) = event.clone() {
+            let mut app = app_raw.lock().await;
             t.terminal.draw(|frame| {
                 render(frame, &mut app);
             })?;
@@ -398,30 +409,23 @@ async fn run(
             Ok(value) => match value {
                 Some(event) => match event {
                     AppDispatch::MarkTraceAsTimedOut(id) => {
+                        let mut app = app_raw.lock().await;
                         app.dispatch(AppDispatch::MarkTraceAsTimedOut(id))
                     }
-                    AppDispatch::ClearStatusMessage => app.status_message = None,
+                    AppDispatch::ClearStatusMessage => {
+                        let mut app = app_raw.lock().await;
+                        app.status_message = None;
+                    }
                 },
                 None => {}
             },
             Err(_) => {}
         };
 
-        if app.is_first_render {
-            // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
-            app.main.index = 0;
-            app.main.offset = 0;
-
-            set_content_length(&mut app);
-
-            app.main.scroll_state = app.main.scroll_state.content_length(app.items.len() as u16);
-
-            app.is_first_render = false;
-        }
-
+        let mut ui_client = ui_client_raw.lock().await;
+        let mut app = app_raw.lock().await;
         let action = map_event(&mut app, event)?;
-
-        update(&mut app, action, loop_bounded_sender);
+        update(app_raw.clone(), &mut ui_client, action, loop_bounded_sender);
 
         if app.should_quit {
             break;

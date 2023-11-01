@@ -1,8 +1,10 @@
 use std::time::Duration;
+use std::sync::Arc;
 
 use crossterm::event::{KeyEvent, KeyModifiers};
 use futures_channel::mpsc::UnboundedSender;
 use tokio::time::sleep;
+use tokio::sync::Mutex;
 
 use crate::app::{ActiveBlock, App, AppDispatch, RequestDetailsPane, Trace};
 use crate::consts::{

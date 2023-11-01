@@ -1,4 +1,8 @@
-pub const TEST_JSON_1: &str = r#"{ "data": {
+pub const TEST_JSON_1: &str = r#"{ 
+
+
+    "type": "trace",
+"data": {
 "id":"1","type":"HttpRequest","timestamp":1694891653602,"http": { "timings": {
       "blocked": 1.701791,
       "dns": 37.977375,
@@ -15,7 +19,10 @@ pub const TEST_JSON_1: &str = r#"{ "data": {
 }
 } }"#;
 
-pub const TEST_JSON_2: &str = r#"{  "data": {
+pub const TEST_JSON_2: &str = r#"{  
+
+    "type": "trace",
+"data": {
 "id":"2","type":"HttpRequest","timestamp":1694948911169,
 "http": {
       "state": "received",
@@ -35,6 +42,7 @@ pub const TEST_JSON_2: &str = r#"{  "data": {
     }"#;
 
 pub const TEST_JSON_3: &str = r#"{
+    "type": "trace",
     "data": {
 "id":"3","type":"HttpRequest","timestamp":1694948912369,"http": {
       "state": "received",
@@ -43,7 +51,10 @@ pub const TEST_JSON_3: &str = r#"{
 }    }
 }"#;
 
-pub const TEST_JSON_4: &str = r#"{ "data": { "id":"4","type":"HttpRequest","timestamp":1694948915469, "http": { 
+pub const TEST_JSON_4: &str = r#"{
+
+    "type": "trace",
+"data": { "id":"4","type":"HttpRequest","timestamp":1694948915469, "http": { 
 
 
       "state": "received",
@@ -51,6 +62,7 @@ pub const TEST_JSON_4: &str = r#"{ "data": { "id":"4","type":"HttpRequest","time
 }"#;
 
 pub const TEST_JSON_5: &str = r#"{
+    "type": "trace",
 
     "data": {
 "id":"5","type":"HttpRequest","timestamp":1694948931769, "http"  : {
@@ -63,6 +75,7 @@ pub const TEST_JSON_5: &str = r#"{
 }"#;
 
 pub const TEST_JSON_6: &str = r#"{
+    "type": "trace",
 
     "data": {
 "id":"6","type":"HttpRequest","timestamp":1694948931869, "http": {
@@ -75,6 +88,7 @@ pub const TEST_JSON_6: &str = r#"{
 
 pub const TEST_JSON_7: &str = r#"{
 
+    "type": "trace",
 
     "data": {
 "id":"7","type":"HttpRequest","timestamp":1694948935009, "http": {
@@ -88,6 +102,7 @@ pub const TEST_JSON_7: &str = r#"{
 
 pub const TEST_JSON_8: &str = r#"{
 
+    "type": "trace",
 
     "data":
      {
@@ -99,6 +114,7 @@ pub const TEST_JSON_8: &str = r#"{
 }"#;
 
 pub const TEST_JSON_9: &str = r#"{
+    "type": "trace",
 
     "data": {
 "id":"9","type":"HttpRequest","timestamp":1694948938549,"http": {
@@ -109,6 +125,7 @@ pub const TEST_JSON_9: &str = r#"{
 }"#;
 
 pub const TEST_JSON_10: &str = r#"{
+    "type": "trace",
     "data": {
 
 "id":"10","type":"HttpRequest","timestamp":1694891653603,"http": {
@@ -120,6 +137,7 @@ pub const TEST_JSON_10: &str = r#"{
 }"#;
 
 pub const TEST_JSON_11: &str = r#"{
+    "type": "trace",
 
 
     "data": {
@@ -133,6 +151,7 @@ pub const TEST_JSON_11: &str = r#"{
 
 pub const TEST_JSON_12: &str = r#"{
 
+    "type": "trace",
 
     "data": {
 "id":"12","type":"HttpRequest","timestamp":1694943912369, "http": {
@@ -147,6 +166,7 @@ pub const TEST_JSON_12: &str = r#"{
 //
 
 pub const TEST_JSON_13: &str = r#"{ 
+    "type": "trace",
 
 "data": {
 "id":"13","type":"HttpRequest","timestamp":1694947915469,
@@ -163,6 +183,7 @@ pub const TEST_JSON_13: &str = r#"{
 
 pub const TEST_JSON_14: &str = r#"{
 
+    "type": "trace",
     "data": {
 "id":"14","type":"HttpRequest","timestamp":1394948931769, "http" :{
 
@@ -175,6 +196,7 @@ pub const TEST_JSON_14: &str = r#"{
 
 pub const TEST_JSON_15: &str = r#"{
 
+    "type": "trace",
     "data": {
 "id":"15","type":"HttpRequest","timestamp":1694448931869,"http": {
 
@@ -188,6 +210,7 @@ pub const TEST_JSON_16: &str = r#"{
 
 
 
+    "type": "trace",
     "data": {
 "id":"16","type":"HttpRequest","timestamp":1694948935009, "http": {
       "state": "received",
@@ -199,6 +222,7 @@ pub const TEST_JSON_16: &str = r#"{
 
 pub const TEST_JSON_17: &str = r#"{
 
+    "type": "trace",
 
     "data": {
 "id":"17","type":"HttpRequest","timestamp":1624948938149,"http": {
@@ -210,6 +234,7 @@ pub const TEST_JSON_17: &str = r#"{
 }"#;
 
 pub const TEST_JSON_18: &str = r#"{
+    "type": "trace",
     "data": {
 "id":"18","type":"HttpRequest","timestamp":1694948938539,"http": {
       "state": "received",

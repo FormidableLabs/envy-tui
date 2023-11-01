@@ -13,3 +13,5 @@ h: !NavigateLeft
 j: !NavigateDown
 k: !NavigateUp
 l: !NavigateRight
+x: StopWebSocketServer
+X: StartWebSocketServer
