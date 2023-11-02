@@ -35,7 +35,7 @@ pub struct Config {
 }
 
 pub fn parse(contents: &str) -> Result<Mapping, Box<dyn Error>> {
-    let mapping = serde_yaml::from_str::<Mapping>(&contents)?;
+    let mapping = serde_yaml::from_str::<Mapping>(contents)?;
     Ok(mapping)
 }
 

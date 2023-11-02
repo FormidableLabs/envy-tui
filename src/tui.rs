@@ -17,7 +17,7 @@ pub enum Event {
 pub struct Tui {
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
     pub event_tx: mpsc::UnboundedSender<Event>,
-    pub rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
+    pub event_rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
     pub task: JoinHandle<()>,
     pub frame_rate: f64,
     pub tick_rate: f64,
@@ -27,12 +27,11 @@ impl Tui {
     pub fn new() -> Self {
         let tick_rate = 4.0;
         let frame_rate = 60.0;
-        let (tx, rx) =  mpsc::unbounded_channel();
-        let event_tx = tx.clone();
+        let (event_tx, event_rx) =  mpsc::unbounded_channel();
         let task = tokio::spawn(async {});
         let terminal = Terminal::new(CrosstermBackend::new(stdout())).unwrap();
 
-        Self { event_tx, rx, frame_rate, task, terminal, tick_rate }
+        Self { event_tx, event_rx, frame_rate, task, terminal, tick_rate }
     }
 
     pub fn enter(&mut self) -> Result<(), Box<dyn Error>> {
@@ -95,7 +94,7 @@ impl Tui {
     }
 
     pub async fn next(&mut self) -> Option<Event> {
-         self.rx.recv().await
+         self.event_rx.recv().await
     }
 }
 

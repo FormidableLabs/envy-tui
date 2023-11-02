@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::widgets::ScrollbarState;
@@ -218,7 +219,7 @@ pub type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stdout>>;
 
 impl App {
     pub fn new() -> Result<App, Box<dyn Error>> {
-        let config = crate::config::Config::new()?;
+        let _config = crate::config::Config::new()?;
         let app = Self::default();
 
         Ok(app)
@@ -259,10 +260,32 @@ impl App {
                     KeyCode::Char('x') => Action::StartWebSocketServer,
                     _ => return Ok(None),
                 };
-                return Ok(Some(action));
+                Ok(Some(action))
             },
             _ => Ok(None),
         }
+    }
+
+    pub fn schedule_server_stop(&mut self) {
+        let websocket_client = self.components.websocket_client.clone();
+        let collector_server = self.services.collector_server.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            collector_server.lock().await.start().await;
+            if !websocket_client.lock().await.open {
+                websocket_client.lock().await.open = true;
+            }
+        });
+    }
+
+    pub fn schedule_server_start(&mut self) {
+        let websocket_client = self.components.websocket_client.clone();
+        let collector_server = self.services.collector_server.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let _ = collector_server.lock().await.stop().await;
+            websocket_client.lock().await.open = false;
+        });
     }
 
 
@@ -301,24 +324,8 @@ impl App {
             Action::ExitSearch => handlers::handle_search_exit(self),
             Action::ShowTraceDetails => handlers::handle_enter(self),
             Action::FocusOnTraces => handlers::handle_esc(self),
-            Action::StopWebSocketServer => {
-                let websocket_client = self.components.websocket_client.clone();
-                let collector_server = self.services.collector_server.clone();
-                tokio::spawn(async move {
-                    collector_server.lock().await.start().await;
-                    if !websocket_client.lock().await.open {
-                        websocket_client.lock().await.open = true;
-                    }
-                });
-            },
-            Action::StartWebSocketServer => {
-                let websocket_client = self.components.websocket_client.clone();
-                let collector_server = self.services.collector_server.clone();
-                tokio::spawn(async move {
-                    collector_server.lock().await.stop().await;
-                    websocket_client.lock().await.open = false;
-                });
-            },
+            Action::StopWebSocketServer => self.schedule_server_stop(),
+            Action::StartWebSocketServer => self.schedule_server_start(),
             Action::NavigateUp(Some(key)) => handlers::handle_up(self, key, metadata),
             Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
             Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),
@@ -330,18 +337,19 @@ impl App {
         }
     }
 
-    async fn start_ws_client(&mut self){
+    async fn start_ws_client(&mut self) -> Result<(), Box<dyn Error>> {
         self.services.collector_server.lock().await.start().await;
 
         let app = self.component.clone();
         let tx = self.action_tx.clone();
         tokio::spawn(async move {
             wss::client(&app, tx).await;
-            ()
-        }).await;
+        }).await?;
 
         let wss_client = self.components.websocket_client.clone();
         wss_client.lock().await.open = true;
+
+        Ok(())
     }
 
     fn register_action_handler(&mut self, tx: UnboundedSender<AppDispatch>) -> Result<(), Box<dyn Error>> {
@@ -354,18 +362,18 @@ impl App {
 
         self.insert_mock_data();
         if self.mode == Mode::Normal {
-            self.start_ws_client().await;
+            self.start_ws_client().await?;
         }
 
         let mut t = tui::Tui::new();
         t.enter()?;
 
-        self.register_action_handler(action_tx.clone());
+        self.register_action_handler(action_tx.clone())?;
 
         loop {
             let event = t.next().await;
 
-            if let Some(tui::Event::Render) = event.clone() {
+            if let Some(tui::Event::Render) = event {
                 t.terminal.draw(|frame| {
                     self.render(frame);
                 })?;
@@ -407,7 +415,7 @@ impl App {
         Ok(())
     }
 
-    fn render(
+    async fn render(
         &mut self,
         frame: &mut Frame<'_>,
     ) {
@@ -481,7 +489,7 @@ impl App {
                     render::render_response_block(self, frame, response_layout[0]);
                     render::render_response_body(self, frame, response_layout[1]);
 
-                    render::render_footer(self, frame, main_layout[1]);
+                    render::render_footer(self, frame, main_layout[1]).await;
 
                     render::render_search(self, frame);
 
@@ -527,7 +535,7 @@ impl App {
                     render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_search(self, frame);
-                    render::render_footer(self, frame, main_layout[4]);
+                    render::render_footer(self, frame, main_layout[4]).await;
 
                     self.response_body.height = response_layout[1].height;
                     self.response_body.width = response_layout[1].width;

@@ -48,7 +48,6 @@ pub fn render_body(
 
     let lines = pretty_body
         .lines()
-        .into_iter()
         .map(|lines| {
             let len = lines.len();
 
@@ -131,7 +130,7 @@ pub fn render_response_body(
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
 ) {
-    match get_currently_selected_trace(&app) {
+    match get_currently_selected_trace(app) {
         Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
                 render_body(
@@ -259,7 +258,7 @@ fn render_headers(
 
             let rows = cloned
                 .iter()
-                .skip(offset.into())
+                .skip(offset)
                 .map(|(name, value)| {
                     let header_name = name.as_str();
 
@@ -329,7 +328,7 @@ pub fn render_request_block(
 
             let raw_params = parse_query_params(uri);
 
-            let mut cloned = raw_params.clone();
+            let mut cloned = raw_params;
 
             cloned.sort_by(|a, b| {
                 let (name_a, _) = a;
@@ -476,7 +475,7 @@ pub fn render_request_block(
 }
 
 pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    match get_currently_selected_trace(&app) {
+    match get_currently_selected_trace(app) {
         Some(request) => match &request.pretty_request_body {
             Some(pretty_json) => {
                 render_body(
@@ -557,7 +556,7 @@ pub fn render_response_block(
 
         frame.render_widget(status_bar, area);
     } else {
-        let mut cloned = raw_params.clone();
+        let mut cloned = raw_params;
 
         cloned.sort_by(|a, b| {
             let (name_a, _) = a;
@@ -641,7 +640,7 @@ fn fuzzy_regex(query: String) -> Regex {
         fuzzy_query.extend([c, '.', '*']);
     }
 
-    return Regex::from_str(&fuzzy_query).unwrap();
+    Regex::from_str(&fuzzy_query).unwrap()
 }
 
 pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
@@ -652,7 +651,7 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
 
     let effective_height = height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
 
-    let active_block = app.active_block.clone();
+    let active_block = app.active_block;
 
     let items_as_vector = requests
         .iter()
@@ -665,7 +664,7 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
 
     let converted_rows: Vec<(Vec<String>, bool)> = items_as_vector
         .iter()
-        .skip(app.main.offset.into())
+        .skip(app.main.offset)
         .take(effective_height.into())
         .map(|request| {
             let uri = truncate(request.uri.clone().as_str(), 60);
@@ -684,15 +683,11 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
                 None => "...".to_string(),
             };
 
-            let id = request.id.clone().to_string();
+            let id = request.id.clone();
 
             let selected = match selected_item {
                 Some(item) => {
-                    if item.deref() == request.deref() {
-                        true
-                    } else {
-                        false
-                    }
+                    item.deref() == request.deref()
                 }
                 None => false,
             };
@@ -880,7 +875,7 @@ pub fn render_request_summary(
 pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let mut entry_list: Vec<(KeyEvent, Action)> = vec![];
     for (k, v) in app.key_map.iter() {
-        entry_list.push((k.clone(), v.clone()));
+        entry_list.push((*k, v.clone()));
     }
 
     let key_mappings: Vec<(String, String)> = entry_list
@@ -911,7 +906,7 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 Action::StartWebSocketServer => "Start the Collector Server",
                 Action::StopWebSocketServer => "Stop the Collector Server",
             };
-            let description = format!("{}:", description_str.to_string());
+            let description = format!("{}:", description_str);
 
             let mut b = [0; 2];
             let key_code_str = match key_event.code {
@@ -926,7 +921,7 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 KeyCode::Char(c) => c.encode_utf8(&mut b),
                 _ => "Default",
             };
-            let key_code = format!(r#""{}""#, key_code_str.to_string());
+            let key_code = format!(r#""{}""#, key_code_str);
 
             (description, key_code)
         })
@@ -942,7 +937,8 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
             }
 
             acc.push((rk.to_string(), vec![rv.to_string()]));
-            return acc;
+
+            acc
         });
 
     grouped.sort();

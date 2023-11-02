@@ -67,7 +67,7 @@ fn reset_request_and_response_body_ui_state(app: &mut App) {
 }
 
 fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: Direction) {
-    let trace = get_currently_selected_trace(&app).unwrap();
+    let trace = get_currently_selected_trace(app).unwrap();
 
     let response_body_content_height = rect - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
 
@@ -97,7 +97,7 @@ fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: D
 }
 
 fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Direction) {
-    let trace = get_currently_selected_trace(&app).unwrap();
+    let trace = get_currently_selected_trace(app).unwrap();
 
     let request_body_content_height = rect - REQUEST_BODY_UNUSABLE_VERTICAL_SPACE;
 
@@ -215,7 +215,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
         _ => match (app.active_block, app.request_details_block) {
             (ActiveBlock::TracesBlock, _) => {
                 if app.main.index > 0 {
-                    app.main.index = app.main.index - 1;
+                    app.main.index -= 1;
 
                     if app.main.index < app.main.offset {
                         app.main.offset -= 1;
@@ -280,7 +280,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.request_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.request_details.scroll_state =
@@ -319,7 +319,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.response_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.response_details.scroll_state =
@@ -366,7 +366,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                         app.main.offset += 1;
                     }
 
-                    app.main.index = app.main.index + 1;
+                    app.main.index += 1;
                 }
 
                 reset_request_and_response_body_ui_state(app);
@@ -435,7 +435,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.request_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.request_details.scroll_state =
@@ -479,7 +479,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                         let next_position = calculate_scrollbar_position(
                             item_length as u16,
                             app.response_details.offset,
-                            item_length as u16 - (usable_height) as u16,
+                            item_length as u16 - (usable_height),
                         );
 
                         app.response_details.scroll_state =
@@ -694,7 +694,7 @@ pub fn handle_yank(app: &mut App, sender: Option<UnboundedSender<AppDispatch>>) 
 
     match app.active_block {
         ActiveBlock::TracesBlock => {
-            let cmd = generate_curl_command(&trace);
+            let cmd = generate_curl_command(trace);
 
             match clippers::Clipboard::get().write_text(cmd) {
                 Ok(_) => {
@@ -852,7 +852,7 @@ pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.request_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.request_details.scroll_state =
@@ -890,7 +890,7 @@ pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.response_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.response_details.scroll_state =
@@ -959,6 +959,4 @@ pub fn handle_delete_item(app: &mut App) {
     let current_trace = items_as_vector.get(app.main.index).copied().unwrap();
 
     let _ = &app.items.remove(current_trace);
-
-    ()
 }

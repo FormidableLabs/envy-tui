@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,15 +27,12 @@ pub struct ConnectionMeta {
 }
 pub type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, ConnectionMeta>>>;
 
+#[derive(Default)]
 struct RequestPath {
     uri: String,
 }
 
-impl Default for RequestPath {
-    fn default() -> RequestPath {
-        RequestPath { uri: String::new() }
-    }
-}
+
 
 impl Callback for &mut RequestPath {
     fn on_request(
@@ -109,8 +107,6 @@ impl WebSocket {
                         .handles
                         .push(join_handle.abort_handle());
                 }
-
-                ()
             });
 
             let state = &mut self.web_socket_state.lock().await;
@@ -150,7 +146,7 @@ impl WebSocket {
     }
 }
 
-pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::UnboundedSender<AppDispatch>>) {
+pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::UnboundedSender<AppDispatch>>) -> Result<(), Box<dyn Error>>{
     let (mut socket, _response) =
         connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
 
@@ -163,7 +159,7 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::Unbound
                     tungstenite::Message::Text(s) => {
                         let mut app_guard = app.lock().await;
 
-                        let _ = match parse_raw_trace(&s) {
+                        match parse_raw_trace(&s) {
                             Ok(request) => {
                                 match request {
                                     crate::parser::Payload::Trace(trace) => {
@@ -176,7 +172,7 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::Unbound
                                             tokio::spawn(async move {
                                                 sleep(Duration::from_millis(5000)).await;
 
-                                                sender.send(AppDispatch::MarkTraceAsTimedOut(id));
+                                                let _ = sender.send(AppDispatch::MarkTraceAsTimedOut(id));
                                             });
                                         }
 
@@ -187,8 +183,6 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::Unbound
                                     _ => {}
                                 }
                                 app_guard.is_first_render = true;
-
-                                ()
                             }
                             Err(err) => {
                                 println!("Trace NOT parsed!! {:?}", err)
@@ -209,6 +203,8 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::Unbound
             }
         }
     }
+
+    Ok(())
 }
 
 pub async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
