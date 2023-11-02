@@ -1,10 +1,8 @@
 use std::time::Duration;
-use std::sync::Arc;
 
 use crossterm::event::{KeyEvent, KeyModifiers};
-use futures_channel::mpsc::UnboundedSender;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
-use tokio::sync::Mutex;
 
 use crate::app::{ActiveBlock, App, AppDispatch, RequestDetailsPane, Trace};
 use crate::consts::{
@@ -691,7 +689,7 @@ pub fn handle_pane_prev(app: &mut App) {
     }
 }
 
-pub fn handle_yank(app: &mut App, loop_sender: UnboundedSender<AppDispatch>) {
+pub fn handle_yank(app: &mut App, sender: Option<UnboundedSender<AppDispatch>>) {
     let trace = get_currently_selected_trace(app).unwrap();
 
     match app.active_block {
@@ -734,13 +732,14 @@ pub fn handle_yank(app: &mut App, loop_sender: UnboundedSender<AppDispatch>) {
 
     app.abort_handlers.clear();
 
-    let thread_handler = tokio::spawn(async move {
-        sleep(Duration::from_millis(5000)).await;
+    if let Some(s) = sender {
+        let thread_handler = tokio::spawn(async move {
+            sleep(Duration::from_millis(5000)).await;
 
-        loop_sender.unbounded_send(AppDispatch::ClearStatusMessage)
-    });
-
-    app.abort_handlers.push(thread_handler.abort_handle());
+            s.send(AppDispatch::ClearStatusMessage)
+        });
+        app.abort_handlers.push(thread_handler.abort_handle());
+    }
 }
 
 pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {

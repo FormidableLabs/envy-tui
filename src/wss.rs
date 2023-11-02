@@ -48,11 +48,13 @@ impl Callback for &mut RequestPath {
     }
 }
 
+#[derive(Default)]
 pub struct WebSocketState {
     main_abort_handle: Option<AbortHandle>,
     handles: Vec<AbortHandle>,
 }
 
+#[derive(Default)]
 pub struct WebSocket {
     address: String,
     peer_map: PeerMap,
@@ -148,7 +150,7 @@ impl WebSocket {
     }
 }
 
-pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
+pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::UnboundedSender<AppDispatch>>) {
     let (mut socket, _response) =
         connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
 
@@ -169,15 +171,14 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
 
                                         let id = trace.id.clone();
 
-                                        let cloned_sender = tx.clone();
+                                        if let Some(s) = tx.clone() {
+                                            let sender = s.clone();
+                                            tokio::spawn(async move {
+                                                sleep(Duration::from_millis(5000)).await;
 
-                                        tokio::spawn(async move {
-                                            sleep(Duration::from_millis(5000)).await;
-
-                                            cloned_sender.unbounded_send(
-                                                AppDispatch::MarkTraceAsTimedOut(id),
-                                            )
-                                        });
+                                                sender.send(AppDispatch::MarkTraceAsTimedOut(id));
+                                            });
+                                        }
 
                                         if port != "9999" {
                                             app_guard.items.replace(trace);
