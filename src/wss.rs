@@ -166,12 +166,12 @@ pub async fn client(tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>) -> R
                                             let s1 = s.clone();
                                             tokio::spawn(async move {
                                                 sleep(Duration::from_millis(5000)).await;
-                                                let _ = s1.send(Action::MarkTraceAsTimedOut(id));
+                                                s1.send(Action::MarkTraceAsTimedOut(id)).unwrap();
                                             });
 
                                             if port != "9999" {
                                                 let s2 = s.clone();
-                                                s2.send(Action::AddTrace(trace));
+                                                s2.send(Action::AddTrace(trace)).unwrap();
                                             }
                                         }
 

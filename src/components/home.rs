@@ -13,7 +13,7 @@ use crate::app::{
     Action, ActiveBlock, Frame, Mode, RequestDetailsPane, ResponseDetailsPane, UIState,
 };
 use crate::components::handlers;
-use crate::components::websocket::Trace;
+use crate::components::websocket::{State, Trace};
 use crate::render;
 use crate::tui::Event;
 
@@ -157,7 +157,26 @@ impl Home {
             Action::AddTrace(trace) => {
                 self.items.replace(trace);
             }
+            Action::MarkTraceAsTimedOut(id) => self.mark_trace_as_timed_out(id),
             _ => {}
+        }
+    }
+
+    fn mark_trace_as_timed_out(&mut self, id: String) {
+        let selected_trace = self.items.iter().find(|trace| trace.id == id);
+
+        if selected_trace.is_some() {
+            let mut selected_trace = selected_trace.unwrap().clone();
+
+            if selected_trace.state == State::Sent {
+                selected_trace.state = State::Timeout;
+                selected_trace.status = None;
+                selected_trace.response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
+                selected_trace.pretty_response_body =
+                    Some("TIMEOUT WAITING FOR RESPONSE".to_string());
+
+                self.items.replace(selected_trace);
+            };
         }
     }
 

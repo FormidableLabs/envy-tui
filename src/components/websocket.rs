@@ -92,7 +92,6 @@ pub struct Client {
     pub action_tx: Option<UnboundedSender<Action>>,
     pub open: bool,
     pub services: Services,
-    pub items: BTreeSet<Trace>,
 }
 
 impl Client {
@@ -123,10 +122,6 @@ impl Client {
         });
     }
 
-    fn add_trace(&mut self, trace: Trace) {
-        self.items.replace(trace);
-    }
-
     // fn dispatch(&mut self, action: Action) {
     //     let tx = self.action_tx.clone().unwrap();
     //     tokio::spawn(async move {
@@ -148,27 +143,8 @@ impl Client {
         });
     }
 
-    fn mark_trace_as_timed_out(&mut self, id: String) {
-        let selected_trace = self.items.iter().find(|trace| trace.id == id);
-
-        if selected_trace.is_some() {
-            let mut selected_trace = selected_trace.unwrap().clone();
-
-            if selected_trace.state == State::Sent {
-                selected_trace.state = State::Timeout;
-                selected_trace.status = None;
-                selected_trace.response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
-                selected_trace.pretty_response_body =
-                    Some("TIMEOUT WAITING FOR RESPONSE".to_string());
-
-                self.items.replace(selected_trace);
-            };
-        }
-    }
     pub fn update(&mut self, action: Action) {
         match action {
-            Action::MarkTraceAsTimedOut(id) => self.mark_trace_as_timed_out(id),
-            Action::AddTrace(trace) => self.add_trace(trace),
             Action::ScheduleStartWebSocketServer => self.schedule_server_start(),
             Action::ScheduleStopWebSocketServer => self.schedule_server_stop(),
             Action::StartWebSocketServer => self.start(),
