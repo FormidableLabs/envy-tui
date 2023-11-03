@@ -358,9 +358,10 @@ pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMet
 
                 if app.main.index + 1 < length {
                     if app.main.index > {
-                        additinal_metadata.main_height
-                            - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16
+                        additinal_metadata.main_height.saturating_sub(
+                            NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16
                             - 2
+                        )
                     } as usize
                         && app.main.offset as u16 + usable_height < number_of_lines
                     {
@@ -375,9 +376,11 @@ pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMet
                 set_content_length(app);
 
                 if usable_height < number_of_lines {
-                    let overflown_number_count: u16 = number_of_lines
-                        - (additinal_metadata.main_height
-                            - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
+                    let overflown_number_count: u16 = number_of_lines.saturating_sub(
+                        additinal_metadata.main_height.saturating_sub(
+                            NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16
+                        )
+                    );
 
                     let position = calculate_scrollbar_position(
                         number_of_lines,
