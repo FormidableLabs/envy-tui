@@ -17,7 +17,6 @@ use crate::components::websocket::Trace;
 use crate::render;
 use crate::tui::Event;
 
-
 #[derive(Default)]
 pub struct Home {
     pub action_tx: Option<UnboundedSender<Action>>,

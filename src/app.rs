@@ -137,16 +137,17 @@ impl App {
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let (action_tx, _action_rx) = mpsc::unbounded_channel();
+        let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
         if self.mode == Mode::Normal {
-            self.components.websocket_client.lock().await.start();
+            self.components.websocket_client.lock().await.start().await?;
         }
 
         let mut t = Tui::new();
         t.enter()?;
 
         self.register_action_handler(action_tx.clone())?;
+        // TODO: convert components to a vector and iterate through each to register handler
         self.components.home.lock().await.register_action_handler(action_tx.clone())?;
         self.components.websocket_client.lock().await.register_action_handler(action_tx.clone())?;
 
@@ -178,23 +179,23 @@ impl App {
             //     Err(_) => {}
             // };
 
-            // let mut ui_client = ui_client_raw.lock().await;
-            let home = self.components.home.clone();
-            if let Some(action) = home.lock().await.handle_events(event)? {
-                home.lock().await.update(action.clone());
+            if let Some(action) = self.components.home.lock().await.handle_events(event)? {
+                action_tx.send(action.clone())?;
             }
 
-            if home.lock().await.should_quit {
+            while let Ok(action) = action_rx.try_recv() {
+                self.components.home.lock().await.update(action.clone());
+                // self.components.websocket_client.lock().await.update(action.clone());
+            }
+
+            if self.components.home.lock().await.should_quit {
                 break;
             }
         }
+        println!("EXITING");
 
         t.exit()?;
 
         Ok(())
-    }
-
-    pub fn log(&mut self, message: String) {
-        self.logs.push(message)
     }
 }
