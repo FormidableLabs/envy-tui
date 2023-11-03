@@ -151,6 +151,12 @@ impl Home {
             Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
             Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),
             Action::NavigateRight(Some(key)) => handlers::handle_right(self, key, metadata),
+            Action::ClearStatusMessage => {
+                self.status_message = None;
+            }
+            Action::AddTrace(trace) => {
+                self.items.replace(trace);
+            }
             _ => {}
         }
     }

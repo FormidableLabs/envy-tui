@@ -161,19 +161,17 @@ pub async fn client(tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>) -> R
                                     crate::parser::Payload::Trace(trace) => {
                                         let port = trace.port.clone().unwrap_or("0".to_string());
 
-                                        let id = trace.id.clone();
-
                                         if let Some(s) = tx.clone() {
+                                            let id = trace.id.clone();
                                             let s1 = s.clone();
                                             tokio::spawn(async move {
                                                 sleep(Duration::from_millis(5000)).await;
-
                                                 let _ = s1.send(Action::MarkTraceAsTimedOut(id));
                                             });
 
                                             if port != "9999" {
                                                 let s2 = s.clone();
-                                                s2.send(Action::ReplaceTraces(trace));
+                                                s2.send(Action::AddTrace(trace));
                                             }
                                         }
 

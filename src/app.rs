@@ -81,8 +81,10 @@ pub enum Action {
     ShowTraceDetails,
     NextPane,
     PreviousPane,
-    StopWebSocketServer,
+    ScheduleStartWebSocketServer,
+    ScheduleStopWebSocketServer,
     StartWebSocketServer,
+    StopWebSocketServer,
     #[serde(skip)]
     SetGeneralStatus(String),
     #[serde(skip)]
@@ -92,7 +94,8 @@ pub enum Action {
     #[serde(skip)]
     ClearStatusMessage,
     #[serde(skip)]
-    ReplaceTraces(Trace),
+    AddTrace(Trace),
+    AddTraceError,
 }
 
 #[derive(Default)]
@@ -140,7 +143,7 @@ impl App {
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
         if self.mode == Mode::Normal {
-            self.components.websocket_client.lock().await.start().await?;
+            self.components.websocket_client.lock().await.start();
         }
 
         let mut t = Tui::new();
@@ -150,6 +153,8 @@ impl App {
         // TODO: convert components to a vector and iterate through each to register handler
         self.components.home.lock().await.register_action_handler(action_tx.clone())?;
         self.components.websocket_client.lock().await.register_action_handler(action_tx.clone())?;
+
+        self.components.websocket_client.lock().await.insert_mock_data();
 
         loop {
             let event = t.next().await;
@@ -185,14 +190,13 @@ impl App {
 
             while let Ok(action) = action_rx.try_recv() {
                 self.components.home.lock().await.update(action.clone());
-                // self.components.websocket_client.lock().await.update(action.clone());
+                self.components.websocket_client.lock().await.update(action.clone());
             }
 
             if self.components.home.lock().await.should_quit {
                 break;
             }
         }
-        println!("EXITING");
 
         t.exit()?;
 

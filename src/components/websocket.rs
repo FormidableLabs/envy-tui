@@ -101,37 +101,50 @@ impl Client {
         Ok(())
     }
 
-    pub async fn start(&mut self) -> Result<(), Box<dyn Error>> {
-        self.insert_mock_data();
-        self.services.collector_server.lock().await.start().await;
-
-        let tx = self.action_tx.clone();
-        wss::client(tx).await;
-
+    pub fn start(&mut self) {
         self.open = true;
 
-        Ok(())
-    }
+        let collector_server = self.services.collector_server.clone();
+        let tx = self.action_tx.clone();
 
-    pub async fn stop(&mut self) -> Result<(), Box<dyn Error>> {
-        self.services.collector_server.lock().await.stop().await;
-
-        self.open = false;
-
-        Ok(())
-    }
-
-    pub fn schedule_server_stop(&mut self) {
-        let tx = self.action_tx.clone().unwrap();
         tokio::spawn(async move {
-            tx.send(Action::StopWebSocketServer);
+            collector_server.lock().await.start().await;
+            wss::client(tx).await.unwrap();
         });
     }
 
-    pub fn schedule_server_start(&mut self) {
+    pub fn stop(&mut self) {
+        self.open = false;
+
+        let collector_server = self.services.collector_server.clone();
+
+        tokio::spawn(async move {
+            collector_server.lock().await.stop().await.unwrap();
+        });
+    }
+
+    fn add_trace(&mut self, trace: Trace) {
+        self.items.replace(trace);
+    }
+
+    // fn dispatch(&mut self, action: Action) {
+    //     let tx = self.action_tx.clone().unwrap();
+    //     tokio::spawn(async move {
+    //         tx.send(action).unwrap();
+    //     });
+    // }
+
+    fn schedule_server_stop(&mut self) {
         let tx = self.action_tx.clone().unwrap();
         tokio::spawn(async move {
-            tx.send(Action::StartWebSocketServer);
+            tx.send(Action::StopWebSocketServer).unwrap();
+        });
+    }
+
+    fn schedule_server_start(&mut self) {
+        let tx = self.action_tx.clone().unwrap();
+        tokio::spawn(async move {
+            tx.send(Action::StartWebSocketServer).unwrap();
         });
     }
 
@@ -155,14 +168,17 @@ impl Client {
     pub fn update(&mut self, action: Action) {
         match action {
             Action::MarkTraceAsTimedOut(id) => self.mark_trace_as_timed_out(id),
-            Action::StartWebSocketServer => self.schedule_server_start(),
-            Action::StopWebSocketServer => self.schedule_server_stop(),
+            Action::AddTrace(trace) => self.add_trace(trace),
+            Action::ScheduleStartWebSocketServer => self.schedule_server_start(),
+            Action::ScheduleStopWebSocketServer => self.schedule_server_stop(),
+            Action::StartWebSocketServer => self.start(),
+            Action::StopWebSocketServer => self.stop(),
             _ => {}
         }
     }
 
-    fn insert_mock_data(&mut self) {
-        vec![
+    pub fn insert_mock_data(&mut self) {
+        let json_strings = vec![
             mock::TEST_JSON_1,
             mock::TEST_JSON_2,
             mock::TEST_JSON_3,
@@ -181,17 +197,14 @@ impl Client {
             mock::TEST_JSON_16,
             mock::TEST_JSON_17,
             mock::TEST_JSON_18,
-        ]
-        .iter()
-        .map(|raw_json_string| parse_raw_trace(raw_json_string))
-        .for_each(|x| match x {
-            Ok(v) => match v {
-                Payload::Trace(trace) => {
-                    self.items.insert(trace);
+        ];
+
+        for json_string in json_strings {
+            if let Ok(Payload::Trace(trace)) = parse_raw_trace(json_string) {
+                if let Some(action_tx) = self.action_tx.clone() {
+                    let _ = action_tx.send(Action::AddTrace(trace));
                 }
-                _ => {}
-            },
-            Err(_err) => {},
-        });
+            }
+        }
     }
 }

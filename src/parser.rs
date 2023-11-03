@@ -47,6 +47,7 @@ pub fn populate_header_map(raw_headers: &Map<String, Value>, map: &mut HeaderMap
     });
 }
 
+#[derive(Debug)]
 pub enum Payload {
     Trace(Trace),
     Connection(String),
