@@ -16,13 +16,14 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::app::{Action, ActiveBlock, App, RequestDetailsPane, Trace, UIState};
+use crate::app::{Action, ActiveBlock, RequestDetailsPane, UIState};
+use crate::components::home::Home;
+use crate::components::websocket::Trace;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
-use crate::wss::WebSocket;
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -126,17 +127,13 @@ pub fn render_body(
     }
 }
 
-pub fn render_response_body(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     match get_currently_selected_trace(app) {
         Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
                 render_body(
                     pretty_json.to_string(),
-                    &mut app.response_body,
+                    &mut app.response_body.clone(),
                     app.active_block,
                     frame,
                     area,
@@ -212,7 +209,7 @@ fn get_text_style(active: bool) -> Style {
 }
 
 fn render_headers(
-    app: &mut App,
+    app: &Home,
     frame: &mut Frame<CrosstermBackend<Stdout>>,
     area: Rect,
     header_type: HeaderType,
@@ -312,11 +309,7 @@ fn render_headers(
     frame.render_widget(table, area);
 }
 
-pub fn render_request_block(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let active_block = app.active_block;
 
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
@@ -465,7 +458,7 @@ pub fn render_request_block(
                                 horizontal: 0,
                                 vertical: 2,
                             }),
-                            &mut app.request_details.scroll_state,
+                            &mut app.request_details.scroll_state.clone(),
                         );
                     }
                 }
@@ -475,13 +468,13 @@ pub fn render_request_block(
     };
 }
 
-pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_request_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     match get_currently_selected_trace(app) {
         Some(request) => match &request.pretty_request_body {
             Some(pretty_json) => {
                 render_body(
                     pretty_json.to_string(),
-                    &mut app.request_body,
+                    &mut app.request_body.clone(),
                     app.active_block,
                     frame,
                     area,
@@ -520,11 +513,7 @@ pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Std
     }
 }
 
-pub fn render_response_block(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
@@ -624,7 +613,7 @@ pub fn render_response_block(
                     horizontal: 0,
                     vertical: 2,
                 }),
-                &mut app.response_details.scroll_state,
+                &mut app.response_details.scroll_state.clone(),
             );
         }
     }
@@ -644,7 +633,7 @@ fn fuzzy_regex(query: String) -> Regex {
     Regex::from_str(&fuzzy_query).unwrap()
 }
 
-pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let requests = &app.items;
     let re = fuzzy_regex(app.search_query.clone());
 
@@ -755,12 +744,12 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
                 horizontal: 0,
                 vertical: 2,
             }),
-            &mut app.main.scroll_state,
+            &mut app.main.scroll_state.clone(),
         );
     }
 }
 
-pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+pub fn render_search(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>) {
     if app.active_block == ActiveBlock::SearchQuery {
         let area = overlay_area(frame.size());
         let widget = Paragraph::new(format!("/{}", &app.search_query))
@@ -776,30 +765,10 @@ pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>)
     }
 }
 
-pub fn render_footer(
-    app: App,
-    collector_server: WebSocket,
-    frame: &mut Frame<'_, CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
-    let ws_status = if collector_server.is_open() {
-        if collector_server.get_connections().checked_sub(1).is_some()
-            && collector_server.get_connections() - 1 > 0
-        {
-            format!(
-                "🟢 {:?} clients connected",
-                collector_server.get_connections()
-            )
-        } else {
-            "🟠 Waiting for connection".to_string()
-        }
-    } else {
-        "⭕ Server closed".to_string()
-    };
-
-    let general_status = match &app.status_message {
+pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>, area: Rect) {
+    let general_status = match app.status_message.clone() {
         Some(text) => text,
-        None => "",
+        None => "".to_string(),
     };
 
     let help_text = Paragraph::new("For help, press ?")
@@ -818,7 +787,7 @@ pub fn render_footer(
                 .border_type(BorderType::Plain),
         );
 
-    let status_bar = Paragraph::new(format!("{} {}", general_status, ws_status))
+    let status_bar = Paragraph::new(format!("{} {}", general_status, app.ws_status))
         .style(
             Style::default()
                 .fg(Color::DarkGray)
@@ -839,11 +808,7 @@ pub fn render_footer(
     frame.render_widget(help_text, area);
 }
 
-pub fn render_request_summary(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_request_summary(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let selected_item = items_as_vector.get(app.main.index);
@@ -871,7 +836,7 @@ pub fn render_request_summary(
     frame.render_widget(status_bar, area);
 }
 
-pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_help(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let mut entry_list: Vec<(KeyEvent, Action)> = vec![];
     for (k, v) in app.key_map.iter() {
         entry_list.push((*k, v.clone()));
@@ -904,6 +869,7 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 Action::PreviousPane => "Go To Previous Pane",
                 Action::StartWebSocketServer => "Start the Collector Server",
                 Action::StopWebSocketServer => "Stop the Collector Server",
+                _ => "",
             };
             let description = format!("{}:", description_str);
 
@@ -973,7 +939,7 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
     frame.render_widget(list, area);
 }
 
-pub fn render_debug(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_debug(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let debug_lines = app
         .logs
         .iter()

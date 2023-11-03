@@ -2,18 +2,25 @@ use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::{
+    layout::Layout,
+    prelude::{Constraint, Direction},
+};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
 use crate::app::{
-    Action, ActiveBlock, AppDispatch, Mode, RequestDetailsPane, ResponseDetailsPane, Trace, UIState,
+    Action, ActiveBlock, Frame, Mode, RequestDetailsPane, ResponseDetailsPane, UIState,
 };
 use crate::components::handlers;
+use crate::components::websocket::Trace;
+use crate::render;
 use crate::tui::Event;
+use crate::utils::set_content_length;
 
 #[derive(Default)]
 pub struct Home {
-    pub action_tx: Option<UnboundedSender<AppDispatch>>,
+    pub action_tx: Option<UnboundedSender<Action>>,
     pub active_block: ActiveBlock,
     pub previous_block: Option<ActiveBlock>,
     pub request_details_block: RequestDetailsPane,
@@ -22,7 +29,6 @@ pub struct Home {
     pub selected_request_header_index: usize,
     pub selected_response_header_index: usize,
     pub selected_params_index: usize,
-    pub status_message: Option<String>,
     pub abort_handlers: Vec<AbortHandle>,
     pub search_query: String,
     pub main: UIState,
@@ -35,11 +41,23 @@ pub struct Home {
     pub mode: Mode,
     pub key_map: HashMap<KeyEvent, Action>,
     pub should_quit: bool,
+    pub status_message: Option<String>,
+    pub ws_status: String,
+    pub wss_connected: bool,
+    pub wss_connection_count: usize,
 }
 
 impl Home {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn register_action_handler(
+        &mut self,
+        tx: UnboundedSender<Action>,
+    ) -> Result<(), Box<dyn Error>> {
+        self.action_tx = Some(tx);
+        Ok(())
     }
 
     pub fn handle_events(
@@ -126,16 +144,160 @@ impl Home {
             Action::ExitSearch => handlers::handle_search_exit(self),
             Action::ShowTraceDetails => handlers::handle_enter(self),
             Action::FocusOnTraces => handlers::handle_esc(self),
-            Action::StopWebSocketServer => {}
-            Action::StartWebSocketServer => {}
+            Action::StopWebSocketServer => self.wss_connected = false,
+            Action::StartWebSocketServer => self.wss_connected = true,
+            Action::SetGeneralStatus(s) => handlers::handle_general_status(self, s),
+            Action::SetWebsocketStatus => handlers::handle_wss_status(self),
             Action::NavigateUp(Some(key)) => handlers::handle_up(self, key, metadata),
             Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
             Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),
             Action::NavigateRight(Some(key)) => handlers::handle_right(self, key, metadata),
-            Action::NavigateUp(None) => {}
-            Action::NavigateDown(None) => {}
-            Action::NavigateLeft(None) => {}
-            Action::NavigateRight(None) => {}
+            _ => {}
+        }
+    }
+
+    pub fn render(&self, frame: &mut Frame<'_>) {
+        match self.active_block {
+            ActiveBlock::Help => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_help(self, frame, main_layout[0]);
+            }
+            ActiveBlock::Debug => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_debug(self, frame, main_layout[0]);
+            }
+            _ => {
+                let terminal_width = frame.size().width;
+
+                if terminal_width > 200 {
+                    let main_layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .margin(1)
+                        .constraints([Constraint::Percentage(95), Constraint::Length(3)].as_ref())
+                        .split(frame.size());
+
+                    let split_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(30), Constraint::Percentage(70)].as_ref(),
+                        )
+                        .split(main_layout[0]);
+
+                    let details_layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints(
+                            [
+                                Constraint::Length(3),
+                                Constraint::Percentage(45),
+                                Constraint::Percentage(45),
+                            ]
+                            .as_ref(),
+                        )
+                        .split(split_layout[1]);
+
+                    let request_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(details_layout[1]);
+
+                    let response_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(details_layout[2]);
+
+                    render::render_request_block(self, frame, request_layout[0]);
+                    render::render_request_body(self, frame, request_layout[1]);
+                    render::render_traces(self, frame, split_layout[0]);
+
+                    render::render_request_summary(self, frame, details_layout[0]);
+                    render::render_response_block(self, frame, response_layout[0]);
+                    render::render_response_body(self, frame, response_layout[1]);
+
+                    render::render_footer(self, frame, main_layout[1]);
+
+                    render::render_search(self, frame);
+
+                    // self.response_body.height = response_layout[1].height;
+                    // self.response_body.width = response_layout[1].width;
+                    // self.main.height = split_layout[0].height;
+                } else {
+                    let main_layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .margin(1)
+                        .constraints(
+                            [
+                                Constraint::Percentage(30),
+                                Constraint::Min(3),
+                                Constraint::Percentage(30),
+                                Constraint::Percentage(30),
+                                Constraint::Min(3),
+                            ]
+                            .as_ref(),
+                        )
+                        .split(frame.size());
+
+                    let request_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(main_layout[2]);
+
+                    let response_layout = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints(
+                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
+                        )
+                        .split(main_layout[3]);
+
+                    render::render_request_block(self, frame, request_layout[0]);
+                    render::render_request_body(self, frame, request_layout[1]);
+                    render::render_traces(self, frame, main_layout[0]);
+
+                    render::render_request_summary(self, frame, main_layout[1]);
+                    render::render_response_block(self, frame, response_layout[0]);
+                    render::render_response_body(self, frame, response_layout[1]);
+
+                    render::render_search(self, frame);
+                    render::render_footer(self, frame, main_layout[1]);
+
+                    //self.response_body.height = response_layout[1].height;
+                    //self.response_body.width = response_layout[1].width;
+
+                    //self.request_body.height = request_layout[1].height;
+                    //self.request_body.width = request_layout[1].width;
+
+                    //self.main.height = main_layout[0].height;
+                }
+            }
+        };
+        if self.is_first_render {
+            // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
+            // self.main.index = 0;
+            // self.main.offset = 0;
+
+            // set_content_length(self);
+
+            //self.main.scroll_state = self
+            //    .main
+            //    .scroll_state
+            //    .content_length(self.items.len() as u16);
+
+            //self.is_first_render = false;
         }
     }
 }

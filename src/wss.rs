@@ -14,7 +14,7 @@ use tungstenite::connect;
 use tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 use url::Url;
 
-use crate::app::{App, AppDispatch};
+use crate::app::Action;
 use crate::parser::parse_raw_trace;
 
 use tungstenite::Message;
@@ -31,8 +31,6 @@ pub type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, ConnectionMeta>>>;
 struct RequestPath {
     uri: String,
 }
-
-
 
 impl Callback for &mut RequestPath {
     fn on_request(
@@ -146,7 +144,7 @@ impl WebSocket {
     }
 }
 
-pub async fn client(app: &mut App, tx: Option<tokio::sync::mpsc::UnboundedSender<AppDispatch>>) -> Result<(), Box<dyn Error>>{
+pub async fn client(tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>) -> Result<(), Box<dyn Error>>{
     let (mut socket, _response) =
         connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
 
@@ -166,21 +164,23 @@ pub async fn client(app: &mut App, tx: Option<tokio::sync::mpsc::UnboundedSender
                                         let id = trace.id.clone();
 
                                         if let Some(s) = tx.clone() {
-                                            let sender = s.clone();
+                                            let s1 = s.clone();
                                             tokio::spawn(async move {
                                                 sleep(Duration::from_millis(5000)).await;
 
-                                                let _ = sender.send(AppDispatch::MarkTraceAsTimedOut(id));
+                                                let _ = s1.send(Action::MarkTraceAsTimedOut(id));
                                             });
+
+                                            if port != "9999" {
+                                                let s2 = s.clone();
+                                                s2.send(Action::ReplaceTraces(trace));
+                                            }
                                         }
 
-                                        if port != "9999" {
-                                            app.items.replace(trace);
-                                        }
                                     }
                                     _ => {}
                                 }
-                                app.is_first_render = true;
+                                // app.is_first_render = true;
                             }
                             Err(err) => {
                                 println!("Trace NOT parsed!! {:?}", err)
@@ -196,7 +196,7 @@ pub async fn client(app: &mut App, tx: Option<tokio::sync::mpsc::UnboundedSender
                 };
             }
             Err(e) => {
-                app.log(e.to_string());
+                // app.log(e.to_string());
                 break;
             }
         }

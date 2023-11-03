@@ -1,6 +1,7 @@
 use http::Uri;
 
-use crate::app::{App, Trace};
+use crate::components::home::Home;
+use crate::components::websocket::Trace;
 
 pub enum UIDispatchEvent {
     ClearStatusMessage,
@@ -42,7 +43,7 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
     }
 }
 
-pub fn get_currently_selected_trace(app: &App) -> Option<&Trace> {
+pub fn get_currently_selected_trace(app: &Home) -> Option<&Trace> {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     items_as_vector.get(app.main.index).copied()
@@ -72,7 +73,7 @@ pub struct ContentLengthElements {
     pub response_body: Option<ContentLength>,
 }
 
-pub fn get_content_length(app: &App) -> ContentLengthElements {
+pub fn get_content_length(app: &Home) -> ContentLengthElements {
     let trace = get_currently_selected_trace(app);
 
     let mut content_length = ContentLengthElements {
@@ -109,14 +110,11 @@ pub fn get_content_length(app: &App) -> ContentLengthElements {
     if response_lines.is_some() {
         let response_lines = response_lines.unwrap();
 
-        let response_longest =
-            response_lines
-                .lines()
-                .fold(0, |longest: u16, lines: &str| {
-                    let len = lines.len() as u16;
+        let response_longest = response_lines.lines().fold(0, |longest: u16, lines: &str| {
+            let len = lines.len() as u16;
 
-                    len.max(longest)
-                });
+            len.max(longest)
+        });
 
         let response_vertical_content_length: u16 = response_lines
             .lines()
@@ -134,14 +132,11 @@ pub fn get_content_length(app: &App) -> ContentLengthElements {
     if request_lines.is_some() {
         let request_lines = request_lines.unwrap();
 
-        let request_longest =
-            request_lines
-                .lines()
-                .fold(0, |longest: u16, lines: &str| {
-                    let len = lines.len() as u16;
+        let request_longest = request_lines.lines().fold(0, |longest: u16, lines: &str| {
+            let len = lines.len() as u16;
 
-                    len.max(longest)
-                });
+            len.max(longest)
+        });
 
         let request_vertical_content_length: u16 = request_lines
             .lines()
@@ -159,7 +154,7 @@ pub fn get_content_length(app: &App) -> ContentLengthElements {
     content_length
 }
 
-pub fn set_content_length(app: &mut App) {
+pub fn set_content_length(app: &mut Home) {
     let content_length_elements = get_content_length(app);
 
     let response_details_content_length = content_length_elements

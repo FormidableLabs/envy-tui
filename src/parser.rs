@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 
 use regex::Regex;
 
-use crate::app::{State, Trace};
+use crate::components::websocket::{State, Trace};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct HTTPTimings {

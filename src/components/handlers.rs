@@ -4,7 +4,7 @@ use crossterm::event::{KeyEvent, KeyModifiers};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
-use crate::app::{ActiveBlock, App, AppDispatch, RequestDetailsPane, Trace};
+use crate::app::{ActiveBlock, Action, RequestDetailsPane};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_HORIZONTAL_SPACE,
     REQUEST_BODY_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -16,6 +16,8 @@ use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
     parse_query_params, set_content_length,
 };
+use crate::components::home::Home;
+use crate::components::websocket::Trace;
 
 pub struct HandlerMetadata {
     pub main_height: u16,
@@ -33,7 +35,7 @@ enum Direction {
     Left,
 }
 
-fn reset_request_and_response_body_ui_state(app: &mut App) {
+fn reset_request_and_response_body_ui_state(app: &mut Home) {
     app.response_body.offset = 0;
     app.response_body.horizontal_offset = 0;
 
@@ -66,7 +68,7 @@ fn reset_request_and_response_body_ui_state(app: &mut App) {
     app.selected_request_header_index = 0;
 }
 
-fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: Direction) {
+fn handle_vertical_response_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
     let trace = get_currently_selected_trace(app).unwrap();
 
     let response_body_content_height = rect - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
@@ -96,7 +98,7 @@ fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: D
     }
 }
 
-fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Direction) {
+fn handle_vertical_request_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
     let trace = get_currently_selected_trace(app).unwrap();
 
     let request_body_content_height = rect - REQUEST_BODY_UNUSABLE_VERTICAL_SPACE;
@@ -130,7 +132,7 @@ fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Di
     }
 }
 
-fn handle_horizontal_response_body_scroll(app: &mut App, rect: usize, direction: Direction) {
+fn handle_horizontal_response_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
     let content = get_content_length(app);
 
     if content.response_body.is_some() {
@@ -163,7 +165,7 @@ fn handle_horizontal_response_body_scroll(app: &mut App, rect: usize, direction:
     }
 }
 
-fn handle_horizontal_request_body_scroll(app: &mut App, rect: usize, direction: Direction) {
+fn handle_horizontal_request_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
     let content = get_content_length(app);
 
     if content.request_body.is_some() {
@@ -196,17 +198,17 @@ fn handle_horizontal_request_body_scroll(app: &mut App, rect: usize, direction: 
     }
 }
 
-pub fn handle_debug(app: &mut App) {
+pub fn handle_debug(app: &mut Home) {
     app.previous_block = Some(app.active_block);
     app.active_block = ActiveBlock::Debug;
 }
 
-pub fn handle_help(app: &mut App) {
+pub fn handle_help(app: &mut Home) {
     app.previous_block = Some(app.active_block);
     app.active_block = ActiveBlock::Help;
 }
 
-pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetadata) {
+pub fn handle_up(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetadata) {
     match key.modifiers {
         KeyModifiers::CONTROL => match app.active_block {
             ActiveBlock::ResponseDetails => app.active_block = ActiveBlock::RequestDetails,
@@ -341,7 +343,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
 }
 
 // NOTE: Find something like urlSearchParams for JS.
-pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetadata) {
+pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetadata) {
     match key.modifiers {
         KeyModifiers::CONTROL => match app.active_block {
             ActiveBlock::RequestDetails => app.active_block = ActiveBlock::ResponseDetails,
@@ -506,7 +508,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
     }
 }
 
-pub fn handle_left(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
+pub fn handle_left(app: &mut Home, key: KeyEvent, metadata: HandlerMetadata) {
     match app.active_block {
         ActiveBlock::ResponseBody => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -544,7 +546,7 @@ pub fn handle_left(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
     }
 }
 
-pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
+pub fn handle_right(app: &mut Home, key: KeyEvent, metadata: HandlerMetadata) {
     match &app.active_block {
         ActiveBlock::ResponseBody => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -611,37 +613,37 @@ pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
     };
 }
 
-pub fn handle_enter(app: &mut App) {
+pub fn handle_enter(app: &mut Home) {
     if app.active_block == ActiveBlock::TracesBlock {
         app.active_block = ActiveBlock::RequestDetails
     }
 }
 
-pub fn handle_esc(app: &mut App) {
+pub fn handle_esc(app: &mut Home) {
     app.active_block = ActiveBlock::TracesBlock
 }
 
-pub fn handle_new_search(app: &mut App) {
+pub fn handle_new_search(app: &mut Home) {
     app.search_query.clear();
     app.active_block = ActiveBlock::SearchQuery;
 }
 
-pub fn handle_search_push(app: &mut App, c: char) {
+pub fn handle_search_push(app: &mut Home, c: char) {
     app.search_query.push(c);
 }
 
-pub fn handle_search_pop(app: &mut App) {
+pub fn handle_search_pop(app: &mut Home) {
     app.search_query.pop();
     if app.search_query.is_empty() {
         handle_search_exit(app);
     }
 }
 
-pub fn handle_search_exit(app: &mut App) {
+pub fn handle_search_exit(app: &mut Home) {
     app.active_block = ActiveBlock::TracesBlock
 }
 
-pub fn handle_tab(app: &mut App) {
+pub fn handle_tab(app: &mut Home) {
     match app.active_block {
         ActiveBlock::TracesBlock => app.active_block = ActiveBlock::RequestSummary,
         ActiveBlock::RequestSummary => app.active_block = ActiveBlock::RequestDetails,
@@ -653,7 +655,7 @@ pub fn handle_tab(app: &mut App) {
     }
 }
 
-pub fn handle_back_tab(app: &mut App) {
+pub fn handle_back_tab(app: &mut Home) {
     match app.active_block {
         ActiveBlock::TracesBlock => app.active_block = ActiveBlock::ResponseBody,
         ActiveBlock::RequestSummary => app.active_block = ActiveBlock::TracesBlock,
@@ -665,7 +667,7 @@ pub fn handle_back_tab(app: &mut App) {
     }
 }
 
-pub fn handle_pane_next(app: &mut App) {
+pub fn handle_pane_next(app: &mut Home) {
     match (app.active_block, app.request_details_block) {
         (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
             app.request_details_block = RequestDetailsPane::Query
@@ -677,7 +679,7 @@ pub fn handle_pane_next(app: &mut App) {
     }
 }
 
-pub fn handle_pane_prev(app: &mut App) {
+pub fn handle_pane_prev(app: &mut Home) {
     match (app.active_block, app.request_details_block) {
         (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
             app.request_details_block = RequestDetailsPane::Query
@@ -689,7 +691,7 @@ pub fn handle_pane_prev(app: &mut App) {
     }
 }
 
-pub fn handle_yank(app: &mut App, sender: Option<UnboundedSender<AppDispatch>>) {
+pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) {
     let trace = get_currently_selected_trace(app).unwrap();
 
     match app.active_block {
@@ -736,13 +738,13 @@ pub fn handle_yank(app: &mut App, sender: Option<UnboundedSender<AppDispatch>>) 
         let thread_handler = tokio::spawn(async move {
             sleep(Duration::from_millis(5000)).await;
 
-            s.send(AppDispatch::ClearStatusMessage)
+            s.send(Action::ClearStatusMessage)
         });
         app.abort_handlers.push(thread_handler.abort_handle());
     }
 }
 
-pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
+pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) {
     match app.active_block {
         ActiveBlock::TracesBlock => {
             let number_of_lines: u16 = app.items.len().try_into().unwrap();
@@ -902,7 +904,7 @@ pub fn handle_go_to_end(app: &mut App, additional_metadata: HandlerMetadata) {
     }
 }
 
-pub fn handle_go_to_start(app: &mut App) {
+pub fn handle_go_to_start(app: &mut Home) {
     match app.active_block {
         ActiveBlock::TracesBlock => {
             app.main.index = 0;
@@ -951,7 +953,7 @@ pub fn handle_go_to_start(app: &mut App) {
     }
 }
 
-pub fn handle_delete_item(app: &mut App) {
+pub fn handle_delete_item(app: &mut Home) {
     let cloned_items = app.items.clone();
 
     let items_as_vector = cloned_items.iter().collect::<Vec<&Trace>>();
@@ -959,4 +961,23 @@ pub fn handle_delete_item(app: &mut App) {
     let current_trace = items_as_vector.get(app.main.index).copied().unwrap();
 
     let _ = &app.items.remove(current_trace);
+}
+
+pub fn handle_general_status(app: &mut Home, s: String) {
+    app.status_message = Some(s);
+}
+
+pub fn handle_wss_status(app: &mut Home) {
+    app.ws_status = if app.wss_connected {
+        if app.wss_connection_count > 0 {
+            format!(
+                "🟢 {:?} clients connected",
+                app.wss_connection_count
+            )
+        } else {
+            "🟠 Waiting for connection".to_string()
+        }
+    } else {
+        "⭕ Server closed".to_string()
+    };
 }
