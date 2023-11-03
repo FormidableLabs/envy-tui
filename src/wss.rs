@@ -195,7 +195,7 @@ pub async fn client(tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>) -> R
                     }
                 };
             }
-            Err(e) => {
+            Err(_e) => {
                 // app.log(e.to_string());
                 break;
             }

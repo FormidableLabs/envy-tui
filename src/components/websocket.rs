@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::time::Duration;
+
 use std::error::Error;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -191,7 +191,7 @@ impl Client {
                 }
                 _ => {}
             },
-            Err(err) => {},
+            Err(_err) => {},
         });
     }
 }

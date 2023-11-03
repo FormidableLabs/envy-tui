@@ -16,7 +16,7 @@ use crate::components::handlers;
 use crate::components::websocket::Trace;
 use crate::render;
 use crate::tui::Event;
-use crate::utils::set_content_length;
+
 
 #[derive(Default)]
 pub struct Home {
