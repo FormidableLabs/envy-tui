@@ -120,7 +120,7 @@ pub type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stdout>>;
 impl App {
     pub fn new() -> Result<App, Box<dyn Error>> {
         let config = crate::config::Config::new()?;
-        let home = Arc::new(Mutex::new(Home::new()));
+        let home = Arc::new(Mutex::new(Home::new()?));
         let websocket_client = Arc::new(Mutex::new(Client::default()));
         let app = App {
             components: Components {
@@ -166,23 +166,19 @@ impl App {
                 })?;
             };
 
-            // while let Ok(action) = action_rx.try_recv() {
-            // match self.action_tx.try_recv() {
-            //     Ok(value) => match value {
-            //         Some(event) => match event {
-            //             Action::MarkTraceAsTimedOut(id) => {
-            //                 let mut app = self.component.lock().await;
-            //                 app.dispatch(Action::MarkTraceAsTimedOut(id))
-            //             }
-            //             Action::ClearStatusMessage => {
-            //                 let mut app = self.component.lock().await;
-            //                 app.status_message = None;
-            //             }
-            //         },
-            //         None => {}
-            //     },
-            //     Err(_) => {}
-            // };
+            if let Some(Event::Key(key_event)) = event {
+                if let Some(action) = self.key_map.get(&key_event) {
+                    let action_with_value = match action {
+                        Action::NavigateUp(None) => Action::NavigateUp(Some(key_event)),
+                        Action::NavigateDown(None) => Action::NavigateDown(Some(key_event)),
+                        Action::NavigateLeft(None) => Action::NavigateLeft(Some(key_event)),
+                        Action::NavigateRight(None) => Action::NavigateRight(Some(key_event)),
+                        _ => action.clone(),
+
+                    };
+                    action_tx.send(action_with_value.clone()).unwrap();
+                }
+            };
 
             if let Some(action) = self.components.home.lock().await.handle_events(event)? {
                 action_tx.send(action.clone())?;

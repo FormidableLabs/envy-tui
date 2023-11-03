@@ -47,8 +47,14 @@ pub struct Home {
 }
 
 impl Home {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new() -> Result<Home, Box<dyn Error>> {
+        let config = crate::config::Config::new()?;
+        let home = Home {
+            key_map: config.mapping.0,
+            ..Self::default()
+        };
+
+        Ok(home)
     }
 
     pub fn register_action_handler(
@@ -71,6 +77,7 @@ impl Home {
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>, Box<dyn Error>> {
+        // TODO: this should be handled as a separate application mode
         if self.active_block == ActiveBlock::SearchQuery {
             match key.code {
                 KeyCode::Enter | KeyCode::Esc => return Ok(Some(Action::ExitSearch)),
@@ -79,34 +86,7 @@ impl Home {
                 _ => return Ok(None),
             }
         }
-        let action = match key.code {
-            KeyCode::Char('q') => Action::Quit,
-            KeyCode::Char('?') => Action::Help,
-            KeyCode::Char('p') => Action::ToggleDebug,
-            KeyCode::Char('d') => Action::DeleteItem,
-            KeyCode::Char('y') => Action::CopyToClipBoard,
-            KeyCode::Char('>') => Action::GoToEnd,
-            KeyCode::Char('<') => Action::GoToStart,
-            KeyCode::Tab => Action::NextSection,
-            KeyCode::BackTab => Action::PreviousSection,
-            KeyCode::Char(']') | KeyCode::PageUp => Action::NextPane,
-            KeyCode::Char('[') | KeyCode::PageDown => Action::PreviousPane,
-            KeyCode::Char('/') => Action::NewSearch,
-            KeyCode::Enter => Action::ShowTraceDetails,
-            KeyCode::Esc => Action::FocusOnTraces,
-            KeyCode::Up | KeyCode::Char('k') => Action::NavigateUp(Some(key)),
-            KeyCode::Down | KeyCode::Char('j') => Action::NavigateDown(Some(key)),
-            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
-                Action::NavigateLeft(Some(key))
-            }
-            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => {
-                Action::NavigateRight(Some(key))
-            }
-            KeyCode::Char('X') => Action::StopWebSocketServer,
-            KeyCode::Char('x') => Action::StartWebSocketServer,
-            _ => return Ok(None),
-        };
-        Ok(Some(action))
+        Ok(None)
     }
 
     pub fn update(&mut self, action: Action) {
@@ -255,6 +235,7 @@ impl Home {
 
                     render::render_search(self, frame);
 
+                    // TODO: how should we set these values?
                     // self.response_body.height = response_layout[1].height;
                     // self.response_body.width = response_layout[1].width;
                     // self.main.height = split_layout[0].height;
@@ -299,6 +280,7 @@ impl Home {
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[1]);
 
+                    // TODO: how should we set these values?
                     //self.response_body.height = response_layout[1].height;
                     //self.response_body.width = response_layout[1].width;
 
@@ -310,6 +292,7 @@ impl Home {
             }
         };
         if self.is_first_render {
+            // TODO: how should we set these values?
             // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
             // self.main.index = 0;
             // self.main.offset = 0;

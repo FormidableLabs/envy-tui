@@ -82,6 +82,7 @@ impl Tui {
                             None => {},
                         }
                     },
+                    // TODO: What is this used for?
                     _ = tick_delay => {
                         _tx.send(Event::Tick).unwrap();
                     },

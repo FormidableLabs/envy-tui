@@ -15,3 +15,8 @@ k: !NavigateUp
 l: !NavigateRight
 x: StopWebSocketServer
 X: StartWebSocketServer
+?: Help
+p: ToggleDebug
+d: DeleteItem
+"]": NextPane
+"]": PreviousPane
