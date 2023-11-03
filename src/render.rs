@@ -22,6 +22,7 @@ use crate::consts::{
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
+use crate::wss::WebSocket;
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -686,9 +687,7 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
             let id = request.id.clone();
 
             let selected = match selected_item {
-                Some(item) => {
-                    item.deref() == request.deref()
-                }
+                Some(item) => item.deref() == request.deref(),
                 None => false,
             };
 
@@ -777,14 +776,14 @@ pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>)
     }
 }
 
-pub async fn render_footer(app: &mut App, frame: &mut Frame<'_, CrosstermBackend<Stdout>>, area: Rect) {
-    let collector_server = app.services.collector_server.lock().await;
-
+pub fn render_footer(
+    app: App,
+    collector_server: WebSocket,
+    frame: &mut Frame<'_, CrosstermBackend<Stdout>>,
+    area: Rect,
+) {
     let ws_status = if collector_server.is_open() {
-        if collector_server
-            .get_connections()
-            .checked_sub(1)
-            .is_some()
+        if collector_server.get_connections().checked_sub(1).is_some()
             && collector_server.get_connections() - 1 > 0
         {
             format!(

@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyEvent;
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -15,16 +15,14 @@ use tokio::task::AbortHandle;
 use ratatui::layout::Layout;
 use ratatui::prelude::{Constraint, CrosstermBackend, Direction};
 
-use crate::handlers;
-use crate::handlers::HandlerMetadata;
 use crate::mock;
 use crate::parser::{Payload, parse_raw_trace};
 use crate::utils::set_content_length;
 use crate::render;
 use crate::tui;
-use crate::tui::Event;
 use crate::wss::WebSocket;
 use crate::wss;
+use crate::components::home::Home;
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum RequestDetailsPane {
@@ -173,6 +171,7 @@ pub enum AppDispatch {
 
 #[derive(Default)]
 pub struct Components {
+    home: Arc<Mutex<Home>>,
     websocket_client: Arc<Mutex<WebSocketClientState>>,
 }
 
@@ -189,7 +188,6 @@ pub struct WebSocketClientState {
 #[derive(Default)]
 pub struct App {
     pub action_tx: Option<UnboundedSender<AppDispatch>>,
-    pub component: Arc<Mutex<App>>,
     pub components: Components,
     pub services: Services,
     pub active_block: ActiveBlock,
@@ -219,51 +217,19 @@ pub type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stdout>>;
 
 impl App {
     pub fn new() -> Result<App, Box<dyn Error>> {
-        let _config = crate::config::Config::new()?;
-        let app = Self::default();
+        let config = crate::config::Config::new()?;
+        let home = Arc::new(Mutex::new(Home::new()));
+        let websocket_client = Arc::new(Mutex::new(WebSocketClientState::default()));
+        let app = App {
+            components: Components {
+                home,
+                websocket_client,
+            },
+            key_map: config.mapping.0,
+            ..Self::default()
+        };
 
         Ok(app)
-    }
-
-    pub fn handle_event(&mut self, event: Option<Event>) -> Result<Option<Action>, Box<dyn Error>> {
-        match event {
-            Some(Event::Key(key)) => {
-                // TODO: handle multiple modes (like for search)
-                if self.active_block == ActiveBlock::SearchQuery {
-                    match key.code {
-                        KeyCode::Enter | KeyCode::Esc => return Ok(Some(Action::ExitSearch)),
-                        KeyCode::Backspace => return Ok(Some(Action::DeleteSearchQuery)),
-                        KeyCode::Char(char) => return Ok(Some(Action::UpdateSearchQuery(char))),
-                        _ => return Ok(None),
-                    }
-                }
-                let action = match key.code {
-                    KeyCode::Char('q') => Action::Quit,
-                    KeyCode::Char('?') => Action::Help,
-                    KeyCode::Char('p') => Action::ToggleDebug,
-                    KeyCode::Char('d') => Action::DeleteItem,
-                    KeyCode::Char('y') => Action::CopyToClipBoard,
-                    KeyCode::Char('>') => Action::GoToEnd,
-                    KeyCode::Char('<') => Action::GoToStart,
-                    KeyCode::Tab => Action::NextSection,
-                    KeyCode::BackTab => Action::PreviousSection,
-                    KeyCode::Char(']') | KeyCode::PageUp => Action::NextPane,
-                    KeyCode::Char('[') | KeyCode::PageDown => Action::PreviousPane,
-                    KeyCode::Char('/') => Action::NewSearch,
-                    KeyCode::Enter => Action::ShowTraceDetails,
-                    KeyCode::Esc => Action::FocusOnTraces,
-                    KeyCode::Up | KeyCode::Char('k') => Action::NavigateUp(Some(key)),
-                    KeyCode::Down | KeyCode::Char('j') => Action::NavigateDown(Some(key)),
-                    KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => Action::NavigateLeft(Some(key)),
-                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => Action::NavigateRight(Some(key)),
-                    KeyCode::Char('X') => Action::StopWebSocketServer,
-                    KeyCode::Char('x') => Action::StartWebSocketServer,
-                    _ => return Ok(None),
-                };
-                Ok(Some(action))
-            },
-            _ => Ok(None),
-        }
     }
 
     pub fn schedule_server_stop(&mut self) {
@@ -288,62 +254,13 @@ impl App {
         });
     }
 
-
-    pub fn update(&mut self, action: Action) {
-        let metadata = HandlerMetadata {
-            main_height: self.main.height,
-            response_body_rectangle_height: self.response_body.height,
-            response_body_rectangle_width: self.response_body.width,
-            request_body_rectangle_height: self.request_body.height,
-            request_body_rectangle_width: self.request_body.width,
-        };
-
-        match action {
-            Action::Quit => match self.active_block {
-                ActiveBlock::Help | ActiveBlock::Debug => {
-                    self.active_block =
-                        self.previous_block.unwrap_or(ActiveBlock::TracesBlock);
-
-                    self.previous_block = None;
-                }
-                _ => self.should_quit = true,
-            },
-            Action::NextSection => handlers::handle_tab(self),
-            Action::Help => handlers::handle_help(self),
-            Action::ToggleDebug => handlers::handle_debug(self),
-            Action::DeleteItem => handlers::handle_delete_item(self),
-            Action::CopyToClipBoard => handlers::handle_yank(self, self.action_tx.clone()),
-            Action::GoToEnd => handlers::handle_go_to_end(self, metadata),
-            Action::GoToStart => handlers::handle_go_to_start(self),
-            Action::PreviousSection => handlers::handle_back_tab(self),
-            Action::NextPane => handlers::handle_pane_next(self),
-            Action::PreviousPane => handlers::handle_pane_prev(self),
-            Action::NewSearch => handlers::handle_new_search(self),
-            Action::UpdateSearchQuery(c) => handlers::handle_search_push(self, c),
-            Action::DeleteSearchQuery => handlers::handle_search_pop(self),
-            Action::ExitSearch => handlers::handle_search_exit(self),
-            Action::ShowTraceDetails => handlers::handle_enter(self),
-            Action::FocusOnTraces => handlers::handle_esc(self),
-            Action::StopWebSocketServer => self.schedule_server_stop(),
-            Action::StartWebSocketServer => self.schedule_server_start(),
-            Action::NavigateUp(Some(key)) => handlers::handle_up(self, key, metadata),
-            Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
-            Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),
-            Action::NavigateRight(Some(key)) => handlers::handle_right(self, key, metadata),
-            Action::NavigateUp(None) => {},
-            Action::NavigateDown(None) => {},
-            Action::NavigateLeft(None) => {},
-            Action::NavigateRight(None) => {},
-        }
-    }
-
     async fn start_ws_client(&mut self) -> Result<(), Box<dyn Error>> {
         self.services.collector_server.lock().await.start().await;
 
-        let app = self.component.clone();
+        let app = self.components.home.clone();
         let tx = self.action_tx.clone();
         tokio::spawn(async move {
-            wss::client(&app, tx).await;
+            wss::client(self, tx).await;
         }).await?;
 
         let wss_client = self.components.websocket_client.clone();
@@ -398,12 +315,10 @@ impl App {
             // };
 
             // let mut ui_client = ui_client_raw.lock().await;
-            let app = self.component.clone();
-            let action = app.lock().await.handle_event(event)?;
-
-            if let Some(action) = action {
+            let app = self.components.home.clone();
+            if let Some(action) = app.lock().await.handle_events(event)? {
                 app.lock().await.update(action.clone());
-            };
+            }
 
             if app.lock().await.should_quit {
                 break;
@@ -415,7 +330,7 @@ impl App {
         Ok(())
     }
 
-    async fn render(
+    fn render(
         &mut self,
         frame: &mut Frame<'_>,
     ) {
@@ -489,7 +404,7 @@ impl App {
                     render::render_response_block(self, frame, response_layout[0]);
                     render::render_response_body(self, frame, response_layout[1]);
 
-                    render::render_footer(self, frame, main_layout[1]).await;
+                    // render::render_footer(self.component.clone(), self.services.collector_server.clone(), frame, main_layout[1]);
 
                     render::render_search(self, frame);
 
@@ -535,7 +450,7 @@ impl App {
                     render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_search(self, frame);
-                    render::render_footer(self, frame, main_layout[4]).await;
+                    // render::render_footer(self.component.clone(), self.services.collector_server.clone(), frame, main_layout[1]);
 
                     self.response_body.height = response_layout[1].height;
                     self.response_body.width = response_layout[1].width;

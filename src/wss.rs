@@ -146,7 +146,7 @@ impl WebSocket {
     }
 }
 
-pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::UnboundedSender<AppDispatch>>) -> Result<(), Box<dyn Error>>{
+pub async fn client(app: &mut App, tx: Option<tokio::sync::mpsc::UnboundedSender<AppDispatch>>) -> Result<(), Box<dyn Error>>{
     let (mut socket, _response) =
         connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
 
@@ -157,8 +157,6 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::Unbound
             Ok(l) => {
                 match l {
                     tungstenite::Message::Text(s) => {
-                        let mut app_guard = app.lock().await;
-
                         match parse_raw_trace(&s) {
                             Ok(request) => {
                                 match request {
@@ -177,12 +175,12 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::Unbound
                                         }
 
                                         if port != "9999" {
-                                            app_guard.items.replace(trace);
+                                            app.items.replace(trace);
                                         }
                                     }
                                     _ => {}
                                 }
-                                app_guard.is_first_render = true;
+                                app.is_first_render = true;
                             }
                             Err(err) => {
                                 println!("Trace NOT parsed!! {:?}", err)
@@ -198,7 +196,7 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: Option<tokio::sync::mpsc::Unbound
                 };
             }
             Err(e) => {
-                app.lock().await.log(e.to_string());
+                app.log(e.to_string());
                 break;
             }
         }

@@ -1,7 +1,7 @@
 mod app;
 mod config;
+mod components;
 mod consts;
-mod handlers;
 mod mock;
 mod parser;
 mod render;
@@ -13,12 +13,7 @@ use std::error::Error;
 
 use app::App;
 
-pub enum TraceTimeoutPayload {
-    MarkForTimeout(String),
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn tokio_main() -> Result<(), Box<dyn Error>> {
     let mut app = App::new()?;
 
     app.run().await?;
@@ -26,3 +21,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+  if let Err(e) = tokio_main().await {
+    eprintln!("{} error: Something went wrong", env!("CARGO_PKG_NAME"));
+    Err(e)
+  } else {
+    Ok(())
+  }
+}

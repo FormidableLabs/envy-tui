@@ -132,8 +132,6 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
 
                     let as_f32 = as_float.map(|n| n as f32);
 
-                    
-
                     as_f32.ok_or("".to_string())
                 }
                 _ => Err("Duration must be a number.".to_string()),
