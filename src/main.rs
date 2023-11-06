@@ -5,6 +5,7 @@ mod consts;
 mod mock;
 mod parser;
 mod render;
+mod services;
 mod tui;
 mod utils;
 mod wss;
