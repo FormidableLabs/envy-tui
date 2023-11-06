@@ -153,6 +153,10 @@ impl Client {
         }
     }
 
+    pub fn init(&mut self) {
+        self.insert_mock_data();
+    }
+
     pub fn insert_mock_data(&mut self) {
         let json_strings = vec![
             mock::TEST_JSON_1,

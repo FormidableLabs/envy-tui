@@ -8,10 +8,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
-use ratatui::prelude::CrosstermBackend;
 
 use crate::tui::{Event, Tui};
-use crate::components::{home::Home, websocket::{Client, Trace}};
+use crate::components::{component::Component, home::Home, websocket::{Client, Trace}};
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum RequestDetailsPane {
@@ -60,6 +59,8 @@ pub struct UIState {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Action {
+    #[serde(skip)]
+    Error(String),
     CopyToClipBoard,
     NavigateLeft(Option<KeyEvent>),
     NavigateDown(Option<KeyEvent>),
@@ -70,6 +71,8 @@ pub enum Action {
     NextSection,
     PreviousSection,
     Quit,
+    #[serde(skip)]
+    QuitApplication,
     NewSearch,
     UpdateSearchQuery(char),
     DeleteSearchQuery,
@@ -99,15 +102,15 @@ pub enum Action {
 }
 
 #[derive(Default)]
-pub struct Components {
-    home: Arc<Mutex<Home>>,
+pub struct Services {
     websocket_client: Arc<Mutex<Client>>,
 }
 
 #[derive(Default)]
 pub struct App {
     pub action_tx: Option<UnboundedSender<Action>>,
-    pub components: Components,
+    pub components: Vec<Arc<Mutex<dyn Component>>>,
+    pub services: Services,
     pub is_first_render: bool,
     pub logs: Vec<String>,
     pub mode: Mode,
@@ -115,16 +118,16 @@ pub struct App {
     pub should_quit: bool,
 }
 
-pub type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stdout>>;
-
 impl App {
     pub fn new() -> Result<App, Box<dyn Error>> {
         let config = crate::config::Config::new()?;
         let home = Arc::new(Mutex::new(Home::new()?));
         let websocket_client = Arc::new(Mutex::new(Client::default()));
         let app = App {
-            components: Components {
+            components: vec![
                 home,
+            ],
+            services: Services {
                 websocket_client,
             },
             key_map: config.mapping.0,
@@ -143,27 +146,33 @@ impl App {
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
         if self.mode == Mode::Normal {
-            self.components.websocket_client.lock().await.start();
+            self.services.websocket_client.lock().await.start();
         }
 
         let mut t = Tui::new();
         t.enter()?;
 
         self.register_action_handler(action_tx.clone())?;
-        // TODO: convert components to a vector and iterate through each to register handler
-        self.components.home.lock().await.register_action_handler(action_tx.clone())?;
-        self.components.websocket_client.lock().await.register_action_handler(action_tx.clone())?;
+        for component in self.components.iter() {
+            component.lock().await.register_action_handler(action_tx.clone())?;
+        }
 
-        self.components.websocket_client.lock().await.insert_mock_data();
+        self.services.websocket_client.lock().await.register_action_handler(action_tx.clone())?;
+        self.services.websocket_client.lock().await.init();
 
         loop {
             let event = t.next().await;
 
             if let Some(Event::Render) = event {
-                let home = self.components.home.lock().await;
-                t.terminal.draw(|frame| {
-                    home.render(frame);
-                })?;
+                for component in self.components.iter() {
+                    let c = component.lock().await;
+                    t.terminal.draw(|frame| {
+                        let r = c.render(frame);
+                        if let Err(e) = r {
+                            action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
+                        }
+                    })?;
+                }
             };
 
             if let Some(Event::Key(key_event)) = event {
@@ -180,16 +189,25 @@ impl App {
                 }
             };
 
-            if let Some(action) = self.components.home.lock().await.handle_events(event)? {
-                action_tx.send(action.clone())?;
+            for component in self.components.iter() {
+                if let Some(action) = component.lock().await.handle_events(event)? {
+                    action_tx.send(action.clone())?;
+                }
             }
 
             while let Ok(action) = action_rx.try_recv() {
-                self.components.home.lock().await.update(action.clone());
-                self.components.websocket_client.lock().await.update(action.clone());
+                if let Action::QuitApplication = action {
+                    self.should_quit = true;
+                }
+
+                for component in self.components.iter() {
+                    if let Some(action) = component.lock().await.update(action.clone())? {
+                        action_tx.send(action.clone())?;
+                    }
+                }
             }
 
-            if self.components.home.lock().await.should_quit {
+            if self.should_quit {
                 break;
             }
         }

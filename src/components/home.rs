@@ -9,13 +9,14 @@ use ratatui::{
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
-use crate::app::{
-    Action, ActiveBlock, Frame, Mode, RequestDetailsPane, ResponseDetailsPane, UIState,
+use crate::{
+    app::{Action, ActiveBlock, Mode, RequestDetailsPane, ResponseDetailsPane, UIState},
+    components::component::Component,
+    components::handlers,
+    components::websocket::{State, Trace},
+    render,
+    tui::{Event, Frame},
 };
-use crate::components::handlers;
-use crate::components::websocket::{State, Trace};
-use crate::render;
-use crate::tui::Event;
 
 #[derive(Default)]
 pub struct Home {
@@ -39,7 +40,6 @@ pub struct Home {
     pub logs: Vec<String>,
     pub mode: Mode,
     pub key_map: HashMap<KeyEvent, Action>,
-    pub should_quit: bool,
     pub status_message: Option<String>,
     pub ws_status: String,
     pub wss_connected: bool,
@@ -57,7 +57,27 @@ impl Home {
         Ok(home)
     }
 
-    pub fn register_action_handler(
+    fn mark_trace_as_timed_out(&mut self, id: String) {
+        let selected_trace = self.items.iter().find(|trace| trace.id == id);
+
+        if selected_trace.is_some() {
+            let mut selected_trace = selected_trace.unwrap().clone();
+
+            if selected_trace.state == State::Sent {
+                selected_trace.state = State::Timeout;
+                selected_trace.status = None;
+                selected_trace.response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
+                selected_trace.pretty_response_body =
+                    Some("TIMEOUT WAITING FOR RESPONSE".to_string());
+
+                self.items.replace(selected_trace);
+            };
+        }
+    }
+}
+
+impl Component for Home {
+    fn register_action_handler(
         &mut self,
         tx: UnboundedSender<Action>,
     ) -> Result<(), Box<dyn Error>> {
@@ -65,18 +85,15 @@ impl Home {
         Ok(())
     }
 
-    pub fn handle_events(
-        &mut self,
-        event: Option<Event>,
-    ) -> Result<Option<Action>, Box<dyn Error>> {
+    fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>, Box<dyn Error>> {
         let r = match event {
-            Some(Event::Key(key_event)) => self.handle_key_event(key_event)?,
+            Some(Event::Key(key_event)) => self.handle_key_events(key_event)?,
             _ => None,
         };
         Ok(r)
     }
 
-    pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>, Box<dyn Error>> {
+    fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>, Box<dyn Error>> {
         // TODO: this should be handled as a separate application mode
         if self.active_block == ActiveBlock::SearchQuery {
             match key.code {
@@ -89,7 +106,7 @@ impl Home {
         Ok(None)
     }
 
-    pub fn update(&mut self, action: Action) {
+    fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
         let metadata = handlers::HandlerMetadata {
             main_height: self.main.height,
             response_body_rectangle_height: self.response_body.height,
@@ -105,7 +122,7 @@ impl Home {
 
                     self.previous_block = None;
                 }
-                _ => self.should_quit = true,
+                _ => return Ok(Some(Action::QuitApplication)),
             },
             Action::NextSection => handlers::handle_tab(self),
             Action::Help => handlers::handle_help(self),
@@ -140,27 +157,11 @@ impl Home {
             Action::MarkTraceAsTimedOut(id) => self.mark_trace_as_timed_out(id),
             _ => {}
         }
+
+        Ok(None)
     }
 
-    fn mark_trace_as_timed_out(&mut self, id: String) {
-        let selected_trace = self.items.iter().find(|trace| trace.id == id);
-
-        if selected_trace.is_some() {
-            let mut selected_trace = selected_trace.unwrap().clone();
-
-            if selected_trace.state == State::Sent {
-                selected_trace.state = State::Timeout;
-                selected_trace.status = None;
-                selected_trace.response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
-                selected_trace.pretty_response_body =
-                    Some("TIMEOUT WAITING FOR RESPONSE".to_string());
-
-                self.items.replace(selected_trace);
-            };
-        }
-    }
-
-    pub fn render(&self, frame: &mut Frame<'_>) {
+    fn render(&self, frame: &mut Frame) -> Result<(), Box<dyn Error>> {
         match self.active_block {
             ActiveBlock::Help => {
                 let main_layout = Layout::default()
@@ -306,5 +307,7 @@ impl Home {
 
             //self.is_first_render = false;
         }
+
+        Ok(())
     }
 }

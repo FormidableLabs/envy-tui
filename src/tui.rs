@@ -5,6 +5,8 @@ use std::io::{stdout, Stdout};
 use std::error::Error;
 use tokio::{sync::mpsc, task::JoinHandle};
 
+pub type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stdout>>;
+
 #[derive(Clone, Copy, Debug)]
 pub enum Event {
     Error,
