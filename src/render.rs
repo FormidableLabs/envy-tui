@@ -40,7 +40,7 @@ pub fn render_body(
     pretty_body: String,
     ui_state: &mut UIState,
     active_block: ActiveBlock,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
+    frame: &mut ratatui::Frame,
     area: Rect,
     block: ActiveBlock,
 ) {
@@ -126,11 +126,7 @@ pub fn render_body(
     }
 }
 
-pub fn render_response_body(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_response_body(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     match get_currently_selected_trace(&app) {
         Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
@@ -211,12 +207,7 @@ fn get_text_style(active: bool) -> Style {
     }
 }
 
-fn render_headers(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-    header_type: HeaderType,
-) {
+fn render_headers(app: &mut App, frame: &mut ratatui::Frame, area: Rect, header_type: HeaderType) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
@@ -312,11 +303,7 @@ fn render_headers(
     frame.render_widget(table, area);
 }
 
-pub fn render_request_block(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_request_block(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     let active_block = app.active_block;
 
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
@@ -475,7 +462,7 @@ pub fn render_request_block(
     };
 }
 
-pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_request_body(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     match get_currently_selected_trace(&app) {
         Some(request) => match &request.pretty_request_body {
             Some(pretty_json) => {
@@ -520,11 +507,7 @@ pub fn render_request_body(app: &mut App, frame: &mut Frame<CrosstermBackend<Std
     }
 }
 
-pub fn render_response_block(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_response_block(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
@@ -644,7 +627,7 @@ fn fuzzy_regex(query: String) -> Regex {
     return Regex::from_str(&fuzzy_query).unwrap();
 }
 
-pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_traces(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     let requests = &app.items;
     let re = fuzzy_regex(app.search_query.clone());
 
@@ -766,7 +749,7 @@ pub fn render_traces(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
     }
 }
 
-pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+pub fn render_search(app: &mut App, frame: &mut ratatui::Frame) {
     if app.active_block == ActiveBlock::SearchQuery {
         let area = overlay_area(frame.size());
         let widget = Paragraph::new(format!("/{}", &app.search_query))
@@ -782,7 +765,7 @@ pub fn render_search(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>)
     }
 }
 
-pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_footer(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     let ws_status = if app.collector_server.is_open() {
         if app
             .collector_server
@@ -844,11 +827,7 @@ pub fn render_footer(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>,
     frame.render_widget(help_text, area);
 }
 
-pub fn render_request_summary(
-    app: &mut App,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-) {
+pub fn render_request_summary(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let selected_item = items_as_vector.get(app.main.index);
@@ -876,7 +855,7 @@ pub fn render_request_summary(
     frame.render_widget(status_bar, area);
 }
 
-pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_help(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     let mut entry_list: Vec<KeyEntry> = app
         .key_map
         .clone()
@@ -958,7 +937,7 @@ pub fn render_help(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, a
     frame.render_widget(list, area);
 }
 
-pub fn render_debug(app: &mut App, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_debug(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     let debug_lines = app
         .logs
         .iter()
