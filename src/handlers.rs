@@ -92,7 +92,7 @@ fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: D
             overflown_number_count as u16,
         );
 
-        app.response_body.scroll_state = app.response_body.scroll_state.position(position);
+        app.response_body.scroll_state = app.response_body.scroll_state.position(position.into());
     }
 }
 
@@ -125,7 +125,7 @@ fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Di
                 overflown_number_count as u16,
             );
 
-            app.request_body.scroll_state = app.request_body.scroll_state.position(position);
+            app.request_body.scroll_state = app.request_body.scroll_state.position(position.into());
         }
     }
 }
@@ -158,7 +158,7 @@ fn handle_horizontal_response_body_scroll(app: &mut App, rect: usize, direction:
             );
 
             app.response_body.horizontal_scroll_state =
-                app.response_body.horizontal_scroll_state.position(position);
+                app.response_body.horizontal_scroll_state.position(position.into());
         }
     }
 }
@@ -191,7 +191,7 @@ fn handle_horizontal_request_body_scroll(app: &mut App, rect: usize, direction: 
             );
 
             app.request_body.horizontal_scroll_state =
-                app.request_body.horizontal_scroll_state.position(position);
+                app.request_body.horizontal_scroll_state.position(position.into());
         }
     }
 }
@@ -228,7 +228,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                         overflown_number_count,
                     );
 
-                    app.main.scroll_state = app.main.scroll_state.position(position);
+                    app.main.scroll_state = app.main.scroll_state.position(position.into());
                 }
 
                 reset_request_and_response_body_ui_state(app);
@@ -274,7 +274,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     );
 
                     app.request_details.scroll_state =
-                        app.request_details.scroll_state.position(next_position);
+                        app.request_details.scroll_state.position(next_position.into());
                 }
 
                 app.selected_request_header_index = next_index
@@ -313,7 +313,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     );
 
                     app.response_details.scroll_state =
-                        app.response_details.scroll_state.position(next_position);
+                        app.response_details.scroll_state.position(next_position.into());
                 }
 
                 app.selected_response_header_index = next_index
@@ -374,7 +374,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                         overflown_number_count,
                     );
 
-                    app.main.scroll_state = app.main.scroll_state.position(position);
+                    app.main.scroll_state = app.main.scroll_state.position(position.into());
                 }
 
                 app.selected_params_index = 0
@@ -429,7 +429,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                     );
 
                     app.request_details.scroll_state =
-                        app.request_details.scroll_state.position(next_position);
+                        app.request_details.scroll_state.position(next_position.into());
                 }
             }
             (ActiveBlock::ResponseDetails, _) => {
@@ -473,7 +473,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                         );
 
                         app.response_details.scroll_state =
-                            app.response_details.scroll_state.position(next_position);
+                            app.response_details.scroll_state.position(next_position.into());
                     }
                 }
             }
@@ -556,7 +556,7 @@ pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
                 );
 
                 app.response_body.horizontal_scroll_state =
-                    app.response_body.horizontal_scroll_state.position(position);
+                    app.response_body.horizontal_scroll_state.position(position.into());
 
                 return;
             }
@@ -586,7 +586,7 @@ pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
                 );
 
                 app.request_body.horizontal_scroll_state =
-                    app.request_body.horizontal_scroll_state.position(position);
+                    app.request_body.horizontal_scroll_state.position(position.into());
 
                 return;
             }
@@ -752,7 +752,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                     number_of_lines - usubale_rect_space,
                 );
 
-                app.main.scroll_state = app.main.scroll_state.position(position);
+                app.main.scroll_state = app.main.scroll_state.position(position.into());
 
                 reset_request_and_response_body_ui_state(app);
             }
@@ -779,7 +779,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                                 length.vertical,
                                 app.request_body.offset,
                                 overflown_number_count,
-                            ))
+                            ).into())
                 }
             }
         }
@@ -806,7 +806,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                                 length.vertical,
                                 app.response_body.offset,
                                 overflown_number_count,
-                            ))
+                            ).into())
                 }
             }
         }
@@ -844,7 +844,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                     );
 
                     app.request_details.scroll_state =
-                        app.request_details.scroll_state.position(next_position);
+                        app.request_details.scroll_state.position(next_position.into());
                 }
             }
         }
@@ -882,7 +882,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                     );
 
                     app.response_details.scroll_state =
-                        app.response_details.scroll_state.position(next_position);
+                        app.response_details.scroll_state.position(next_position.into());
                 }
             }
         }

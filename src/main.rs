@@ -321,7 +321,7 @@ async fn run(
 
             set_content_length(&mut app);
 
-            app.main.scroll_state = app.main.scroll_state.content_length(app.items.len() as u16);
+            app.main.scroll_state = app.main.scroll_state.content_length(app.items.len());
 
             app.is_first_render = false;
         }

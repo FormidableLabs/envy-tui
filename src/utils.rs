@@ -179,23 +179,25 @@ pub fn set_content_length(app: &mut App) {
     app.request_details.scroll_state = app
         .request_details
         .scroll_state
-        .content_length(content_length_elements.request_headers.vertical);
+        .content_length(content_length_elements.request_headers.vertical.into());
 
     app.response_details.scroll_state = app
         .response_details
         .scroll_state
-        .content_length(response_details_content_length);
+        .content_length(response_details_content_length.into());
 
     if res.is_some() {
         let res = res.unwrap();
 
-        app.response_body.scroll_state =
-            app.response_body.scroll_state.content_length(res.vertical);
+        app.response_body.scroll_state = app
+            .response_body
+            .scroll_state
+            .content_length(res.vertical.into());
 
         app.response_body.horizontal_scroll_state = app
             .response_body
             .horizontal_scroll_state
-            .content_length(res.horizontal);
+            .content_length(res.horizontal.into());
     }
 
     let req = content_length_elements.request_body;
@@ -203,11 +205,14 @@ pub fn set_content_length(app: &mut App) {
     if req.is_some() {
         let req = req.unwrap();
 
-        app.request_body.scroll_state = app.request_body.scroll_state.content_length(req.vertical);
+        app.request_body.scroll_state = app
+            .request_body
+            .scroll_state
+            .content_length(req.vertical.into());
 
         app.request_body.horizontal_scroll_state = app
             .request_body
             .horizontal_scroll_state
-            .content_length(req.horizontal);
+            .content_length(req.horizontal.into());
     }
 }
