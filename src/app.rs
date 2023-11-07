@@ -10,6 +10,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 
 use crate::components::component::Component;
+use crate::components::handlers::HandlerMetadata;
 use crate::components::home::Home;
 use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
@@ -94,6 +95,7 @@ pub enum Action {
     #[serde(skip)]
     OnMount,
     StopWebSocketServer,
+    UpdateMeta(HandlerMetadata),
     #[serde(skip)]
     SetGeneralStatus(String),
     #[serde(skip)]
@@ -193,10 +195,6 @@ impl App {
             };
 
             if let Some(Event::OnMount) = event {
-                // if let Some(action_with_value) = self.components.home.lock().await.on_mount() {
-                //     action_tx.send(action_with_value.clone()).unwrap();
-                // }
-
                 for component in self.components.iter() {
                     if let Some(action) = component.lock().await.on_mount()? {
                         action_tx.send(action.clone())?;

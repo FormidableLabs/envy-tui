@@ -13,10 +13,12 @@ use crate::utils::{
     parse_query_params, set_content_length,
 };
 use crossterm::event::{KeyEvent, KeyModifiers};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct HandlerMetadata {
     pub main_height: u16,
     pub response_body_rectangle_height: u16,

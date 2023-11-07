@@ -43,13 +43,8 @@ pub struct Home {
     pub ws_status: String,
     pub wss_connected: bool,
     pub wss_connection_count: usize,
+    metadata: Option<handlers::HandlerMetadata>,
 }
-
-// impl Lifecycles for Home {
-//     fn on_mount(&mut self) -> Option<Action> {
-//         Some(Action::OnMount)
-//     }
-// }
 
 impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
@@ -116,13 +111,17 @@ impl Component for Home {
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
-        let metadata = handlers::HandlerMetadata {
-            main_height: self.main.height,
-            response_body_rectangle_height: self.response_body.height,
-            response_body_rectangle_width: self.response_body.width,
-            request_body_rectangle_height: self.request_body.height,
-            request_body_rectangle_width: self.request_body.width,
-        };
+        let metadata = self
+            .metadata
+            .as_ref()
+            .unwrap_or(&handlers::HandlerMetadata {
+                main_height: 0,
+                response_body_rectangle_height: 0,
+                response_body_rectangle_width: 0,
+                request_body_rectangle_height: 0,
+                request_body_rectangle_width: 0,
+            })
+            .clone();
 
         match action {
             Action::Quit => match self.active_block {
@@ -158,6 +157,7 @@ impl Component for Home {
             Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
             Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),
             Action::NavigateRight(Some(key)) => handlers::handle_right(self, key, metadata),
+            Action::UpdateMeta(metadata) => self.metadata = Some(metadata),
             Action::ClearStatusMessage => {
                 self.status_message = None;
             }
@@ -173,7 +173,7 @@ impl Component for Home {
         Ok(None)
     }
 
-    fn render(&mut self, frame: &mut Frame) -> Result<(), Box<dyn Error>> {
+    fn render(&self, frame: &mut Frame) -> Result<(), Box<dyn Error>> {
         match self.active_block {
             ActiveBlock::Help => {
                 let main_layout = Layout::default()
@@ -293,14 +293,15 @@ impl Component for Home {
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[1]);
 
-                    // TODO: how should we set these values?
-                    self.response_body.height = response_layout[1].height;
-                    self.response_body.width = response_layout[1].width;
-
-                    self.request_body.height = request_layout[1].height;
-                    self.request_body.width = request_layout[1].width;
-
-                    self.main.height = main_layout[0].height;
+                    let _ = self.action_tx.as_ref().unwrap().send(Action::UpdateMeta(
+                        handlers::HandlerMetadata {
+                            main_height: main_layout[0].height,
+                            response_body_rectangle_height: response_layout[1].height,
+                            response_body_rectangle_width: response_layout[1].width,
+                            request_body_rectangle_height: request_layout[1].height,
+                            request_body_rectangle_width: request_layout[1].width,
+                        },
+                    ));
                 }
             }
         };
