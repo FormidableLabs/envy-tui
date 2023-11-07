@@ -787,7 +787,19 @@ pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>
                 .border_type(BorderType::Plain),
         );
 
-    let status_bar = Paragraph::new(format!("{} {}", general_status, app.ws_status))
+    let wss_status_message = match app.wss_state {
+        crate::components::home::WebSockerInternalState::Connected(1) => {
+            "🟢 1 client connected".to_string()
+        }
+        crate::components::home::WebSockerInternalState::Connected(v) => {
+            format!("🟢 {:?} clients connected", v)
+        }
+        crate::components::home::WebSockerInternalState::Closed => "⭕ Server closed".to_string(),
+
+        _ => "🟠 Waiting for connection".to_string(),
+    };
+
+    let status_bar = Paragraph::new(format!("{} {}", general_status, wss_status_message))
         .style(
             Style::default()
                 .fg(Color::DarkGray)

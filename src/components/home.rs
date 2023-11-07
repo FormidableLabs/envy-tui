@@ -17,6 +17,14 @@ use crate::{
     tui::{Event, Frame},
 };
 
+#[derive(Default, PartialEq, Eq, Debug, Clone)]
+pub enum WebSockerInternalState {
+    Connected(usize),
+    Open,
+    #[default]
+    Closed,
+}
+
 #[derive(Default)]
 pub struct Home {
     pub action_tx: Option<UnboundedSender<Action>>,
@@ -43,6 +51,7 @@ pub struct Home {
     pub ws_status: String,
     pub wss_connected: bool,
     pub wss_connection_count: usize,
+    pub wss_state: WebSockerInternalState,
     metadata: Option<handlers::HandlerMetadata>,
 }
 
@@ -152,7 +161,7 @@ impl Component for Home {
             Action::StopWebSocketServer => self.wss_connected = false,
             Action::StartWebSocketServer => self.wss_connected = true,
             Action::SetGeneralStatus(s) => handlers::handle_general_status(self, s),
-            Action::SetWebsocketStatus => handlers::handle_wss_status(self),
+            Action::SetWebsocketStatus(s) => self.wss_state = s,
             Action::NavigateUp(Some(key)) => handlers::handle_up(self, key, metadata),
             Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
             Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),

@@ -112,8 +112,10 @@ impl Client {
     pub fn start(&mut self) {
         let collector_server = self.services.collector_server.clone();
 
+        let cloned_dispatcher = self.action_tx.as_ref().unwrap().clone();
+
         tokio::spawn(async move {
-            collector_server.lock().await.start().await;
+            collector_server.lock().await.start(cloned_dispatcher).await;
         });
     }
 

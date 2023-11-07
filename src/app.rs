@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 
 use crate::components::component::Component;
 use crate::components::handlers::HandlerMetadata;
-use crate::components::home::Home;
+use crate::components::home::{Home, WebSockerInternalState};
 use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
 use crate::wss::client;
@@ -100,7 +100,7 @@ pub enum Action {
     #[serde(skip)]
     SetGeneralStatus(String),
     #[serde(skip)]
-    SetWebsocketStatus,
+    SetWebsocketStatus(WebSockerInternalState),
     #[serde(skip)]
     MarkTraceAsTimedOut(String),
     #[serde(skip)]
@@ -157,13 +157,19 @@ impl App {
         // NOTE: Why we need this to be mutable?
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
+        self.register_action_handler(action_tx.clone())?;
+
+        self.services
+            .websocket_client
+            .lock()
+            .await
+            .register_action_handler(action_tx.clone())?;
+
         self.services.websocket_client.lock().await.start();
 
         let mut t = Tui::new();
 
         t.enter()?;
-
-        self.register_action_handler(action_tx.clone())?;
 
         for component in self.components.iter() {
             component
@@ -171,12 +177,6 @@ impl App {
                 .await
                 .register_action_handler(action_tx.clone())?;
         }
-
-        self.services
-            .websocket_client
-            .lock()
-            .await
-            .register_action_handler(action_tx.clone())?;
 
         self.services.websocket_client.lock().await.init();
 
