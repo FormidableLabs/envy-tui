@@ -248,10 +248,15 @@ impl Component for Home {
 
                     render::render_search(self, frame);
 
-                    // TODO: how should we set these values?
-                    // self.response_body.height = response_layout[1].height;
-                    // self.response_body.width = response_layout[1].width;
-                    // self.main.height = split_layout[0].height;
+                    let _ = self.action_tx.as_ref().unwrap().send(Action::UpdateMeta(
+                        handlers::HandlerMetadata {
+                            main_height: split_layout[0].height,
+                            response_body_rectangle_height: response_layout[1].height,
+                            response_body_rectangle_width: response_layout[1].width,
+                            request_body_rectangle_height: request_layout[1].height,
+                            request_body_rectangle_width: request_layout[1].width,
+                        },
+                    ));
                 } else {
                     let main_layout = Layout::default()
                         .direction(Direction::Vertical)
@@ -291,7 +296,7 @@ impl Component for Home {
                     render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_search(self, frame);
-                    render::render_footer(self, frame, main_layout[1]);
+                    render::render_footer(self, frame, main_layout[4]);
 
                     let _ = self.action_tx.as_ref().unwrap().send(Action::UpdateMeta(
                         handlers::HandlerMetadata {

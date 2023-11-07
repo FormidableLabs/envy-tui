@@ -73,6 +73,10 @@ fn handle_vertical_response_body_scroll(app: &mut Home, rect: usize, direction: 
 
     let response_body_content_height = rect - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
 
+    if trace.pretty_request_body_lines.is_none() {
+        return;
+    }
+
     let number_of_lines = trace.pretty_response_body_lines.unwrap();
 
     if number_of_lines > response_body_content_height {
@@ -102,6 +106,10 @@ fn handle_vertical_request_body_scroll(app: &mut Home, rect: usize, direction: D
     let trace = get_currently_selected_trace(app).unwrap();
 
     let request_body_content_height = rect - REQUEST_BODY_UNUSABLE_VERTICAL_SPACE;
+
+    if trace.pretty_request_body_lines.is_none() {
+        return;
+    }
 
     let number_of_lines = trace.pretty_request_body_lines.unwrap();
 
@@ -394,7 +402,8 @@ pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMet
                     if app.main.index > {
                         additinal_metadata
                             .main_height
-                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16 - 2)
+                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16)
+                            .saturating_sub(2)
                     } as usize
                         && app.main.offset as u16 + usable_height < number_of_lines
                     {
