@@ -1,12 +1,12 @@
 use core::str::FromStr;
 use crossterm::event::{KeyCode, KeyEvent};
 use regex::Regex;
-use std::io::Stdout;
+
 use std::ops::Deref;
 use std::usize;
 
 use http::{HeaderName, HeaderValue};
-use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Margin, Rect};
+use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Position, Title};

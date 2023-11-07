@@ -376,7 +376,7 @@ pub fn handle_adjust_scroll_bar(app: &mut Home, additinal_metadata: HandlerMetad
         let position =
             calculate_scrollbar_position(number_of_lines, app.main.offset, overflown_number_count);
 
-        app.main.scroll_state = app.main.scroll_state.position(position);
+        app.main.scroll_state = app.main.scroll_state.position(position.into());
     }
 
     app.selected_params_index = 0
@@ -620,7 +620,7 @@ pub fn handle_go_to_right(app: &mut Home, metadata: HandlerMetadata) {
     );
 
     app.response_body.horizontal_scroll_state =
-        app.response_body.horizontal_scroll_state.position(position);
+        app.response_body.horizontal_scroll_state.position(position.into());
 
     return;
 }

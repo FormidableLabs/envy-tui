@@ -1,7 +1,7 @@
 use crate::app::Action;
 use crate::mock;
 use crate::parser::{parse_raw_trace, Payload};
-use crate::wss;
+
 use crate::wss::WebSocket;
 use std::error::Error;
 use std::fmt::Display;
