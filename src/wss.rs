@@ -144,7 +144,9 @@ impl WebSocket {
     }
 }
 
-pub async fn client(tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>) -> Result<(), Box<dyn Error>>{
+pub async fn client(
+    tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>,
+) -> Result<(), Box<dyn Error>> {
     let (mut socket, _response) =
         connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
 
@@ -156,30 +158,26 @@ pub async fn client(tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>) -> R
                 match l {
                     tungstenite::Message::Text(s) => {
                         match parse_raw_trace(&s) {
-                            Ok(request) => {
-                                match request {
-                                    crate::parser::Payload::Trace(trace) => {
-                                        let port = trace.port.clone().unwrap_or("0".to_string());
+                            Ok(request) => match request {
+                                crate::parser::Payload::Trace(trace) => {
+                                    let port = trace.port.clone().unwrap_or("0".to_string());
 
-                                        if let Some(s) = tx.clone() {
-                                            let id = trace.id.clone();
-                                            let s1 = s.clone();
-                                            tokio::spawn(async move {
-                                                sleep(Duration::from_millis(5000)).await;
-                                                s1.send(Action::MarkTraceAsTimedOut(id)).unwrap();
-                                            });
+                                    if let Some(s) = tx.clone() {
+                                        let id = trace.id.clone();
+                                        let s1 = s.clone();
+                                        tokio::spawn(async move {
+                                            sleep(Duration::from_millis(5000)).await;
+                                            s1.send(Action::MarkTraceAsTimedOut(id)).unwrap();
+                                        });
 
-                                            if port != "9999" {
-                                                let s2 = s.clone();
-                                                s2.send(Action::AddTrace(trace)).unwrap();
-                                            }
+                                        if port != "9999" {
+                                            let s2 = s.clone();
+                                            s2.send(Action::AddTrace(trace)).unwrap();
                                         }
-
                                     }
-                                    _ => {}
                                 }
-                                // app.is_first_render = true;
-                            }
+                                _ => {}
+                            },
                             Err(err) => {
                                 println!("Trace NOT parsed!! {:?}", err)
                             }

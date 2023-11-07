@@ -14,6 +14,7 @@ use crate::components::handlers::HandlerMetadata;
 use crate::components::home::Home;
 use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
+use crate::wss::client;
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum RequestDetailsPane {
@@ -129,9 +130,11 @@ pub struct App {
 impl App {
     pub fn new() -> Result<App, Box<dyn Error>> {
         let config = crate::config::Config::new()?;
+
         let home = Arc::new(Mutex::new(Home::new()?));
 
-        let websocket_client = Arc::new(Mutex::new(Client::default()));
+        let websocket_client = Arc::new(Mutex::new(Client::new()));
+
         let app = App {
             components: vec![home],
             services: Services { websocket_client },
@@ -154,15 +157,14 @@ impl App {
         // NOTE: Why we need this to be mutable?
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
-        if self.mode == Mode::Normal {
-            self.services.websocket_client.lock().await.start();
-        }
+        self.services.websocket_client.lock().await.start();
 
         let mut t = Tui::new();
 
         t.enter()?;
 
         self.register_action_handler(action_tx.clone())?;
+
         for component in self.components.iter() {
             component
                 .lock()
@@ -175,14 +177,21 @@ impl App {
             .lock()
             .await
             .register_action_handler(action_tx.clone())?;
+
         self.services.websocket_client.lock().await.init();
+
+        let action_to_clone = self.action_tx.as_ref().unwrap().clone();
+
+        tokio::spawn(async move {
+            client(Some(action_to_clone)).await;
+        });
 
         loop {
             let event = t.next().await;
 
             if let Some(Event::Render) = event {
                 for component in self.components.iter() {
-                    let mut c = component.lock().await;
+                    let c = component.lock().await;
                     t.terminal.draw(|frame| {
                         let r = c.render(frame);
                         if let Err(e) = r {
@@ -231,6 +240,13 @@ impl App {
                         action_tx.send(action.clone())?;
                     }
                 }
+
+                self.services
+                    .websocket_client
+                    .clone()
+                    .lock()
+                    .await
+                    .update(action.clone());
             }
 
             if self.should_quit {

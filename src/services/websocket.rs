@@ -91,8 +91,18 @@ pub struct Client {
 }
 
 impl Client {
+    pub fn new() -> Client {
+        Client {
+            action_tx: None,
+            open: false,
+            services: Services {
+                collector_server: Arc::new(Mutex::new(WebSocket::new())),
+            },
+        }
+    }
     pub fn register_action_handler(
         &mut self,
+
         tx: UnboundedSender<Action>,
     ) -> Result<(), Box<dyn Error>> {
         self.action_tx = Some(tx);
@@ -100,14 +110,10 @@ impl Client {
     }
 
     pub fn start(&mut self) {
-        self.open = true;
-
         let collector_server = self.services.collector_server.clone();
-        let tx = self.action_tx.clone();
 
         tokio::spawn(async move {
             collector_server.lock().await.start().await;
-            wss::client(tx).await.unwrap();
         });
     }
 
