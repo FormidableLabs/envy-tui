@@ -133,7 +133,7 @@ impl Component for Home {
                 _ => return Ok(Some(Action::QuitApplication)),
             },
             Action::NextSection => handlers::handle_tab(self),
-            Action::OnMount => handlers::handle_first_mount(self, metadata),
+            Action::OnMount => handlers::handle_adjust_scroll_bar(self, metadata),
             Action::Help => handlers::handle_help(self),
             Action::ToggleDebug => handlers::handle_debug(self),
             Action::DeleteItem => handlers::handle_delete_item(self),
@@ -165,6 +165,8 @@ impl Component for Home {
             Action::GoToLeft => handlers::handle_go_to_left(self),
             Action::AddTrace(trace) => {
                 self.items.replace(trace);
+
+                handlers::handle_adjust_scroll_bar(self, metadata);
             }
             Action::MarkTraceAsTimedOut(id) => self.mark_trace_as_timed_out(id),
             _ => {}

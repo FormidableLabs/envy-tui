@@ -73,7 +73,7 @@ fn handle_vertical_response_body_scroll(app: &mut Home, rect: usize, direction: 
 
     let response_body_content_height = rect - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
 
-    if trace.pretty_request_body_lines.is_none() {
+    if trace.pretty_response_body_lines.is_none() {
         return;
     }
 
@@ -353,7 +353,7 @@ pub fn handle_up(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetad
     }
 }
 
-pub fn handle_first_mount(app: &mut Home, additinal_metadata: HandlerMetadata) {
+pub fn handle_adjust_scroll_bar(app: &mut Home, additinal_metadata: HandlerMetadata) {
     let length = app.items.len();
 
     let usable_height = additinal_metadata
