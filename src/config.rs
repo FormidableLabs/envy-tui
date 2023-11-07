@@ -63,9 +63,8 @@ impl Config {
 }
 
 fn parse_key_event(raw: &str) -> Result<KeyEvent, String> {
-    let raw_lower = raw.to_ascii_lowercase();
     let modifiers = KeyModifiers::empty();
-    parse_key_code_with_modifiers(&raw_lower, modifiers)
+    parse_key_code_with_modifiers(&raw, modifiers)
 }
 
 fn parse_key_code_with_modifiers(

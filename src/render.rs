@@ -18,11 +18,11 @@ use ratatui::Frame;
 
 use crate::app::{Action, ActiveBlock, RequestDetailsPane, UIState};
 use crate::components::home::Home;
-use crate::components::websocket::Trace;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
+use crate::services::websocket::Trace;
 use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -852,6 +852,8 @@ pub fn render_help(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area
                 Action::NavigateDown(_) => "Move down and select entry below",
                 Action::NavigateLeft(_) => "Move cursor left",
                 Action::NavigateRight(_) => "Move cursor right",
+                Action::GoToRight => "Abs cursor right",
+                Action::GoToLeft => "Abs cursor left",
                 Action::NextSection => "Focus on next section",
                 Action::GoToEnd => "Move to bottom of section",
                 Action::GoToStart => "Move to top of section",

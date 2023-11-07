@@ -1,11 +1,10 @@
-use std::collections::{BTreeSet, HashMap};
-use std::error::Error;
-
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::Layout,
     prelude::{Constraint, Direction},
 };
+use std::collections::{BTreeSet, HashMap};
+use std::error::Error;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
@@ -13,8 +12,8 @@ use crate::{
     app::{Action, ActiveBlock, Mode, RequestDetailsPane, ResponseDetailsPane, UIState},
     components::component::Component,
     components::handlers,
-    components::websocket::{State, Trace},
     render,
+    services::websocket::{State, Trace},
     tui::{Event, Frame},
 };
 
@@ -45,6 +44,12 @@ pub struct Home {
     pub wss_connected: bool,
     pub wss_connection_count: usize,
 }
+
+// impl Lifecycles for Home {
+//     fn on_mount(&mut self) -> Option<Action> {
+//         Some(Action::OnMount)
+//     }
+// }
 
 impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
@@ -77,6 +82,10 @@ impl Home {
 }
 
 impl Component for Home {
+    fn on_mount(&mut self) -> Result<Option<Action>, Box<dyn Error>> {
+        Ok(Some(Action::OnMount))
+    }
+
     fn register_action_handler(
         &mut self,
         tx: UnboundedSender<Action>,
@@ -125,6 +134,7 @@ impl Component for Home {
                 _ => return Ok(Some(Action::QuitApplication)),
             },
             Action::NextSection => handlers::handle_tab(self),
+            Action::OnMount => handlers::handle_first_mount(self, metadata),
             Action::Help => handlers::handle_help(self),
             Action::ToggleDebug => handlers::handle_debug(self),
             Action::DeleteItem => handlers::handle_delete_item(self),
@@ -151,6 +161,8 @@ impl Component for Home {
             Action::ClearStatusMessage => {
                 self.status_message = None;
             }
+            Action::GoToRight => handlers::handle_go_to_right(self, metadata),
+            Action::GoToLeft => handlers::handle_go_to_left(self),
             Action::AddTrace(trace) => {
                 self.items.replace(trace);
             }
@@ -161,7 +173,7 @@ impl Component for Home {
         Ok(None)
     }
 
-    fn render(&self, frame: &mut Frame) -> Result<(), Box<dyn Error>> {
+    fn render(&mut self, frame: &mut Frame) -> Result<(), Box<dyn Error>> {
         match self.active_block {
             ActiveBlock::Help => {
                 let main_layout = Layout::default()
@@ -282,31 +294,16 @@ impl Component for Home {
                     render::render_footer(self, frame, main_layout[1]);
 
                     // TODO: how should we set these values?
-                    //self.response_body.height = response_layout[1].height;
-                    //self.response_body.width = response_layout[1].width;
+                    self.response_body.height = response_layout[1].height;
+                    self.response_body.width = response_layout[1].width;
 
-                    //self.request_body.height = request_layout[1].height;
-                    //self.request_body.width = request_layout[1].width;
+                    self.request_body.height = request_layout[1].height;
+                    self.request_body.width = request_layout[1].width;
 
-                    //self.main.height = main_layout[0].height;
+                    self.main.height = main_layout[0].height;
                 }
             }
         };
-        if self.is_first_render {
-            // TODO: how should we set these values?
-            // NOTE: Index and offset needs to be set prior before we call `set_content_length`.
-            // self.main.index = 0;
-            // self.main.offset = 0;
-
-            // set_content_length(self);
-
-            //self.main.scroll_state = self
-            //    .main
-            //    .scroll_state
-            //    .content_length(self.items.len() as u16);
-
-            //self.is_first_render = false;
-        }
 
         Ok(())
     }

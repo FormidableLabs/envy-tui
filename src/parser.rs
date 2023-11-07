@@ -1,14 +1,12 @@
+use http::HeaderMap;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::io::{Error, ErrorKind};
 use std::ops::Deref;
 use std::str::FromStr;
 
-use http::HeaderMap;
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-
-use regex::Regex;
-
-use crate::components::websocket::{State, Trace};
+use crate::services::websocket::{State, Trace};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct HTTPTimings {

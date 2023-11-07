@@ -1,8 +1,12 @@
-use crossterm::{event::KeyEvent, execute, terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}};
+use crossterm::{
+    event::KeyEvent,
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use futures_util::{FutureExt, StreamExt};
 use ratatui::{prelude::CrosstermBackend, terminal::Terminal};
-use std::io::{stdout, Stdout};
 use std::error::Error;
+use std::io::{stdout, Stdout};
 use tokio::{sync::mpsc, task::JoinHandle};
 
 pub type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stdout>>;
@@ -13,12 +17,13 @@ pub enum Event {
     Key(KeyEvent),
     Render,
     Tick,
+    OnMount,
 }
 
 #[derive(Debug)]
 pub struct Tui {
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
-    pub event_tx: mpsc::UnboundedSender<Event>,
+    pub event_tx: tokio::sync::mpsc::UnboundedSender<Event>,
     pub event_rx: tokio::sync::mpsc::UnboundedReceiver<Event>,
     pub task: JoinHandle<()>,
     pub frame_rate: f64,
@@ -29,11 +34,20 @@ impl Tui {
     pub fn new() -> Self {
         let tick_rate = 4.0;
         let frame_rate = 60.0;
-        let (event_tx, event_rx) =  mpsc::unbounded_channel();
+        // NOTE: Internal message channel. Publishes events native to tui. Consumer can map
+        // internal events to app events.
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
         let task = tokio::spawn(async {});
         let terminal = Terminal::new(CrosstermBackend::new(stdout())).unwrap();
 
-        Self { event_tx, event_rx, frame_rate, task, terminal, tick_rate }
+        Self {
+            event_tx,
+            event_rx,
+            frame_rate,
+            task,
+            terminal,
+            tick_rate,
+        }
     }
 
     pub fn enter(&mut self) -> Result<(), Box<dyn Error>> {
@@ -51,7 +65,7 @@ impl Tui {
         Ok(())
     }
 
-    pub fn start(&mut self) {
+    fn start(&mut self) {
         let tick_delay = std::time::Duration::from_secs_f64(1.0 / self.tick_rate);
         let render_delay = std::time::Duration::from_secs_f64(1.0 / self.frame_rate);
         let _tx = self.event_tx.clone();
@@ -61,10 +75,13 @@ impl Tui {
             let mut tick_interval = tokio::time::interval(tick_delay);
             let mut render_interval = tokio::time::interval(render_delay);
 
+            let mut is_first_render = true;
+
             loop {
                 let tick_delay = tick_interval.tick();
                 let render_delay = render_interval.tick();
                 let crossterm_event = reader.next().fuse();
+
                 tokio::select! {
                     maybe_event = crossterm_event => {
                         match maybe_event {
@@ -90,6 +107,12 @@ impl Tui {
                     },
                     _ = render_delay => {
                         _tx.send(Event::Render).unwrap();
+
+                        if is_first_render {
+                            _tx.send(Event::OnMount).unwrap();
+
+                            is_first_render = false;
+                        }
                     }
                 }
             }
@@ -97,7 +120,6 @@ impl Tui {
     }
 
     pub async fn next(&mut self) -> Option<Event> {
-         self.event_rx.recv().await
+        self.event_rx.recv().await
     }
 }
-

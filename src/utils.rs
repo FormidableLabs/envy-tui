@@ -1,7 +1,7 @@
 use http::Uri;
 
 use crate::components::home::Home;
-use crate::components::websocket::Trace;
+use crate::services::websocket::Trace;
 
 pub enum UIDispatchEvent {
     ClearStatusMessage,

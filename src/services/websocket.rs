@@ -1,18 +1,14 @@
-
-
-use std::error::Error;
-use std::fmt::Display;
-use std::sync::Arc;
-use std::hash::{Hash, Hasher};
-
-use tokio::sync::Mutex;
-use tokio::sync::mpsc::UnboundedSender;
-
 use crate::app::Action;
 use crate::mock;
-use crate::parser::{Payload, parse_raw_trace};
-use crate::wss::WebSocket;
+use crate::parser::{parse_raw_trace, Payload};
 use crate::wss;
+use crate::wss::WebSocket;
+use std::error::Error;
+use std::fmt::Display;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub struct Services {
@@ -95,7 +91,10 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<(), Box<dyn Error>> {
+    pub fn register_action_handler(
+        &mut self,
+        tx: UnboundedSender<Action>,
+    ) -> Result<(), Box<dyn Error>> {
         self.action_tx = Some(tx);
         Ok(())
     }

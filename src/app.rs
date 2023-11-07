@@ -5,12 +5,14 @@ use std::sync::Arc;
 use crossterm::event::KeyEvent;
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::Mutex;
 
+use crate::components::component::Component;
+use crate::components::home::Home;
+use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
-use crate::components::{component::Component, home::Home, websocket::{Client, Trace}};
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum RequestDetailsPane {
@@ -66,6 +68,8 @@ pub enum Action {
     NavigateDown(Option<KeyEvent>),
     NavigateUp(Option<KeyEvent>),
     NavigateRight(Option<KeyEvent>),
+    GoToRight,
+    GoToLeft,
     GoToEnd,
     GoToStart,
     NextSection,
@@ -87,6 +91,8 @@ pub enum Action {
     ScheduleStartWebSocketServer,
     ScheduleStopWebSocketServer,
     StartWebSocketServer,
+    #[serde(skip)]
+    OnMount,
     StopWebSocketServer,
     #[serde(skip)]
     SetGeneralStatus(String),
@@ -122,14 +128,11 @@ impl App {
     pub fn new() -> Result<App, Box<dyn Error>> {
         let config = crate::config::Config::new()?;
         let home = Arc::new(Mutex::new(Home::new()?));
+
         let websocket_client = Arc::new(Mutex::new(Client::default()));
         let app = App {
-            components: vec![
-                home,
-            ],
-            services: Services {
-                websocket_client,
-            },
+            components: vec![home],
+            services: Services { websocket_client },
             key_map: config.mapping.0,
             ..Self::default()
         };
@@ -137,12 +140,16 @@ impl App {
         Ok(app)
     }
 
-    fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<(), Box<dyn Error>> {
+    fn register_action_handler(
+        &mut self,
+        tx: UnboundedSender<Action>,
+    ) -> Result<(), Box<dyn Error>> {
         self.action_tx = Some(tx);
         Ok(())
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        // NOTE: Why we need this to be mutable?
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
         if self.mode == Mode::Normal {
@@ -150,14 +157,22 @@ impl App {
         }
 
         let mut t = Tui::new();
+
         t.enter()?;
 
         self.register_action_handler(action_tx.clone())?;
         for component in self.components.iter() {
-            component.lock().await.register_action_handler(action_tx.clone())?;
+            component
+                .lock()
+                .await
+                .register_action_handler(action_tx.clone())?;
         }
 
-        self.services.websocket_client.lock().await.register_action_handler(action_tx.clone())?;
+        self.services
+            .websocket_client
+            .lock()
+            .await
+            .register_action_handler(action_tx.clone())?;
         self.services.websocket_client.lock().await.init();
 
         loop {
@@ -165,13 +180,27 @@ impl App {
 
             if let Some(Event::Render) = event {
                 for component in self.components.iter() {
-                    let c = component.lock().await;
+                    let mut c = component.lock().await;
                     t.terminal.draw(|frame| {
                         let r = c.render(frame);
                         if let Err(e) = r {
-                            action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
+                            action_tx
+                                .send(Action::Error(format!("Failed to draw: {:?}", e)))
+                                .unwrap();
                         }
                     })?;
+                }
+            };
+
+            if let Some(Event::OnMount) = event {
+                // if let Some(action_with_value) = self.components.home.lock().await.on_mount() {
+                //     action_tx.send(action_with_value.clone()).unwrap();
+                // }
+
+                for component in self.components.iter() {
+                    if let Some(action) = component.lock().await.on_mount()? {
+                        action_tx.send(action.clone())?;
+                    }
                 }
             };
 
@@ -183,7 +212,6 @@ impl App {
                         Action::NavigateLeft(None) => Action::NavigateLeft(Some(key_event)),
                         Action::NavigateRight(None) => Action::NavigateRight(Some(key_event)),
                         _ => action.clone(),
-
                     };
                     action_tx.send(action_with_value.clone()).unwrap();
                 }
