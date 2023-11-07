@@ -589,10 +589,7 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
                     .style(Style::default().fg(Color::White))
                     .border_type(BorderType::Plain),
             )
-            .select(match app.request_details_block {
-                RequestDetailsPane::Headers => 0,
-                RequestDetailsPane::Query => 1,
-            })
+            .select(0)
             .highlight_style(Style::default().fg(Color::LightMagenta));
 
         frame.render_widget(main, area);

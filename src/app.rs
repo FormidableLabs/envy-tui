@@ -18,8 +18,8 @@ use crate::wss::client;
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum RequestDetailsPane {
-    #[default]
     Query,
+    #[default]
     Headers,
 }
 

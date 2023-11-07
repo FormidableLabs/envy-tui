@@ -21,4 +21,4 @@ X: StartWebSocketServer
 p: ToggleDebug
 d: DeleteItem
 "]": NextPane
-"]": PreviousPane
+"[": PreviousPane
