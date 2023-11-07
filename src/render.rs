@@ -1,5 +1,5 @@
 use core::str::FromStr;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use regex::Regex;
 use std::io::Stdout;
 use std::ops::Deref;
@@ -16,11 +16,13 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::app::{ActiveBlock, App, KeyEntry, KeyMap, RequestDetailsPane, Trace, UIState};
+use crate::app::{Action, ActiveBlock, RequestDetailsPane, UIState};
+use crate::components::home::Home;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
+use crate::services::websocket::Trace;
 use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -48,7 +50,6 @@ pub fn render_body(
 
     let lines = pretty_body
         .lines()
-        .into_iter()
         .map(|lines| {
             let len = lines.len();
 
@@ -126,13 +127,13 @@ pub fn render_body(
     }
 }
 
-pub fn render_response_body(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
-    match get_currently_selected_trace(&app) {
+pub fn render_response_body(app: &Home, frame: &mut Frame, area: Rect) {
+    match get_currently_selected_trace(app) {
         Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
                 render_body(
                     pretty_json.to_string(),
-                    &mut app.response_body,
+                    &mut app.response_body.clone(),
                     app.active_block,
                     frame,
                     area,
@@ -207,7 +208,7 @@ fn get_text_style(active: bool) -> Style {
     }
 }
 
-fn render_headers(app: &mut App, frame: &mut ratatui::Frame, area: Rect, header_type: HeaderType) {
+fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: HeaderType) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
@@ -250,7 +251,7 @@ fn render_headers(app: &mut App, frame: &mut ratatui::Frame, area: Rect, header_
 
             let rows = cloned
                 .iter()
-                .skip(offset.into())
+                .skip(offset)
                 .map(|(name, value)| {
                     let header_name = name.as_str();
 
@@ -303,7 +304,7 @@ fn render_headers(app: &mut App, frame: &mut ratatui::Frame, area: Rect, header_
     frame.render_widget(table, area);
 }
 
-pub fn render_request_block(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
+pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
     let active_block = app.active_block;
 
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
@@ -316,7 +317,7 @@ pub fn render_request_block(app: &mut App, frame: &mut ratatui::Frame, area: Rec
 
             let raw_params = parse_query_params(uri);
 
-            let mut cloned = raw_params.clone();
+            let mut cloned = raw_params;
 
             cloned.sort_by(|a, b| {
                 let (name_a, _) = a;
@@ -452,7 +453,7 @@ pub fn render_request_block(app: &mut App, frame: &mut ratatui::Frame, area: Rec
                                 horizontal: 0,
                                 vertical: 2,
                             }),
-                            &mut app.request_details.scroll_state,
+                            &mut app.request_details.scroll_state.clone(),
                         );
                     }
                 }
@@ -462,13 +463,13 @@ pub fn render_request_block(app: &mut App, frame: &mut ratatui::Frame, area: Rec
     };
 }
 
-pub fn render_request_body(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
-    match get_currently_selected_trace(&app) {
+pub fn render_request_body(app: &Home, frame: &mut Frame, area: Rect) {
+    match get_currently_selected_trace(app) {
         Some(request) => match &request.pretty_request_body {
             Some(pretty_json) => {
                 render_body(
                     pretty_json.to_string(),
-                    &mut app.request_body,
+                    &mut app.request_body.clone(),
                     app.active_block,
                     frame,
                     area,
@@ -507,7 +508,7 @@ pub fn render_request_body(app: &mut App, frame: &mut ratatui::Frame, area: Rect
     }
 }
 
-pub fn render_response_block(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
+pub fn render_response_block(app: &Home, frame: &mut Frame, area: Rect) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
@@ -540,7 +541,7 @@ pub fn render_response_block(app: &mut App, frame: &mut ratatui::Frame, area: Re
 
         frame.render_widget(status_bar, area);
     } else {
-        let mut cloned = raw_params.clone();
+        let mut cloned = raw_params;
 
         cloned.sort_by(|a, b| {
             let (name_a, _) = a;
@@ -583,10 +584,7 @@ pub fn render_response_block(app: &mut App, frame: &mut ratatui::Frame, area: Re
                     .style(Style::default().fg(Color::White))
                     .border_type(BorderType::Plain),
             )
-            .select(match app.request_details_block {
-                RequestDetailsPane::Headers => 0,
-                RequestDetailsPane::Query => 1,
-            })
+            .select(0)
             .highlight_style(Style::default().fg(Color::LightMagenta));
 
         frame.render_widget(main, area);
@@ -607,7 +605,7 @@ pub fn render_response_block(app: &mut App, frame: &mut ratatui::Frame, area: Re
                     horizontal: 0,
                     vertical: 2,
                 }),
-                &mut app.response_details.scroll_state,
+                &mut app.response_details.scroll_state.clone(),
             );
         }
     }
@@ -624,10 +622,10 @@ fn fuzzy_regex(query: String) -> Regex {
         fuzzy_query.extend([c, '.', '*']);
     }
 
-    return Regex::from_str(&fuzzy_query).unwrap();
+    Regex::from_str(&fuzzy_query).unwrap()
 }
 
-pub fn render_traces(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
+pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
     let requests = &app.items;
     let re = fuzzy_regex(app.search_query.clone());
 
@@ -635,7 +633,7 @@ pub fn render_traces(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
 
     let effective_height = height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
 
-    let active_block = app.active_block.clone();
+    let active_block = app.active_block;
 
     let items_as_vector = requests
         .iter()
@@ -648,7 +646,7 @@ pub fn render_traces(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
 
     let converted_rows: Vec<(Vec<String>, bool)> = items_as_vector
         .iter()
-        .skip(app.main.offset.into())
+        .skip(app.main.offset)
         .take(effective_height.into())
         .map(|request| {
             let uri = truncate(request.uri.clone().as_str(), 60);
@@ -667,16 +665,10 @@ pub fn render_traces(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
                 None => "...".to_string(),
             };
 
-            let id = request.id.clone().to_string();
+            let id = request.id.clone();
 
             let selected = match selected_item {
-                Some(item) => {
-                    if item.deref() == request.deref() {
-                        true
-                    } else {
-                        false
-                    }
-                }
+                Some(item) => item.deref() == request.deref(),
                 None => false,
             };
 
@@ -744,12 +736,12 @@ pub fn render_traces(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
                 horizontal: 0,
                 vertical: 2,
             }),
-            &mut app.main.scroll_state,
+            &mut app.main.scroll_state.clone(),
         );
     }
 }
 
-pub fn render_search(app: &mut App, frame: &mut ratatui::Frame) {
+pub fn render_search(app: &Home, frame: &mut Frame) {
     if app.active_block == ActiveBlock::SearchQuery {
         let area = overlay_area(frame.size());
         let widget = Paragraph::new(format!("/{}", &app.search_query))
@@ -765,29 +757,10 @@ pub fn render_search(app: &mut App, frame: &mut ratatui::Frame) {
     }
 }
 
-pub fn render_footer(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
-    let ws_status = if app.collector_server.is_open() {
-        if app
-            .collector_server
-            .get_connections()
-            .checked_sub(1)
-            .is_some()
-            && app.collector_server.get_connections() - 1 > 0
-        {
-            format!(
-                "🟢 {:?} clients connected",
-                app.collector_server.get_connections()
-            )
-        } else {
-            "🟠 Waiting for connection".to_string()
-        }
-    } else {
-        "⭕ Server closed".to_string()
-    };
-
-    let general_status = match &app.status_message {
+pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
+    let general_status = match app.status_message.clone() {
         Some(text) => text,
-        None => "",
+        None => "".to_string(),
     };
 
     let help_text = Paragraph::new("For help, press ?")
@@ -806,7 +779,19 @@ pub fn render_footer(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
                 .border_type(BorderType::Plain),
         );
 
-    let status_bar = Paragraph::new(format!("{} {}", general_status, ws_status))
+    let wss_status_message = match app.wss_state {
+        crate::components::home::WebSockerInternalState::Connected(1) => {
+            "🟢 1 client connected".to_string()
+        }
+        crate::components::home::WebSockerInternalState::Connected(v) => {
+            format!("🟢 {:?} clients connected", v)
+        }
+        crate::components::home::WebSockerInternalState::Closed => "⭕ Server closed".to_string(),
+
+        _ => "🟠 Waiting for connection".to_string(),
+    };
+
+    let status_bar = Paragraph::new(format!("{} {}", general_status, wss_status_message))
         .style(
             Style::default()
                 .fg(Color::DarkGray)
@@ -827,7 +812,7 @@ pub fn render_footer(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     frame.render_widget(help_text, area);
 }
 
-pub fn render_request_summary(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
+pub fn render_request_summary(app: &Home, frame: &mut Frame, area: Rect) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let selected_item = items_as_vector.get(app.main.index);
@@ -855,64 +840,87 @@ pub fn render_request_summary(app: &mut App, frame: &mut ratatui::Frame, area: R
     frame.render_widget(status_bar, area);
 }
 
-pub fn render_help(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
-    let mut entry_list: Vec<KeyEntry> = app
-        .key_map
-        .clone()
-        .into_iter()
-        .map(|(key_map, key_codes)| KeyEntry { key_map, key_codes })
+pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
+    let mut entry_list: Vec<(KeyEvent, Action)> = vec![];
+    for (k, v) in app.key_map.iter() {
+        entry_list.push((*k, v.clone()));
+    }
+
+    let key_mappings: Vec<(String, String)> = entry_list
+        .iter()
+        .map(|(key_event, action)| {
+            let description_str = match action {
+                Action::CopyToClipBoard => "Copy selection to OS clipboard",
+                Action::FocusOnTraces => "Focus on traces section OR exit current window",
+                Action::NavigateUp(_) => "Move up and select an entry one above",
+                Action::NavigateDown(_) => "Move down and select entry below",
+                Action::NavigateLeft(_) => "Move cursor left",
+                Action::NavigateRight(_) => "Move cursor right",
+                Action::GoToRight => "Abs cursor right",
+                Action::GoToLeft => "Abs cursor left",
+                Action::NextSection => "Focus on next section",
+                Action::GoToEnd => "Move to bottom of section",
+                Action::GoToStart => "Move to top of section",
+                Action::PreviousSection => "Focus on previous section",
+                Action::Quit => "Quit",
+                Action::NewSearch => "Search",
+                Action::ExitSearch => "Cancel Search",
+                Action::UpdateSearchQuery(_) => "Update Search Query",
+                Action::DeleteSearchQuery => "Delete Last Search Char",
+                Action::Help => "Open Help Window",
+                Action::ToggleDebug => "Toggle Debug Window",
+                Action::DeleteItem => "Delete Trace",
+                Action::ShowTraceDetails => "Focus On Trace",
+                Action::NextPane => "Focus On Next Pane",
+                Action::PreviousPane => "Go To Previous Pane",
+                Action::StartWebSocketServer => "Start the Collector Server",
+                Action::StopWebSocketServer => "Stop the Collector Server",
+                _ => "",
+            };
+            let description = format!("{}:", description_str);
+
+            let mut b = [0; 2];
+            let key_code_str = match key_event.code {
+                KeyCode::PageUp => "Page Up",
+                KeyCode::PageDown => "Page Down",
+                KeyCode::Down => "Down arrow",
+                KeyCode::Up => "Up arrow",
+                KeyCode::Esc => "Esc",
+                KeyCode::Tab => "Tab",
+                KeyCode::BackTab => "Tab + Shift",
+                KeyCode::Char('/') => "/{pattern}[/]<CR>",
+                KeyCode::Char(c) => c.encode_utf8(&mut b),
+                _ => "Default",
+            };
+            let key_code = format!(r#""{}""#, key_code_str);
+
+            (description, key_code)
+        })
         .collect();
 
-    entry_list.sort();
+    let mut grouped: Vec<(String, Vec<String>)> =
+        key_mappings.iter().fold(vec![], |mut acc, (rk, rv)| {
+            for (lk, lv) in acc.iter_mut() {
+                if lk.eq(&rk) {
+                    lv.push(rv.to_string());
+                    return acc;
+                }
+            }
 
-    let debug_lines = entry_list
+            acc.push((rk.to_string(), vec![rv.to_string()]));
+
+            acc
+        });
+
+    grouped.sort();
+
+    let debug_lines = grouped
         .iter()
-        .map(|entry| {
-            let key_codes = &entry.key_codes;
-            let keymap = entry.key_map;
-
-            let description = match keymap {
-                KeyMap::NavigateUp => "Move up and select an entry one above",
-                KeyMap::NavigateDown => "Move down and select entry below",
-                KeyMap::NavigateLeft => "Move cursor left",
-                KeyMap::NavigateRight => "Move cursor right",
-                KeyMap::NextSection => "Focus on next section",
-                KeyMap::PreviousSection => "Focus on previous section",
-                KeyMap::Quit => "Quit",
-                KeyMap::CopyToClipBoard => "Copy selection to OS clipboard",
-                KeyMap::GoToEnd => "Move to bottom of section",
-                KeyMap::GoToStart => "Move to top of section",
-                KeyMap::Search => "Search",
-                KeyMap::StartWebSocketServer => "Start the Collector Server",
-                KeyMap::StopWebSocketServer => "Stop the Collector Server",
-            };
-            let joiner = ':';
-            let mut description = String::from(description);
-            description.push(joiner);
-
-            let mapped_keys = key_codes
-                .iter()
-                .map(|key_code| {
-                    let key_code_as_string = match key_code {
-                        KeyCode::PageUp => "Page Up".to_string(),
-                        KeyCode::PageDown => "Page Down".to_string(),
-                        KeyCode::Down => "Down arrow".to_string(),
-                        KeyCode::Up => "Up arrow".to_string(),
-                        KeyCode::Tab => "Tab".to_string(),
-                        KeyCode::BackTab => "Tab + Shift".to_string(),
-                        KeyCode::Char('/') => "/{pattern}[/]<CR>".to_string(),
-                        KeyCode::Char(c) => c.to_string(),
-                        _ => "Default".to_string(),
-                    };
-
-                    format!(r#""{}""#, key_code_as_string)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-
+        .map(|(description, key_code)| {
             let column_a =
                 Cell::from(Line::from(vec![Span::raw(description)]).alignment(Alignment::Right));
-            let column_b = Cell::from(mapped_keys);
+            let column_b = Cell::from(key_code.join(", "));
+
             Row::new(vec![column_a, column_b]).style(get_row_style(RowStyle::Default))
         })
         .collect::<Vec<_>>();
@@ -937,7 +945,7 @@ pub fn render_help(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
     frame.render_widget(list, area);
 }
 
-pub fn render_debug(app: &mut App, frame: &mut ratatui::Frame, area: Rect) {
+pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
     let debug_lines = app
         .logs
         .iter()

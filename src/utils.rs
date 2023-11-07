@@ -1,6 +1,7 @@
 use http::Uri;
 
-use crate::app::{App, Trace};
+use crate::components::home::Home;
+use crate::services::websocket::Trace;
 
 pub enum UIDispatchEvent {
     ClearStatusMessage,
@@ -24,11 +25,11 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
     let uri = url.parse::<Uri>();
 
     match uri {
-        Ok(value) => match value.query().map(|v| (v).split("&")) {
+        Ok(value) => match value.query().map(|v| (v).split('&')) {
             Some(v) => v
                 .map(|query_param_entry| {
                     let query_param_entry_in_vector =
-                        query_param_entry.split("=").collect::<Vec<&str>>();
+                        query_param_entry.split('=').collect::<Vec<&str>>();
 
                     (
                         String::from(query_param_entry_in_vector[0]),
@@ -42,7 +43,7 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
     }
 }
 
-pub fn get_currently_selected_trace(app: &App) -> Option<&Trace> {
+pub fn get_currently_selected_trace(app: &Home) -> Option<&Trace> {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     items_as_vector.get(app.main.index).copied()
@@ -72,8 +73,8 @@ pub struct ContentLengthElements {
     pub response_body: Option<ContentLength>,
 }
 
-pub fn get_content_length(app: &App) -> ContentLengthElements {
-    let trace = get_currently_selected_trace(&app);
+pub fn get_content_length(app: &Home) -> ContentLengthElements {
+    let trace = get_currently_selected_trace(app);
 
     let mut content_length = ContentLengthElements {
         request_body: None,
@@ -91,14 +92,14 @@ pub fn get_content_length(app: &App) -> ContentLengthElements {
 
     let item = trace.unwrap();
 
-    if item.response_headers.len() > 0 {
+    if !item.response_headers.is_empty() {
         content_length.response_headers = Some(ContentLength {
             vertical: item.response_headers.len() as u16,
             horizontal: 0,
         })
     }
 
-    if item.request_headers.len() > 0 {
+    if !item.request_headers.is_empty() {
         content_length.request_headers.vertical = item.request_headers.len() as u16;
     }
 
@@ -109,19 +110,14 @@ pub fn get_content_length(app: &App) -> ContentLengthElements {
     if response_lines.is_some() {
         let response_lines = response_lines.unwrap();
 
-        let response_longest =
-            response_lines
-                .lines()
-                .into_iter()
-                .fold(0, |longest: u16, lines: &str| {
-                    let len = lines.len() as u16;
+        let response_longest = response_lines.lines().fold(0, |longest: u16, lines: &str| {
+            let len = lines.len() as u16;
 
-                    len.max(longest)
-                });
+            len.max(longest)
+        });
 
         let response_vertical_content_length: u16 = response_lines
             .lines()
-            .into_iter()
             .collect::<Vec<_>>()
             .len()
             .try_into()
@@ -136,19 +132,14 @@ pub fn get_content_length(app: &App) -> ContentLengthElements {
     if request_lines.is_some() {
         let request_lines = request_lines.unwrap();
 
-        let request_longest =
-            request_lines
-                .lines()
-                .into_iter()
-                .fold(0, |longest: u16, lines: &str| {
-                    let len = lines.len() as u16;
+        let request_longest = request_lines.lines().fold(0, |longest: u16, lines: &str| {
+            let len = lines.len() as u16;
 
-                    len.max(longest)
-                });
+            len.max(longest)
+        });
 
         let request_vertical_content_length: u16 = request_lines
             .lines()
-            .into_iter()
             .collect::<Vec<_>>()
             .len()
             .try_into()
@@ -163,8 +154,8 @@ pub fn get_content_length(app: &App) -> ContentLengthElements {
     content_length
 }
 
-pub fn set_content_length(app: &mut App) {
-    let content_length_elements = get_content_length(&app);
+pub fn set_content_length(app: &mut Home) {
+    let content_length_elements = get_content_length(app);
 
     let response_details_content_length = content_length_elements
         .response_headers

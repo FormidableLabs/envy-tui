@@ -1,10 +1,5 @@
-use std::time::Duration;
-
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use futures_channel::mpsc::UnboundedSender;
-use tokio::time::sleep;
-
-use crate::app::{ActiveBlock, App, AppDispatch, RequestDetailsPane, Trace};
+use crate::app::{Action, ActiveBlock, RequestDetailsPane};
+use crate::components::home::Home;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_HORIZONTAL_SPACE,
     REQUEST_BODY_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -12,11 +7,18 @@ use crate::consts::{
     RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::parser::{generate_curl_command, pretty_parse_body};
+use crate::services::websocket::Trace;
 use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
     parse_query_params, set_content_length,
 };
+use crossterm::event::{KeyEvent, KeyModifiers};
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::time::sleep;
 
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct HandlerMetadata {
     pub main_height: u16,
     pub response_body_rectangle_height: u16,
@@ -33,7 +35,7 @@ enum Direction {
     Left,
 }
 
-fn reset_request_and_response_body_ui_state(app: &mut App) {
+fn reset_request_and_response_body_ui_state(app: &mut Home) {
     app.response_body.offset = 0;
     app.response_body.horizontal_offset = 0;
 
@@ -66,10 +68,14 @@ fn reset_request_and_response_body_ui_state(app: &mut App) {
     app.selected_request_header_index = 0;
 }
 
-fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: Direction) {
-    let trace = get_currently_selected_trace(&app).unwrap();
+fn handle_vertical_response_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
+    let trace = get_currently_selected_trace(app).unwrap();
 
     let response_body_content_height = rect - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
+
+    if trace.pretty_response_body_lines.is_none() {
+        return;
+    }
 
     let number_of_lines = trace.pretty_response_body_lines.unwrap();
 
@@ -96,10 +102,14 @@ fn handle_vertical_response_body_scroll(app: &mut App, rect: usize, direction: D
     }
 }
 
-fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Direction) {
-    let trace = get_currently_selected_trace(&app).unwrap();
+fn handle_vertical_request_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
+    let trace = get_currently_selected_trace(app).unwrap();
 
     let request_body_content_height = rect - REQUEST_BODY_UNUSABLE_VERTICAL_SPACE;
+
+    if trace.pretty_request_body_lines.is_none() {
+        return;
+    }
 
     let number_of_lines = trace.pretty_request_body_lines.unwrap();
 
@@ -130,7 +140,7 @@ fn handle_vertical_request_body_scroll(app: &mut App, rect: usize, direction: Di
     }
 }
 
-fn handle_horizontal_response_body_scroll(app: &mut App, rect: usize, direction: Direction) {
+fn handle_horizontal_response_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
     let content = get_content_length(app);
 
     if content.response_body.is_some() {
@@ -163,7 +173,7 @@ fn handle_horizontal_response_body_scroll(app: &mut App, rect: usize, direction:
     }
 }
 
-fn handle_horizontal_request_body_scroll(app: &mut App, rect: usize, direction: Direction) {
+fn handle_horizontal_request_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
     let content = get_content_length(app);
 
     if content.request_body.is_some() {
@@ -196,7 +206,17 @@ fn handle_horizontal_request_body_scroll(app: &mut App, rect: usize, direction: 
     }
 }
 
-pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetadata) {
+pub fn handle_debug(app: &mut Home) {
+    app.previous_block = Some(app.active_block);
+    app.active_block = ActiveBlock::Debug;
+}
+
+pub fn handle_help(app: &mut Home) {
+    app.previous_block = Some(app.active_block);
+    app.active_block = ActiveBlock::Help;
+}
+
+pub fn handle_up(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetadata) {
     match key.modifiers {
         KeyModifiers::CONTROL => match app.active_block {
             ActiveBlock::ResponseDetails => app.active_block = ActiveBlock::RequestDetails,
@@ -205,7 +225,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
         _ => match (app.active_block, app.request_details_block) {
             (ActiveBlock::TracesBlock, _) => {
                 if app.main.index > 0 {
-                    app.main.index = app.main.index - 1;
+                    app.main.index -= 1;
 
                     if app.main.index < app.main.offset {
                         app.main.offset -= 1;
@@ -214,13 +234,15 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
 
                 let number_of_lines: u16 = app.items.len().try_into().unwrap();
 
-                let usable_height = additinal_metadata.main_height
-                    - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+                let usable_height = additinal_metadata
+                    .main_height
+                    .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
 
                 if usable_height < number_of_lines {
                     let overflown_number_count: u16 = number_of_lines
-                        - (additinal_metadata.main_height
-                            - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
+                        - (additinal_metadata
+                            .main_height
+                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16));
 
                     let position = calculate_scrollbar_position(
                         number_of_lines,
@@ -258,9 +280,10 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     .request_headers
                     .len();
 
-                let usable_height = additinal_metadata.request_body_rectangle_height.checked_sub(
-                    RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16
-                ).unwrap_or_default();
+                let usable_height = additinal_metadata
+                    .request_body_rectangle_height
+                    .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                    .unwrap_or_default();
 
                 if item_length > usable_height as usize {
                     if next_index < app.request_details.offset {
@@ -270,7 +293,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.request_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.request_details.scroll_state =
@@ -309,7 +332,7 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.response_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.response_details.scroll_state =
@@ -330,8 +353,37 @@ pub fn handle_up(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetada
     }
 }
 
+pub fn handle_adjust_scroll_bar(app: &mut Home, additinal_metadata: HandlerMetadata) {
+    let length = app.items.len();
+
+    let usable_height = additinal_metadata
+        .main_height
+        .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE.try_into().unwrap());
+
+    let number_of_lines: u16 = length.try_into().unwrap();
+
+    reset_request_and_response_body_ui_state(app);
+
+    set_content_length(app);
+
+    if usable_height < number_of_lines {
+        let overflown_number_count: u16 = number_of_lines.saturating_sub(
+            additinal_metadata
+                .main_height
+                .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16),
+        );
+
+        let position =
+            calculate_scrollbar_position(number_of_lines, app.main.offset, overflown_number_count);
+
+        app.main.scroll_state = app.main.scroll_state.position(position);
+    }
+
+    app.selected_params_index = 0
+}
+
 // NOTE: Find something like urlSearchParams for JS.
-pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMetadata) {
+pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetadata) {
     match key.modifiers {
         KeyModifiers::CONTROL => match app.active_block {
             ActiveBlock::RequestDetails => app.active_block = ActiveBlock::ResponseDetails,
@@ -342,21 +394,23 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                 let length = app.items.len();
                 let number_of_lines: u16 = length.try_into().unwrap();
 
-                let usable_height = additinal_metadata.main_height
-                    - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+                let usable_height = additinal_metadata
+                    .main_height
+                    .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE.try_into().unwrap());
 
                 if app.main.index + 1 < length {
                     if app.main.index > {
-                        additinal_metadata.main_height
-                            - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16
-                            - 2
+                        additinal_metadata
+                            .main_height
+                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16)
+                            .saturating_sub(2)
                     } as usize
                         && app.main.offset as u16 + usable_height < number_of_lines
                     {
                         app.main.offset += 1;
                     }
 
-                    app.main.index = app.main.index + 1;
+                    app.main.index += 1;
                 }
 
                 reset_request_and_response_body_ui_state(app);
@@ -364,9 +418,11 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                 set_content_length(app);
 
                 if usable_height < number_of_lines {
-                    let overflown_number_count: u16 = number_of_lines
-                        - (additinal_metadata.main_height
-                            - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
+                    let overflown_number_count: u16 = number_of_lines.saturating_sub(
+                        additinal_metadata
+                            .main_height
+                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16),
+                    );
 
                     let position = calculate_scrollbar_position(
                         number_of_lines,
@@ -405,9 +461,10 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
 
                 app.selected_request_header_index = next_index;
 
-                let usable_height = additinal_metadata.request_body_rectangle_height.checked_sub(
-                    RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16
-                ).unwrap_or_default();
+                let usable_height = additinal_metadata
+                    .request_body_rectangle_height
+                    .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                    .unwrap_or_default();
 
                 let requires_scrollbar = item_length as u16 >= usable_height;
 
@@ -425,7 +482,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.request_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.request_details.scroll_state =
@@ -446,9 +503,10 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
 
                     app.selected_response_header_index = next_index;
 
-                    let usable_height = additinal_metadata.response_body_rectangle_height.checked_sub(
-                        RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16
-                    ).unwrap_or_default();
+                    let usable_height = additinal_metadata
+                        .response_body_rectangle_height
+                        .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                        .unwrap_or_default();
 
                     let requires_scrollbar = item_length as u16 >= usable_height;
 
@@ -469,7 +527,7 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
                         let next_position = calculate_scrollbar_position(
                             item_length as u16,
                             app.response_details.offset,
-                            item_length as u16 - (usable_height) as u16,
+                            item_length as u16 - (usable_height),
                         );
 
                         app.response_details.scroll_state =
@@ -496,7 +554,16 @@ pub fn handle_down(app: &mut App, key: KeyEvent, additinal_metadata: HandlerMeta
     }
 }
 
-pub fn handle_left(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
+pub fn handle_go_to_left(app: &mut Home) {
+    app.response_body.horizontal_offset = 0;
+
+    app.response_body.horizontal_scroll_state =
+        app.response_body.horizontal_scroll_state.position(0);
+
+    return;
+}
+
+pub fn handle_left(app: &mut Home, key: KeyEvent, metadata: HandlerMetadata) {
     match app.active_block {
         ActiveBlock::ResponseBody => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -534,7 +601,31 @@ pub fn handle_left(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
     }
 }
 
-pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
+pub fn handle_go_to_right(app: &mut Home, metadata: HandlerMetadata) {
+    let content = get_content_length(app);
+
+    let content_length = content.response_body.unwrap().horizontal;
+
+    let width =
+        metadata.response_body_rectangle_width - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE as u16;
+
+    app.response_body.horizontal_offset = (content_length - width) as usize;
+
+    let overflown_number_count = content_length - width;
+
+    let position = calculate_scrollbar_position(
+        content_length,
+        app.response_body.horizontal_offset,
+        overflown_number_count,
+    );
+
+    app.response_body.horizontal_scroll_state =
+        app.response_body.horizontal_scroll_state.position(position);
+
+    return;
+}
+
+pub fn handle_right(app: &mut Home, key: KeyEvent, metadata: HandlerMetadata) {
     match &app.active_block {
         ActiveBlock::ResponseBody => {
             if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -601,37 +692,37 @@ pub fn handle_right(app: &mut App, key: KeyEvent, metadata: HandlerMetadata) {
     };
 }
 
-pub fn handle_enter(app: &mut App, _key: KeyEvent) {
+pub fn handle_enter(app: &mut Home) {
     if app.active_block == ActiveBlock::TracesBlock {
         app.active_block = ActiveBlock::RequestDetails
     }
 }
 
-pub fn handle_esc(app: &mut App, _key: KeyEvent) {
+pub fn handle_esc(app: &mut Home) {
     app.active_block = ActiveBlock::TracesBlock
 }
 
-pub fn handle_search(app: &mut App, key: KeyEvent) {
-    match app.active_block {
-        ActiveBlock::SearchQuery => match key.code {
-            KeyCode::Backspace => {
-                app.search_query.pop();
-                if app.search_query.is_empty() {
-                    app.active_block = ActiveBlock::TracesBlock;
-                }
-            }
-            KeyCode::Enter | KeyCode::Esc => app.active_block = ActiveBlock::TracesBlock,
-            KeyCode::Char(c) => app.search_query.push(c),
-            _ => app.active_block = ActiveBlock::TracesBlock,
-        },
-        _ => {
-            app.search_query.clear();
-            app.active_block = ActiveBlock::SearchQuery;
-        }
+pub fn handle_new_search(app: &mut Home) {
+    app.search_query.clear();
+    app.active_block = ActiveBlock::SearchQuery;
+}
+
+pub fn handle_search_push(app: &mut Home, c: char) {
+    app.search_query.push(c);
+}
+
+pub fn handle_search_pop(app: &mut Home) {
+    app.search_query.pop();
+    if app.search_query.is_empty() {
+        handle_search_exit(app);
     }
 }
 
-pub fn handle_tab(app: &mut App, _key: KeyEvent) {
+pub fn handle_search_exit(app: &mut Home) {
+    app.active_block = ActiveBlock::TracesBlock
+}
+
+pub fn handle_tab(app: &mut Home) {
     match app.active_block {
         ActiveBlock::TracesBlock => app.active_block = ActiveBlock::RequestSummary,
         ActiveBlock::RequestSummary => app.active_block = ActiveBlock::RequestDetails,
@@ -643,7 +734,7 @@ pub fn handle_tab(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_back_tab(app: &mut App, _key: KeyEvent) {
+pub fn handle_back_tab(app: &mut Home) {
     match app.active_block {
         ActiveBlock::TracesBlock => app.active_block = ActiveBlock::ResponseBody,
         ActiveBlock::RequestSummary => app.active_block = ActiveBlock::TracesBlock,
@@ -655,7 +746,7 @@ pub fn handle_back_tab(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_pane_next(app: &mut App, _key: KeyEvent) {
+pub fn handle_pane_next(app: &mut Home) {
     match (app.active_block, app.request_details_block) {
         (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
             app.request_details_block = RequestDetailsPane::Query
@@ -667,7 +758,7 @@ pub fn handle_pane_next(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
+pub fn handle_pane_prev(app: &mut Home) {
     match (app.active_block, app.request_details_block) {
         (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
             app.request_details_block = RequestDetailsPane::Query
@@ -679,12 +770,12 @@ pub fn handle_pane_prev(app: &mut App, _key: KeyEvent) {
     }
 }
 
-pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<AppDispatch>) {
+pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) {
     let trace = get_currently_selected_trace(app).unwrap();
 
     match app.active_block {
         ActiveBlock::TracesBlock => {
-            let cmd = generate_curl_command(&trace);
+            let cmd = generate_curl_command(trace);
 
             match clippers::Clipboard::get().write_text(cmd) {
                 Ok(_) => {
@@ -722,16 +813,17 @@ pub fn handle_yank(app: &mut App, _key: KeyEvent, loop_sender: UnboundedSender<A
 
     app.abort_handlers.clear();
 
-    let thread_handler = tokio::spawn(async move {
-        sleep(Duration::from_millis(5000)).await;
+    if let Some(s) = sender {
+        let thread_handler = tokio::spawn(async move {
+            sleep(Duration::from_millis(5000)).await;
 
-        loop_sender.unbounded_send(AppDispatch::ClearStatusMessage)
-    });
-
-    app.abort_handlers.push(thread_handler.abort_handle());
+            s.send(Action::ClearStatusMessage)
+        });
+        app.abort_handlers.push(thread_handler.abort_handle());
+    }
 }
 
-pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: HandlerMetadata) {
+pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) {
     match app.active_block {
         ActiveBlock::TracesBlock => {
             let number_of_lines: u16 = app.items.len().try_into().unwrap();
@@ -819,8 +911,10 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
             if item.duration.is_some() {
                 let item_length = item.request_headers.len();
 
-                let usable_height = additional_metadata.request_body_rectangle_height
-                    - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                let usable_height = additional_metadata
+                    .request_body_rectangle_height
+                    .checked_sub(REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                    .unwrap_or_default();
 
                 let requires_scrollbar = item_length as u16 >= usable_height;
 
@@ -840,7 +934,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.request_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.request_details.scroll_state =
@@ -878,7 +972,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
                     let next_position = calculate_scrollbar_position(
                         item_length as u16,
                         app.response_details.offset,
-                        item_length as u16 - (usable_height) as u16,
+                        item_length as u16 - (usable_height),
                     );
 
                     app.response_details.scroll_state =
@@ -890,7 +984,7 @@ pub fn handle_go_to_end(app: &mut App, _key: KeyEvent, additional_metadata: Hand
     }
 }
 
-pub fn handle_go_to_start(app: &mut App, _key: KeyEvent, _additional_metadata: HandlerMetadata) {
+pub fn handle_go_to_start(app: &mut Home) {
     match app.active_block {
         ActiveBlock::TracesBlock => {
             app.main.index = 0;
@@ -939,7 +1033,7 @@ pub fn handle_go_to_start(app: &mut App, _key: KeyEvent, _additional_metadata: H
     }
 }
 
-pub fn handle_delete_item(app: &mut App, _key: KeyEvent) {
+pub fn handle_delete_item(app: &mut Home) {
     let cloned_items = app.items.clone();
 
     let items_as_vector = cloned_items.iter().collect::<Vec<&Trace>>();
@@ -947,6 +1041,20 @@ pub fn handle_delete_item(app: &mut App, _key: KeyEvent) {
     let current_trace = items_as_vector.get(app.main.index).copied().unwrap();
 
     let _ = &app.items.remove(current_trace);
+}
 
-    ()
+pub fn handle_general_status(app: &mut Home, s: String) {
+    app.status_message = Some(s);
+}
+
+pub fn handle_wss_status(app: &mut Home) {
+    app.ws_status = if app.wss_connected {
+        if app.wss_connection_count > 0 {
+            format!("🟢 {:?} clients connected", app.wss_connection_count)
+        } else {
+            "🟠 Waiting for connection".to_string()
+        }
+    } else {
+        "⭕ Server closed".to_string()
+    };
 }
