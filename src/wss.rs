@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +14,7 @@ use tungstenite::connect;
 use tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 use url::Url;
 
-use crate::app::{App, AppDispatch};
+use crate::app::Action;
 use crate::parser::parse_raw_trace;
 
 use tungstenite::Message;
@@ -26,14 +27,9 @@ pub struct ConnectionMeta {
 }
 pub type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, ConnectionMeta>>>;
 
+#[derive(Default)]
 struct RequestPath {
     uri: String,
-}
-
-impl Default for RequestPath {
-    fn default() -> RequestPath {
-        RequestPath { uri: String::new() }
-    }
 }
 
 impl Callback for &mut RequestPath {
@@ -48,11 +44,13 @@ impl Callback for &mut RequestPath {
     }
 }
 
+#[derive(Default, Debug)]
 pub struct WebSocketState {
     main_abort_handle: Option<AbortHandle>,
     handles: Vec<AbortHandle>,
 }
 
+#[derive(Default)]
 pub struct WebSocket {
     address: String,
     peer_map: PeerMap,
@@ -77,7 +75,7 @@ impl WebSocket {
         }
     }
 
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self, tx: tokio::sync::mpsc::UnboundedSender<Action>) {
         if !self.open {
             let address = &self.address;
 
@@ -97,8 +95,12 @@ impl WebSocket {
 
             let main_join_handle = tokio::spawn(async move {
                 while let Ok((stream, addr)) = listener.accept().await {
-                    let join_handle =
-                        tokio::spawn(handle_connection(cloned_peer_map.clone(), stream, addr));
+                    let join_handle = tokio::spawn(handle_connection(
+                        cloned_peer_map.clone(),
+                        stream,
+                        addr,
+                        tx.clone(),
+                    ));
 
                     cloned_websocket_state
                         .clone()
@@ -107,8 +109,6 @@ impl WebSocket {
                         .handles
                         .push(join_handle.abort_handle());
                 }
-
-                ()
             });
 
             let state = &mut self.web_socket_state.lock().await;
@@ -148,7 +148,9 @@ impl WebSocket {
     }
 }
 
-pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
+pub async fn client(
+    tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>,
+) -> Result<(), Box<dyn Error>> {
     let (mut socket, _response) =
         connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
 
@@ -156,39 +158,30 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
         let msg = socket.read();
 
         match msg {
-            Ok(l) => {
-                match l {
+            Ok(message) => {
+                match message {
                     tungstenite::Message::Text(s) => {
-                        let mut app_guard = app.lock().await;
+                        match parse_raw_trace(&s) {
+                            Ok(request) => match request {
+                                crate::parser::Payload::Trace(trace) => {
+                                    let port = trace.port.clone().unwrap_or("0".to_string());
 
-                        let _ = match parse_raw_trace(&s) {
-                            Ok(request) => {
-                                match request {
-                                    crate::parser::Payload::Trace(trace) => {
-                                        let port = trace.port.clone().unwrap_or("0".to_string());
-
+                                    if let Some(s) = tx.clone() {
                                         let id = trace.id.clone();
-
-                                        let cloned_sender = tx.clone();
-
+                                        let s1 = s.clone();
                                         tokio::spawn(async move {
                                             sleep(Duration::from_millis(5000)).await;
-
-                                            cloned_sender.unbounded_send(
-                                                AppDispatch::MarkTraceAsTimedOut(id),
-                                            )
+                                            s1.send(Action::MarkTraceAsTimedOut(id)).unwrap();
                                         });
 
                                         if port != "9999" {
-                                            app_guard.items.replace(trace);
+                                            let s2 = s.clone();
+                                            s2.send(Action::AddTrace(trace)).unwrap();
                                         }
                                     }
-                                    _ => {}
                                 }
-                                app_guard.is_first_render = true;
-
-                                ()
-                            }
+                                _ => {}
+                            },
                             Err(err) => {
                                 println!("Trace NOT parsed!! {:?}", err)
                             }
@@ -202,15 +195,21 @@ pub async fn client(app: &Arc<Mutex<App>>, tx: UnboundedSender<AppDispatch>) {
                     }
                 };
             }
-            Err(e) => {
-                app.lock().await.log(e.to_string());
+            Err(_e) => {
                 break;
             }
         }
     }
+
+    Ok(())
 }
 
-pub async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
+pub async fn handle_connection(
+    peer_map: PeerMap,
+    raw_stream: TcpStream,
+    addr: SocketAddr,
+    action_sender: tokio::sync::mpsc::UnboundedSender<Action>,
+) {
     let mut path_rewrite_callback = RequestPath::default();
 
     let ws_stream = tokio_tungstenite::accept_hdr_async(raw_stream, &mut path_rewrite_callback)
@@ -231,14 +230,24 @@ pub async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: S
         },
     );
 
-    // if path != "/inner_client" {
-    //     let number_of_connections = peer_map.lock().unwrap().len();
-    //
-    //     match number_of_connections {
-    //         0 => app.lock().await.ws_server_state = WsServerState::Open,
-    //         v => app.lock().await.ws_server_state = WsServerState::HasConnections(v),
-    //     }
-    // }
+    let number_of_connections = peer_map.lock().unwrap().len();
+
+    match number_of_connections - 1 {
+        0 => {
+            let _ = action_sender.send(Action::SetWebsocketStatus(
+                crate::components::home::WebSockerInternalState::Open,
+            ));
+
+            ()
+        }
+        v => {
+            let _ = action_sender.send(Action::SetWebsocketStatus(
+                crate::components::home::WebSockerInternalState::Connected(v),
+            ));
+
+            ()
+        }
+    }
 
     let (outgoing, incoming) = ws_stream.split();
 
@@ -263,20 +272,29 @@ pub async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: S
     pin_mut!(broadcast_incoming, receive_from_others);
     future::select(broadcast_incoming, receive_from_others).await;
 
-    // println!("{} disconnected", &addr);
+    let _ = action_sender.send(Action::SetGeneralStatus(format!(
+        "Client {} got disconnected",
+        path
+    )));
+
     peer_map.lock().unwrap().remove(&addr);
 
-    // if path != "/inner_client" {
-    //     let number_of_connections = peer_map.lock().unwrap().len();
-    //
-    //     match number_of_connections {
-    //         0 => app.lock().await.ws_server_state = WsServerState::Open,
-    //         v => app.lock().await.ws_server_state = WsServerState::HasConnections(v),
-    //     }
-    //
-    //     // match number_of_connections - 1 {
-    //     //     0 => app.lock().await.ws_server_state = WsServerState::Open,
-    //     //     v => app.lock().await.ws_server_state = WsServerState::HasConnections(v),
-    //     // }
-    // }
+    let number_of_connections = peer_map.lock().unwrap().len();
+
+    if path != "/inner_client" {
+        match number_of_connections - 1 {
+            0 => {
+                let _ = action_sender.send(Action::SetWebsocketStatus(
+                    crate::components::home::WebSockerInternalState::Open,
+                ));
+                ()
+            }
+            v => {
+                let _ = action_sender.send(Action::SetWebsocketStatus(
+                    crate::components::home::WebSockerInternalState::Connected(v),
+                ));
+                ()
+            }
+        }
+    }
 }

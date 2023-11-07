@@ -1,14 +1,12 @@
+use http::HeaderMap;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::io::{Error, ErrorKind};
 use std::ops::Deref;
 use std::str::FromStr;
 
-use http::HeaderMap;
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-
-use regex::Regex;
-
-use crate::app::{State, Trace};
+use crate::services::websocket::{State, Trace};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct HTTPTimings {
@@ -47,6 +45,7 @@ pub fn populate_header_map(raw_headers: &Map<String, Value>, map: &mut HeaderMap
     });
 }
 
+#[derive(Debug)]
 pub enum Payload {
     Trace(Trace),
     Connection(String),
@@ -59,7 +58,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
 
     let type_property = match type_property {
         Value::String(s) => {
-            if s.deref() == "connections".to_string() || s.deref() == "trace".to_string() {
+            if s.deref() == "connections" || s.deref() == "trace" {
                 Ok(s)
             } else {
                 Err("".to_string())
@@ -82,7 +81,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
                 _ => Err("Method must be a string.".to_string()),
             }?;
 
-            let method = http::method::Method::from_str(&method)?;
+            let method = http::method::Method::from_str(method)?;
 
             let status_code = &http["statusCode"];
 
@@ -132,9 +131,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
 
                     let as_f32 = as_float.map(|n| n as f32);
 
-                    let converted = as_f32.ok_or("".to_string());
-
-                    converted
+                    as_f32.ok_or("".to_string())
                 }
                 _ => Err("Duration must be a number.".to_string()),
             }
@@ -149,8 +146,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
                 _ => Err("Must be a number.".to_string()),
             }
             .ok()
-            .or(Some(0))
-            .unwrap();
+            .unwrap_or(0);
 
             let id = &data["id"];
 
@@ -178,7 +174,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
             }
             .ok();
 
-            let timings = serde_json::from_value::<HTTPTimings>(http["timings"].clone()).ok();
+            let _timings = serde_json::from_value::<HTTPTimings>(http["timings"].clone()).ok();
 
             let mut request = Trace {
                 port,
@@ -202,15 +198,13 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
             };
 
             match &http["responseBody"] {
-                Value::String(raw_response_body) => match pretty_parse_body(&raw_response_body) {
+                Value::String(raw_response_body) => match pretty_parse_body(raw_response_body) {
                     Ok(pretty_response_body) => {
                         let len = pretty_response_body.lines().collect::<Vec<_>>().len();
 
                         request.pretty_response_body_lines = Some(len);
                         request.pretty_response_body = Some(pretty_response_body);
                         request.response_body = Some(raw_response_body.deref().to_string());
-
-                        ()
                     }
                     _ => {}
                 },
@@ -218,15 +212,13 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
             };
 
             match &http["requestBody"] {
-                Value::String(raw_request_body) => match pretty_parse_body(&raw_request_body) {
+                Value::String(raw_request_body) => match pretty_parse_body(raw_request_body) {
                     Ok(pretty_request_body) => {
                         let len = pretty_request_body.lines().collect::<Vec<_>>().len();
 
                         request.pretty_request_body_lines = Some(len);
                         request.pretty_request_body = Some(pretty_request_body);
                         request.request_body = Some(raw_request_body.to_string());
-
-                        ()
                     }
                     Err(_) => (),
                 },
@@ -235,14 +227,14 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
 
             match &http["requestHeaders"] {
                 Value::Object(k) => {
-                    populate_header_map(&k, &mut request.request_headers);
+                    populate_header_map(k, &mut request.request_headers);
                 }
                 _ => {}
             }
 
             match &http["responseHeaders"] {
                 Value::Object(k) => {
-                    populate_header_map(&k, &mut request.response_headers);
+                    populate_header_map(k, &mut request.response_headers);
                 }
                 _ => {}
             }
@@ -286,7 +278,7 @@ pub fn generate_curl_command(request: &Trace) -> String {
         let name_str = name.to_string();
 
         if name != http::header::CONTENT_LENGTH {
-            let escaped_value_str = escape_header(&value_str);
+            let escaped_value_str = escape_header(value_str);
 
             let formatted_header =
                 format!(r#"-H "{}: {}" "#, name_str.as_str(), &escaped_value_str);
@@ -305,7 +297,7 @@ pub fn generate_curl_command(request: &Trace) -> String {
     };
 
     let compression_as_curl = match is_encoded {
-        true => format!("--compressed"),
+        true => "--compressed".to_string(),
         _ => "".to_string(),
     };
 

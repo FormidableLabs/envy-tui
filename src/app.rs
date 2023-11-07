@@ -1,32 +1,44 @@
-use std::collections::{BTreeSet, HashMap};
-use std::fmt::Display;
-use std::hash::{Hash, Hasher};
+use std::collections::HashMap;
+use std::error::Error;
+use std::sync::Arc;
 
-use crossterm::event::KeyCode;
+use crossterm::event::KeyEvent;
 use ratatui::widgets::ScrollbarState;
-use tokio::task::AbortHandle;
+use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::Mutex;
 
-use crate::wss::WebSocket;
+use crate::components::component::Component;
+use crate::components::handlers::HandlerMetadata;
+use crate::components::home::{Home, WebSockerInternalState};
+use crate::services::websocket::{Client, Trace};
+use crate::tui::{Event, Tui};
+use crate::wss::client;
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum RequestDetailsPane {
     Query,
+    #[default]
     Headers,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum ResponseDetailsPane {
+    #[default]
     Body,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum Mode {
+    #[default]
     Debug,
     Normal,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum ActiveBlock {
+    #[default]
     TracesBlock,
     RequestDetails,
     RequestBody,
@@ -38,271 +50,212 @@ pub enum ActiveBlock {
     Debug,
 }
 
-#[derive(Clone, Debug)]
-pub struct Trace {
-    pub id: String,
-    pub timestamp: u64,
-    pub method: http::method::Method,
-    pub state: State,
-    pub status: Option<http::status::StatusCode>,
-    pub request_headers: http::HeaderMap,
-    pub response_headers: http::HeaderMap,
-    pub uri: String,
-    pub duration: Option<u32>,
-    pub request_body: Option<String>,
-    pub response_body: Option<String>,
-    pub pretty_response_body: Option<String>,
-    pub pretty_response_body_lines: Option<usize>,
-    pub pretty_request_body: Option<String>,
-    pub pretty_request_body_lines: Option<usize>,
-    pub http_version: Option<http::Version>,
-    pub raw: String,
-    pub port: Option<String>,
-}
-
-impl PartialEq<Trace> for Trace {
-    fn eq(&self, other: &Trace) -> bool {
-        self.id == *other.id
-    }
-}
-
-impl Eq for Trace {}
-
-impl PartialOrd for Trace {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.timestamp.cmp(&self.timestamp))
-    }
-}
-
-impl Ord for Trace {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.timestamp.cmp(&self.timestamp)
-    }
-}
-
-impl Hash for Trace {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-    }
-}
-
-impl Display for Trace {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ID: {:?}, Request URL: {:?}, method used: {:?}, response status is {:?}, time took: {:?} milliseconds.",
-            self.id, self.uri, self.method, self.status, self.duration
-        )
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Debug, Eq, Hash)]
-pub enum KeyMap {
-    NavigateUp,
-    NavigateDown,
-    GoToEnd,
-    GoToStart,
-    CopyToClipBoard,
-    NavigateLeft,
-    NavigateRight,
-    NextSection,
-    PreviousSection,
-    Search,
-    Quit,
-    StopWebSocketServer,
-    StartWebSocketServer,
-}
-
-impl Display for KeyMap {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
+#[derive(Default, Clone)]
 pub struct UIState {
     pub index: usize,
     pub offset: usize,
+    pub height: u16,
+    pub width: u16,
     pub horizontal_offset: usize,
     pub scroll_state: ScrollbarState,
     pub horizontal_scroll_state: ScrollbarState,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum State {
-    Received,
-    Sent,
-    Aborted,
-    Blocked,
-    Timeout,
-    Error,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Action {
+    #[serde(skip)]
+    Error(String),
+    CopyToClipBoard,
+    NavigateLeft(Option<KeyEvent>),
+    NavigateDown(Option<KeyEvent>),
+    NavigateUp(Option<KeyEvent>),
+    NavigateRight(Option<KeyEvent>),
+    GoToRight,
+    GoToLeft,
+    GoToEnd,
+    GoToStart,
+    NextSection,
+    PreviousSection,
+    Quit,
+    #[serde(skip)]
+    QuitApplication,
+    NewSearch,
+    UpdateSearchQuery(char),
+    DeleteSearchQuery,
+    ExitSearch,
+    Help,
+    ToggleDebug,
+    DeleteItem,
+    FocusOnTraces,
+    ShowTraceDetails,
+    NextPane,
+    PreviousPane,
+    ScheduleStartWebSocketServer,
+    ScheduleStopWebSocketServer,
+    StartWebSocketServer,
+    #[serde(skip)]
+    OnMount,
+    StopWebSocketServer,
+    UpdateMeta(HandlerMetadata),
+    #[serde(skip)]
+    SetGeneralStatus(String),
+    #[serde(skip)]
+    SetWebsocketStatus(WebSockerInternalState),
+    #[serde(skip)]
+    MarkTraceAsTimedOut(String),
+    #[serde(skip)]
+    ClearStatusMessage,
+    #[serde(skip)]
+    AddTrace(Trace),
+    AddTraceError,
 }
 
+#[derive(Default)]
+pub struct Services {
+    websocket_client: Arc<Mutex<Client>>,
+}
+
+#[derive(Default)]
 pub struct App {
-    pub active_block: ActiveBlock,
-    pub previous_block: Option<ActiveBlock>,
-    pub request_details_block: RequestDetailsPane,
-    pub response_details_block: ResponseDetailsPane,
-    pub items: BTreeSet<Trace>,
-    pub selected_request_header_index: usize,
-    pub selected_response_header_index: usize,
-    pub selected_params_index: usize,
-    pub status_message: Option<String>,
-    pub abort_handlers: Vec<AbortHandle>,
-    pub search_query: String,
-    pub main: UIState,
-    pub response_body: UIState,
-    pub request_body: UIState,
-    pub request_details: UIState,
-    pub response_details: UIState,
+    pub action_tx: Option<UnboundedSender<Action>>,
+    pub components: Vec<Arc<Mutex<dyn Component>>>,
+    pub services: Services,
     pub is_first_render: bool,
     pub logs: Vec<String>,
     pub mode: Mode,
-    pub key_map: HashMap<KeyMap, Vec<KeyCode>>,
-    pub collector_server: WebSocket,
-}
-
-pub struct KeyEntry {
-    pub key_map: KeyMap,
-    pub key_codes: Vec<KeyCode>,
-}
-
-impl PartialEq for KeyEntry {
-    fn eq(&self, other: &KeyEntry) -> bool {
-        self.key_map == other.key_map
-    }
-}
-
-impl Eq for KeyEntry {}
-
-impl PartialOrd for KeyEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.key_map.to_string().cmp(&self.key_map.to_string()))
-    }
-}
-
-impl Ord for KeyEntry {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.key_map.to_string().cmp(&self.key_map.to_string())
-    }
+    pub key_map: HashMap<KeyEvent, Action>,
+    pub should_quit: bool,
 }
 
 impl App {
-    pub fn new() -> App {
-        let keys: HashMap<KeyMap, Vec<KeyCode>> = HashMap::from([
-            (KeyMap::NavigateLeft, vec![KeyCode::Char('h')]),
-            (
-                KeyMap::NavigateDown,
-                vec![KeyCode::Down, KeyCode::Char('j')],
-            ),
-            (KeyMap::NavigateUp, vec![KeyCode::Up, KeyCode::Char('k')]),
-            (KeyMap::NavigateRight, vec![KeyCode::Char('l')]),
-            (
-                KeyMap::GoToEnd,
-                vec![KeyCode::Char('>'), KeyCode::Char('K')],
-            ),
-            (
-                KeyMap::GoToStart,
-                vec![KeyCode::Char('<'), KeyCode::Char('J')],
-            ),
-            (KeyMap::Quit, vec![KeyCode::Char('q')]),
-            (KeyMap::NextSection, vec![KeyCode::Tab]),
-            (KeyMap::PreviousSection, vec![KeyCode::BackTab]),
-            (KeyMap::CopyToClipBoard, vec![KeyCode::Char('y')]),
-            (KeyMap::Search, vec![KeyCode::Char('/')]),
-            (KeyMap::StopWebSocketServer, vec![KeyCode::Char('x')]),
-            (KeyMap::StartWebSocketServer, vec![KeyCode::Char('X')]),
-        ]);
+    pub fn new() -> Result<App, Box<dyn Error>> {
+        let config = crate::config::Config::new()?;
 
-        App {
-            collector_server: WebSocket::new(),
-            key_map: keys,
-            mode: Mode::Normal,
-            logs: vec![],
-            is_first_render: true,
-            active_block: ActiveBlock::TracesBlock,
-            request_details_block: RequestDetailsPane::Headers,
-            response_details_block: ResponseDetailsPane::Body,
-            selected_params_index: 0,
-            selected_request_header_index: 0,
-            selected_response_header_index: 0,
-            items: BTreeSet::new(),
-            status_message: None,
-            abort_handlers: vec![],
-            previous_block: None,
-            search_query: String::with_capacity(10),
-            main: UIState {
-                offset: 0,
-                index: 0,
-                horizontal_offset: 0,
-                scroll_state: ScrollbarState::default(),
-                horizontal_scroll_state: ScrollbarState::default(),
-            },
-            response_body: UIState {
-                offset: 0,
-                index: 0,
-                horizontal_offset: 0,
-                scroll_state: ScrollbarState::default(),
-                horizontal_scroll_state: ScrollbarState::default(),
-            },
-            request_details: UIState {
-                offset: 0,
-                index: 0,
-                horizontal_offset: 0,
-                scroll_state: ScrollbarState::default(),
-                horizontal_scroll_state: ScrollbarState::default(),
-            },
-            response_details: UIState {
-                offset: 0,
-                index: 0,
-                horizontal_offset: 0,
-                scroll_state: ScrollbarState::default(),
-                horizontal_scroll_state: ScrollbarState::default(),
-            },
-            request_body: UIState {
-                offset: 0,
-                index: 0,
-                horizontal_offset: 0,
-                scroll_state: ScrollbarState::default(),
-                horizontal_scroll_state: ScrollbarState::default(),
-            },
+        let home = Arc::new(Mutex::new(Home::new()?));
+
+        let websocket_client = Arc::new(Mutex::new(Client::new()));
+
+        let app = App {
+            components: vec![home],
+            services: Services { websocket_client },
+            key_map: config.mapping.0,
+            ..Self::default()
+        };
+
+        Ok(app)
+    }
+
+    fn register_action_handler(
+        &mut self,
+        tx: UnboundedSender<Action>,
+    ) -> Result<(), Box<dyn Error>> {
+        self.action_tx = Some(tx);
+        Ok(())
+    }
+
+    pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        // NOTE: Why we need this to be mutable?
+        let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+
+        self.register_action_handler(action_tx.clone())?;
+
+        self.services
+            .websocket_client
+            .lock()
+            .await
+            .register_action_handler(action_tx.clone())?;
+
+        self.services.websocket_client.lock().await.start();
+
+        let mut t = Tui::new();
+
+        t.enter()?;
+
+        for component in self.components.iter() {
+            component
+                .lock()
+                .await
+                .register_action_handler(action_tx.clone())?;
         }
-    }
-}
 
-pub enum AppDispatch {
-    MarkTraceAsTimedOut(String),
-    ClearStatusMessage,
-}
+        self.services.websocket_client.lock().await.init();
 
-impl App {
-    pub fn log(&mut self, message: String) {
-        self.logs.push(message)
-    }
+        let action_to_clone = self.action_tx.as_ref().unwrap().clone();
 
-    pub fn dispatch(&mut self, action: AppDispatch) {
-        match action {
-            AppDispatch::MarkTraceAsTimedOut(id) => {
-                self.mark_trace_as_timed_out(id);
-            }
-            _ => {}
-        }
-    }
+        tokio::spawn(async move {
+            client(Some(action_to_clone)).await;
+        });
 
-    fn mark_trace_as_timed_out(&mut self, id: String) {
-        let selected_trace = self.items.iter().find(|trace| trace.id == id);
+        loop {
+            let event = t.next().await;
 
-        if selected_trace.is_some() {
-            let mut selected_trace = selected_trace.unwrap().clone();
-
-            if selected_trace.state == State::Sent {
-                selected_trace.state = State::Timeout;
-                selected_trace.status = None;
-                selected_trace.response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
-                selected_trace.pretty_response_body =
-                    Some("TIMEOUT WAITING FOR RESPONSE".to_string());
-
-                self.items.replace(selected_trace);
+            if let Some(Event::Render) = event {
+                for component in self.components.iter() {
+                    let c = component.lock().await;
+                    t.terminal.draw(|frame| {
+                        let r = c.render(frame);
+                        if let Err(e) = r {
+                            action_tx
+                                .send(Action::Error(format!("Failed to draw: {:?}", e)))
+                                .unwrap();
+                        }
+                    })?;
+                }
             };
+
+            if let Some(Event::OnMount) = event {
+                for component in self.components.iter() {
+                    if let Some(action) = component.lock().await.on_mount()? {
+                        action_tx.send(action.clone())?;
+                    }
+                }
+            };
+
+            if let Some(Event::Key(key_event)) = event {
+                if let Some(action) = self.key_map.get(&key_event) {
+                    let action_with_value = match action {
+                        Action::NavigateUp(None) => Action::NavigateUp(Some(key_event)),
+                        Action::NavigateDown(None) => Action::NavigateDown(Some(key_event)),
+                        Action::NavigateLeft(None) => Action::NavigateLeft(Some(key_event)),
+                        Action::NavigateRight(None) => Action::NavigateRight(Some(key_event)),
+                        _ => action.clone(),
+                    };
+                    action_tx.send(action_with_value.clone()).unwrap();
+                }
+            };
+
+            for component in self.components.iter() {
+                if let Some(action) = component.lock().await.handle_events(event)? {
+                    action_tx.send(action.clone())?;
+                }
+            }
+
+            while let Ok(action) = action_rx.try_recv() {
+                if let Action::QuitApplication = action {
+                    self.should_quit = true;
+                }
+
+                for component in self.components.iter() {
+                    if let Some(action) = component.lock().await.update(action.clone())? {
+                        action_tx.send(action.clone())?;
+                    }
+                }
+
+                self.services
+                    .websocket_client
+                    .clone()
+                    .lock()
+                    .await
+                    .update(action.clone());
+            }
+
+            if self.should_quit {
+                break;
+            }
         }
+
+        t.exit()?;
+
+        Ok(())
     }
 }
