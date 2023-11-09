@@ -1,4 +1,4 @@
-use crate::app::{Action, ActiveBlock, RequestDetailsPane};
+use crate::app::{Action, ActiveBlock, FilterScreen, RequestDetailsPane};
 use crate::components::home::Home;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_BODY_UNUSABLE_HORIZONTAL_SPACE,
@@ -7,16 +7,20 @@ use crate::consts::{
     RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::parser::{generate_curl_command, pretty_parse_body};
+use crate::render::{get_currently_selected_http_trace, get_services_from_traces};
 use crate::services::websocket::Trace;
 use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
-    parse_query_params, set_content_length,
+    get_rendered_items, parse_query_params, set_content_length,
 };
 use crossterm::event::{KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
+
+use super::home::{FilterSource, MethodFilter, StatusFilter};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct HandlerMetadata {
@@ -69,7 +73,7 @@ fn reset_request_and_response_body_ui_state(app: &mut Home) {
 }
 
 fn handle_vertical_response_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
-    let trace = get_currently_selected_trace(app).unwrap();
+    let trace = get_currently_selected_http_trace(app).unwrap();
 
     let response_body_content_height = rect - RESPONSE_BODY_UNUSABLE_HORIZONTAL_SPACE;
 
@@ -103,7 +107,7 @@ fn handle_vertical_response_body_scroll(app: &mut Home, rect: usize, direction: 
 }
 
 fn handle_vertical_request_body_scroll(app: &mut Home, rect: usize, direction: Direction) {
-    let trace = get_currently_selected_trace(app).unwrap();
+    let trace = get_currently_selected_http_trace(app).unwrap();
 
     let request_body_content_height = rect - REQUEST_BODY_UNUSABLE_VERTICAL_SPACE;
 
@@ -207,12 +211,18 @@ fn handle_horizontal_request_body_scroll(app: &mut Home, rect: usize, direction:
 }
 
 pub fn handle_debug(app: &mut Home) {
-    app.previous_block = Some(app.active_block);
+    let current_block = app.active_block;
+
+    app.previous_blocks.push(current_block);
+
     app.active_block = ActiveBlock::Debug;
 }
 
 pub fn handle_help(app: &mut Home) {
-    app.previous_block = Some(app.active_block);
+    let current_block = app.active_block;
+
+    app.previous_blocks.push(current_block);
+
     app.active_block = ActiveBlock::Help;
 }
 
@@ -223,6 +233,10 @@ pub fn handle_up(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetad
             _ => {}
         },
         _ => match (app.active_block, app.request_details_block) {
+            (ActiveBlock::Filter(_), _) => match app.filter_index.checked_sub(1) {
+                Some(v) => app.filter_index = v,
+                _ => {}
+            },
             (ActiveBlock::TracesBlock, _) => {
                 if app.main.index > 0 {
                     app.main.index -= 1;
@@ -275,7 +289,7 @@ pub fn handle_up(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetad
                     app.selected_request_header_index - 1
                 };
 
-                let item_length = get_currently_selected_trace(app)
+                let item_length = get_currently_selected_http_trace(app)
                     .unwrap()
                     .request_headers
                     .len();

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use crossterm::event::KeyEvent;
@@ -36,6 +37,20 @@ pub enum Mode {
     Normal,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug, Eq, Serialize, Deserialize)]
+pub enum FilterScreen {
+    FilterMain,
+    FilterMethod,
+    FilterSource,
+    FilterStatus,
+}
+
+impl Display for FilterScreen {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub enum ActiveBlock {
     #[default]
@@ -48,6 +63,7 @@ pub enum ActiveBlock {
     SearchQuery,
     Help,
     Debug,
+    Filter(FilterScreen),
 }
 
 #[derive(Default, Clone)]
@@ -73,6 +89,9 @@ pub enum Action {
     GoToRight,
     GoToLeft,
     GoToEnd,
+    HandleFilter(FilterScreen),
+    OpenFilter,
+    Select,
     GoToStart,
     NextSection,
     PreviousSection,

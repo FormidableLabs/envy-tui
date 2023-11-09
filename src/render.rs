@@ -127,8 +127,20 @@ pub fn render_body(
     }
 }
 
+pub fn get_currently_selected_http_trace(app: &Home) -> Option<HTTPTrace> {
+    let trace = get_currently_selected_trace(&app);
+
+    if trace.is_none() {
+        return None::<HTTPTrace>;
+    }
+
+    let trace = trace.unwrap();
+
+    trace.http
+}
+
 pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    match get_currently_selected_trace(app) {
+    match get_currently_selected_http_trace(app) {
         Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
                 render_body(
@@ -214,13 +226,9 @@ fn render_headers(
     area: Rect,
     header_type: HeaderType,
 ) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
-
-    let maybe_selected_item = items_as_vector.get(app.main.index);
-
     let active_block = app.active_block;
 
-    let rows = match maybe_selected_item {
+    let rows = match get_currently_selected_http_trace(app) {
         Some(item) => {
             let headers = if header_type == HeaderType::Request {
                 &item.request_headers

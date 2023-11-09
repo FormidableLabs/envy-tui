@@ -1,7 +1,6 @@
 use crate::app::Action;
 use crate::mock;
 use crate::parser::{parse_raw_trace, Payload};
-use crate::wss;
 use crate::wss::WebSocket;
 use std::error::Error;
 use std::fmt::Display;
@@ -26,9 +25,7 @@ pub enum State {
 }
 
 #[derive(Clone, Debug)]
-pub struct Trace {
-    pub id: String,
-    pub timestamp: u64,
+pub struct HTTPTrace {
     pub method: http::method::Method,
     pub state: State,
     pub status: Option<http::status::StatusCode>,
@@ -47,6 +44,14 @@ pub struct Trace {
     pub port: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Trace {
+    pub id: String,
+    pub timestamp: u64,
+    pub service_name: Option<String>,
+    pub http: Option<HTTPTrace>,
+}
+
 impl PartialEq<Trace> for Trace {
     fn eq(&self, other: &Trace) -> bool {
         self.id == *other.id
@@ -57,13 +62,13 @@ impl Eq for Trace {}
 
 impl PartialOrd for Trace {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.timestamp.cmp(&self.timestamp))
+        Some(other.id.cmp(&self.id))
     }
 }
 
 impl Ord for Trace {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.timestamp.cmp(&self.timestamp)
+        other.id.cmp(&self.id)
     }
 }
 
@@ -75,11 +80,7 @@ impl Hash for Trace {
 
 impl Display for Trace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ID: {:?}, Request URL: {:?}, method used: {:?}, response status is {:?}, time took: {:?} milliseconds.",
-            self.id, self.uri, self.method, self.status, self.duration
-        )
+        write!(f, "ID: {:?}", self.id,)
     }
 }
 

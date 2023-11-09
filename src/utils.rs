@@ -1,6 +1,8 @@
+use core::str::FromStr;
 use http::Uri;
+use regex::Regex;
 
-use crate::components::home::Home;
+use crate::components::home::{FilterSource, Home};
 use crate::services::websocket::Trace;
 
 pub enum UIDispatchEvent {
@@ -43,10 +45,23 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
     }
 }
 
-pub fn get_currently_selected_trace(app: &Home) -> Option<&Trace> {
-    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
+fn fuzzy_regex(query: String) -> Regex {
+    if query.is_empty() {
+        return Regex::new(r".*").unwrap();
+    }
 
-    items_as_vector.get(app.main.index).copied()
+    let mut fuzzy_query = String::new();
+
+    for c in query.chars() {
+        fuzzy_query.extend([c, '.', '*']);
+    }
+
+    return Regex::from_str(&fuzzy_query).unwrap();
+}
+
+enum Ordering {
+    Ascending,
+    Descending,
 }
 
 enum TraceSort {
