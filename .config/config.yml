@@ -20,5 +20,7 @@ X: StartWebSocketServer
 ?: Help
 p: ToggleDebug
 d: DeleteItem
+space: Select
+f: OpenFilter
 "]": NextPane
 "[": PreviousPane
