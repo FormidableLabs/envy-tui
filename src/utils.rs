@@ -76,97 +76,68 @@ enum TraceSort {
 pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
     let re = fuzzy_regex(app.search_query.clone());
 
+    let no_applied_method_filter = app
+        .method_filters
+        .iter()
+        .filter(|(_key, method_filter)| method_filter.selected == true)
+        .collect::<Vec<_>>()
+        .is_empty();
+
+    let no_applied_statud_filter = app
+        .status_filters
+        .iter()
+        .filter(|(_key, method_filter)| method_filter.selected == true)
+        .collect::<Vec<_>>()
+        .is_empty();
+
     let mut items_as_vector = app
         .items
         .iter()
         .filter(|trace| re.is_match(&trace.http.as_ref().unwrap().uri))
+        .filter(
+            |trace| match (app.get_filter_source(), trace.service_name.as_ref()) {
+                (FilterSource::All, _) => true,
+                (FilterSource::Applied(sources), Some(trace_source)) => {
+                    sources.contains(trace_source)
+                }
+                _ => false,
+            },
+        )
         .filter(|trace| {
-            let mut should_keep = true;
-
-            let service = trace.service_name.as_ref();
-
-            let applied_source_filters = app
-                .filters
-                .iter()
-                .filter(|x| match x {
-                    Filter::Source(_) => true,
-                    _ => false,
-                })
-                .collect::<Vec<_>>();
-
-            if applied_source_filters.len() == 0 {
-                return true;
-            } else if service.is_none() {
-                return false;
-            }
-
-            let service_name = service.unwrap();
-
-            let found = app
-                .filters
-                .iter()
-                .find(|x| match x {
-                    // Filter::Source(k) => k.to_string() == service_name.to_string(),
-                    Filter::Source(k) => k == service_name,
-                    _ => false,
-                })
-                .is_some();
-
-            found
-        })
-        .filter(|i| {
-            let method = &i.http.as_ref().unwrap().status;
-
-            let patterns = app
-                .filters
-                .iter()
-                .filter(|x| match x {
-                    Filter::Status(_) => true,
-                    _ => false,
-                })
-                .collect::<Vec<_>>();
-
-            if patterns.len() == 0 {
-                return true;
-            }
+            let method = &trace.http.as_ref().unwrap().status;
 
             if method.is_none() {
                 return false;
             }
 
-            let f = method.as_ref().unwrap().clone().as_u16().to_string();
+            let method_as_string = method.as_ref().unwrap().clone().as_u16().to_string();
 
-            let a = f.chars().nth(0).unwrap();
+            let first_char = method_as_string.chars().nth(0).unwrap();
 
-            let matcher = match a {
+            let matcher = match first_char {
                 '1' => "1xx",
                 '2' => "2xx",
-                '3' => "1xx",
+                '3' => "3xx",
                 '4' => "4xx",
-                '5' => "1xx",
+                '5' => "5xx",
                 _ => "",
-            }
-            .to_string();
+            };
 
-            app.filters.contains(&Filter::Status(matcher))
+            match (no_applied_statud_filter, app.status_filters.get(matcher)) {
+                (true, _) => true,
+                (_, Some(status_filter)) => status_filter.selected.clone(),
+                (_, _) => false,
+            }
         })
-        .filter(|i| {
-            let method = &i.http.as_ref().unwrap().method;
-
-            let patterns = app
-                .filters
-                .iter()
-                .filter(|x| match x {
-                    Filter::Method(_) => true,
-                    _ => false,
-                })
-                .collect::<Vec<_>>();
-
-            if patterns.len() == 0 {
-                return true;
+        .filter(|trace| {
+            match (
+                no_applied_method_filter,
+                app.method_filters.get(&trace.http.as_ref().unwrap().method),
+            ) {
+                (true, _) => true,
+                (_, Some(method_filter)) => method_filter.selected.clone(),
+                (_, _) => false,
             }
-
-            app.filters.contains(&Filter::Method(method.clone()))
         })
         .collect::<Vec<&Trace>>();
 
@@ -242,12 +213,6 @@ pub fn get_currently_selected_trace(app: &Home) -> Option<Trace> {
     trace.map(|x| x.clone())
 }
 
-// pub fn get_currently_selected_trace(app: &Home) -> Option<&Trace> {
-//     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
-//
-//     items_as_vector.get(app.main.index).copied()
-// }
-
 pub fn calculate_scrollbar_position(
     content_length: u16,
     offset: usize,
@@ -289,7 +254,13 @@ pub fn get_content_length(app: &Home) -> ContentLengthElements {
         return content_length;
     }
 
-    let item = trace.unwrap();
+    let http_trace = trace.unwrap().http;
+
+    if http_trace.is_none() {
+        return content_length;
+    }
+
+    let item = http_trace.unwrap();
 
     if !item.response_headers.is_empty() {
         content_length.response_headers = Some(ContentLength {

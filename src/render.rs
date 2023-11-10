@@ -1,6 +1,5 @@
-use core::str::FromStr;
 use crossterm::event::{KeyCode, KeyEvent};
-use regex::Regex;
+use std::collections::HashSet;
 use std::io::Stdout;
 use std::ops::Deref;
 use std::usize;
@@ -17,13 +16,15 @@ use ratatui::widgets::{
 use ratatui::Frame;
 
 use crate::app::{Action, ActiveBlock, RequestDetailsPane, UIState};
-use crate::components::home::Home;
+use crate::components::home::{FilterSource, Home};
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::services::websocket::Trace;
-use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
+use crate::services::websocket::{HTTPTrace, Trace};
+use crate::utils::{
+    get_currently_selected_trace, get_rendered_items, parse_query_params, truncate,
+};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -320,13 +321,9 @@ fn render_headers(
 pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
     let active_block = app.active_block;
 
-    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
-
-    let maybe_selected_item = items_as_vector.get(app.main.index);
-
-    match maybe_selected_item {
+    match get_currently_selected_http_trace(app) {
         Some(maybe_selected_item) => {
-            let uri = maybe_selected_item.deref().uri.clone();
+            let uri = maybe_selected_item.uri.clone();
 
             let raw_params = parse_query_params(uri);
 
@@ -452,7 +449,7 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
 
                     let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
-                    let trace = get_currently_selected_trace(app);
+                    let trace = get_currently_selected_http_trace(app);
 
                     let content_length = trace.unwrap().response_headers.len() as u16;
 
@@ -477,7 +474,7 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
 }
 
 pub fn render_request_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    match get_currently_selected_trace(app) {
+    match get_currently_selected_http_trace(app) {
         Some(request) => match &request.pretty_request_body {
             Some(pretty_json) => {
                 render_body(
@@ -522,18 +519,14 @@ pub fn render_request_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout
 }
 
 pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
-
-    let maybe_selected_item = items_as_vector.get(app.main.index);
-
-    let uri = match maybe_selected_item {
-        Some(item) => item.deref().uri.clone(),
+    let uri = match get_currently_selected_http_trace(app) {
+        Some(item) => item.uri.clone(),
         None => String::from("Could not find request."),
     };
 
     let raw_params = parse_query_params(uri);
 
-    let is_progress = match maybe_selected_item {
+    let is_progress = match get_currently_selected_http_trace(app) {
         Some(v) => v.duration.is_none(),
         None => true,
     };
@@ -575,7 +568,10 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
                 Title::from(format!(
                     "{} of {}",
                     app.selected_response_header_index + 1,
-                    maybe_selected_item.unwrap().response_headers.len()
+                    get_currently_selected_http_trace(app)
+                        .unwrap()
+                        .response_headers
+                        .len()
                 ))
                 .position(Position::Bottom)
                 .alignment(Alignment::Right),
@@ -607,7 +603,7 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
 
         let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
-        let trace = get_currently_selected_trace(app);
+        let trace = get_currently_selected_http_trace(app);
 
         let content_length = trace.unwrap().response_headers.len();
 
@@ -624,54 +620,78 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
     }
 }
 
-fn fuzzy_regex(query: String) -> Regex {
-    if query.is_empty() {
-        return Regex::new(r".*").unwrap();
-    }
-
-    let mut fuzzy_query = String::new();
-
-    for c in query.chars() {
-        fuzzy_query.extend([c, '.', '*']);
-    }
-
-    Regex::from_str(&fuzzy_query).unwrap()
-}
-
 pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let requests = &app.items;
-    let re = fuzzy_regex(app.search_query.clone());
-
     let height = area.height;
 
     let effective_height = height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
 
     let active_block = app.active_block;
 
-    let items_as_vector = requests
-        .iter()
-        .filter(|i| re.is_match(&i.uri))
-        .collect::<Vec<&Trace>>();
+    let items_as_vector = get_rendered_items(app);
 
     let number_of_lines = items_as_vector.len();
 
     let selected_item = items_as_vector.get(app.main.index);
+
+    let method_len = app.method_filters.iter().fold(0, |sum, (_key, item)| {
+        let mut result = sum;
+
+        if item.selected {
+            result += 1;
+        }
+
+        return result;
+    });
+
+    let status_len = app.status_filters.iter().fold(0, |sum, (_key, item)| {
+        let mut result = sum;
+
+        if item.selected {
+            result += 1;
+        }
+
+        return result;
+    });
+
+    let filter_message = match status_len + method_len {
+        0 => String::from("No filters selected"),
+        _ => {
+            let mut filters_text = format!("Active filter(s): ");
+
+            app.method_filters.iter().for_each(|(_a, filter_method)| {
+                if filter_method.selected {
+                    filters_text.push_str((format!(" {} (Method)", filter_method.name)).as_str());
+                }
+            });
+
+            app.status_filters.iter().for_each(|(_a, filter_status)| {
+                if filter_status.selected {
+                    filters_text.push_str((format!(" {} (Status)", filter_status.name)).as_str());
+                }
+            });
+
+            filters_text
+        }
+    };
 
     let converted_rows: Vec<(Vec<String>, bool)> = items_as_vector
         .iter()
         .skip(app.main.offset)
         .take(effective_height.into())
         .map(|request| {
-            let uri = truncate(request.uri.clone().as_str(), 60);
+            let uri = truncate(request.http.as_ref().unwrap().uri.clone().as_str(), 60);
 
-            let method = request.method.clone().to_string();
+            let method = request.http.as_ref().unwrap().method.clone().to_string();
 
-            let status = match request.status {
+            let status = request.http.as_ref().unwrap().status;
+            let duration = request.http.as_ref().unwrap().duration;
+
+            let status = match status {
                 Some(v) => v.as_u16().to_string(),
                 None => "...".to_string(),
             };
 
-            let duration = match request.duration {
+            let duration = match duration {
                 Some(v) => {
                     format!("{:.3} s", ((v as f32) / 1000.0))
                 }
@@ -721,7 +741,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, ar
                 .style(get_border_style(
                     app.active_block == ActiveBlock::TracesBlock,
                 ))
-                .title("Traces")
+                .title(format!("Traces - [{}]", filter_message))
                 .title(
                     Title::from(format!("{} of {}", app.main.index + 1, number_of_lines))
                         .position(Position::Bottom)
@@ -988,4 +1008,337 @@ fn overlay_area(r: Rect) -> Rect {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(100), Constraint::Min(0)].as_ref())
         .split(overlay_layout[1])[0]
+}
+
+pub fn get_services_from_traces(app: &Home) -> Vec<String> {
+    let services = app
+        .items
+        .iter()
+        .filter(|trace| trace.service_name.is_some())
+        .map(|trace| trace.service_name.as_ref().unwrap().clone())
+        .collect::<HashSet<_>>();
+
+    let mut services_as_vec = services.iter().cloned().collect::<Vec<String>>();
+
+    services_as_vec.sort();
+
+    services_as_vec.clone()
+}
+
+pub fn render_filters_source(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let mut services = get_services_from_traces(app);
+
+    let mut a: Vec<String> = vec!["All".to_string()];
+
+    a.append(&mut services);
+
+    services = a;
+
+    let current_service = services.iter().nth(app.filter_index).cloned();
+
+    let rows = services
+        .iter()
+        .map(|item| {
+            let column_a =
+                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
+
+            match app.get_filter_source() {
+                FilterSource::All => {
+                    let column_b = Cell::from(
+                        Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+                    );
+
+                    let row_style = if current_service.is_some()
+                        && current_service.clone().unwrap() == item.deref().clone()
+                    {
+                        RowStyle::Selected
+                    } else {
+                        RowStyle::Default
+                    };
+
+                    let middle = Cell::from(
+                        Line::from(vec![Span::raw("Source".to_string())])
+                            .alignment(Alignment::Left),
+                    );
+
+                    return Row::new(vec![column_b, middle, column_a])
+                        .style(get_row_style(row_style));
+                }
+                FilterSource::Applied(applied) => {
+                    // let column_b = if applied.contains(current_service.as_ref().unwrap()) {
+                    let column_b = if applied.contains(item) {
+                        Cell::from(
+                            Line::from(vec![Span::raw("[x]".to_string())])
+                                .alignment(Alignment::Left),
+                        )
+                    } else {
+                        Cell::from(
+                            Line::from(vec![Span::raw("[ ]".to_string())])
+                                .alignment(Alignment::Left),
+                        )
+                    };
+
+                    let row_style = if current_service.is_some()
+                        && current_service.clone().unwrap() == item.deref().clone()
+                    {
+                        RowStyle::Selected
+                    } else {
+                        RowStyle::Default
+                    };
+
+                    let middle = Cell::from(
+                        Line::from(vec![Span::raw("Source".to_string())])
+                            .alignment(Alignment::Left),
+                    );
+
+                    return Row::new(vec![column_b, middle, column_a])
+                        .style(get_row_style(row_style));
+                }
+            };
+        })
+        .collect::<Vec<_>>();
+
+    let list = Table::new([rows].concat())
+        .style(get_text_style(true))
+        .header(
+            Row::new(vec!["Selected", "Type", "Value"])
+                .style(Style::default().fg(Color::Yellow))
+                .bottom_margin(1),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(get_border_style(true))
+                .title("[Filters - Sources]")
+                .border_type(BorderType::Plain),
+        )
+        .widths(&[
+            Constraint::Percentage(15),
+            Constraint::Percentage(15),
+            Constraint::Percentage(60),
+        ])
+        .column_spacing(10);
+
+    frame.render_widget(list.clone(), area);
+}
+
+pub fn render_filters_status(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let current_service = app.status_filters.iter().nth(app.filter_index);
+
+    let rows1 = app
+        .status_filters
+        .iter()
+        .map(|(a, item)| {
+            let column_a = Cell::from(
+                Line::from(vec![Span::raw(item.name.clone())]).alignment(Alignment::Left),
+            );
+
+            let column_b = if item.selected {
+                Cell::from(
+                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+                )
+            } else {
+                Cell::from(
+                    Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
+                )
+            };
+
+            // let is_current_seleceted = app
+            //     .filters
+            //     .iter()
+            //     .find(|x| {
+            //         match x {
+            //             Filter::Status(m) => {
+            //                 m.to_string().to_uppercase() == item.to_string().to_uppercase()
+            //                 // x.clone() == item
+            //             }
+            //             _ => false,
+            //         }
+            //     })
+            //     .is_some();
+            //
+            // let column_b = if is_current_seleceted {
+            //     Cell::from(
+            //         Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+            //     )
+            // } else {
+            //     Cell::from(
+            //         Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
+            //     )
+            // };
+
+            let (k, j) = current_service.clone().unwrap();
+            let row_style = if current_service.is_some()
+                // && current_service.clone().unwrap() == item.deref().clone()
+
+                && j.status == item.name.clone()
+            {
+                RowStyle::Selected
+            } else {
+                RowStyle::Default
+            };
+
+            let h = Cell::from(
+                Line::from(vec![Span::raw("Status".to_string())]).alignment(Alignment::Left),
+            );
+
+            Row::new(vec![column_b, h, column_a]).style(get_row_style(row_style))
+        })
+        .collect::<Vec<_>>();
+
+    let list = Table::new([rows1].concat())
+        .style(get_text_style(true))
+        .header(
+            Row::new(vec!["Selected", "Type", "Value"])
+                .style(Style::default().fg(Color::Yellow))
+                .bottom_margin(1),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(get_border_style(true))
+                .title("[Filters - Status]")
+                .border_type(BorderType::Plain),
+        )
+        .widths(&[
+            Constraint::Percentage(15),
+            Constraint::Percentage(15),
+            Constraint::Percentage(60),
+        ])
+        .column_spacing(10);
+
+    frame.render_widget(list.clone(), area);
+}
+
+pub fn render_filters_method(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    // let d = vec!["POST", "GET", "DELETE", "PUT", "PATCH", "OPTION"];
+    // let d = vec!["POST", "GET", "DELETE", "PUT", "PATCH", "OPTION"];
+
+    let current_service = app
+        .method_filters
+        .iter()
+        .map(|(a, b)| b.name.clone())
+        .nth(app.filter_index);
+    // .cloned();
+
+    let rows1 = app
+        .method_filters
+        .iter()
+        .map(|(a, item)| {
+            let column_a = Cell::from(
+                Line::from(vec![Span::raw(item.name.clone())]).alignment(Alignment::Left),
+            );
+
+            let column_b = if item.selected {
+                Cell::from(
+                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+                )
+            } else {
+                Cell::from(
+                    Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
+                )
+            };
+
+            let row_style = if current_service.is_some()
+                && current_service.clone().unwrap() == item.name.clone()
+            {
+                RowStyle::Selected
+            } else {
+                RowStyle::Default
+            };
+
+            let h = Cell::from(
+                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
+            );
+
+            Row::new(vec![column_b, h, column_a]).style(get_row_style(row_style))
+        })
+        .collect::<Vec<_>>();
+
+    let list = Table::new([rows1].concat())
+        .style(get_text_style(true))
+        .header(
+            Row::new(vec!["Selected", "Type", "Value"])
+                .style(Style::default().fg(Color::Yellow))
+                .bottom_margin(1),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(get_border_style(true))
+                .title("[Filters - Method]")
+                .border_type(BorderType::Plain),
+        )
+        .widths(&[
+            Constraint::Percentage(15),
+            Constraint::Percentage(15),
+            Constraint::Percentage(60),
+        ])
+        .column_spacing(10);
+
+    frame.render_widget(list.clone(), area);
+}
+
+pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let filter_items = vec!["method", "source", "status"];
+
+    let current_service = filter_items.iter().nth(app.filter_index).cloned();
+
+    let filter_item_rows = filter_items
+        .iter()
+        .map(|item| {
+            let column_a =
+                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
+
+            // let is_current_seleceted = app.filters.iter().find(|x| x.clone() == item).is_some();
+
+            let column_b = 
+            // let column_b = if is_current_seleceted {
+                Cell::from(
+                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+                );
+            // } else {
+            // Cell::from(
+            //     Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
+            // )
+            // };
+
+            let row_style = if current_service.is_some()
+                && current_service.clone().unwrap() == item.deref().clone()
+            {
+                RowStyle::Selected
+            } else {
+                RowStyle::Default
+            };
+
+            let middle = Cell::from(
+                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
+            );
+
+            Row::new(vec![column_b, middle, column_a]).style(get_row_style(row_style))
+        })
+        .collect::<Vec<_>>();
+
+    let list = Table::new([filter_item_rows].concat())
+        .style(get_text_style(true))
+        .header(
+            Row::new(vec!["Selected", "Type", "Value"])
+                .style(Style::default().fg(Color::Yellow))
+                .bottom_margin(1),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(get_border_style(true))
+                .title("[Filters]")
+                .border_type(BorderType::Plain),
+        )
+        .widths(&[
+            Constraint::Percentage(15),
+            Constraint::Percentage(15),
+            Constraint::Percentage(60),
+        ])
+        .column_spacing(10);
+
+    frame.render_widget(list.clone(), area);
 }

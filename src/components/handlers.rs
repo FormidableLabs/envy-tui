@@ -330,7 +330,7 @@ pub fn handle_up(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetad
                     app.selected_response_header_index - 1
                 };
 
-                let item_length = get_currently_selected_trace(app)
+                let item_length = get_currently_selected_http_trace(app)
                     .unwrap()
                     .response_headers
                     .len();
@@ -404,8 +404,29 @@ pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMet
             _ => {}
         },
         _ => match (app.active_block, app.request_details_block) {
+            (ActiveBlock::Filter(FilterScreen::FilterMethod), _) => {
+                if app.filter_index + 1 < app.method_filters.len() {
+                    app.filter_index += 1;
+                }
+            }
+            (ActiveBlock::Filter(FilterScreen::FilterSource), _) => {
+                if app.filter_index + 1 < get_services_from_traces(app).len() + 1 {
+                    app.filter_index += 1;
+                }
+            }
+            (ActiveBlock::Filter(FilterScreen::FilterMain), _) => {
+                if app.filter_index + 1 < 3 {
+                    app.filter_index += 1;
+                }
+            }
+            (ActiveBlock::Filter(FilterScreen::FilterStatus), _) => {
+                if app.filter_index + 1 < app.status_filters.len() {
+                    app.filter_index += 1;
+                }
+            }
             (ActiveBlock::TracesBlock, _) => {
-                let length = app.items.len();
+                let length = get_rendered_items(app).len();
+
                 let number_of_lines: u16 = length.try_into().unwrap();
 
                 let usable_height = additinal_metadata
@@ -450,7 +471,7 @@ pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMet
                 app.selected_params_index = 0
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
-                let item = get_currently_selected_trace(app).unwrap();
+                let item = get_currently_selected_http_trace(app).unwrap();
 
                 let params = parse_query_params(item.uri.clone());
 
@@ -463,7 +484,7 @@ pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMet
                 app.selected_params_index = next_index
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
-                let item = get_currently_selected_trace(app).unwrap();
+                let item = get_currently_selected_http_trace(app).unwrap();
 
                 let item_length = item.request_headers.len();
 
@@ -504,7 +525,7 @@ pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMet
                 }
             }
             (ActiveBlock::ResponseDetails, _) => {
-                let item = get_currently_selected_trace(app).unwrap();
+                let item = get_currently_selected_http_trace(app).unwrap();
 
                 if item.duration.is_some() {
                     let item_length = item.response_headers.len();
@@ -787,27 +808,14 @@ pub fn handle_pane_prev(app: &mut Home) {
 pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) {
     let trace = get_currently_selected_trace(app).unwrap();
 
-    match app.active_block {
-        ActiveBlock::TracesBlock => {
-            let cmd = generate_curl_command(trace);
+    if let Some(http_trace) = get_currently_selected_http_trace(app) {
+        match app.active_block {
+            ActiveBlock::TracesBlock => {
+                let cmd = generate_curl_command(&trace);
 
-            match clippers::Clipboard::get().write_text(cmd) {
-                Ok(_) => {
-                    app.status_message = Some(String::from("Request copied as cURL command!"));
-                }
-                Err(_) => {
-                    app.status_message = Some(String::from(
-                        "Something went wrong while copying to the clipboard!",
-                    ));
-                }
-            }
-        }
-        ActiveBlock::ResponseBody => match &trace.response_body {
-            Some(body) => {
-                match clippers::Clipboard::get().write_text(pretty_parse_body(body).unwrap()) {
+                match clippers::Clipboard::get().write_text(cmd) {
                     Ok(_) => {
-                        app.status_message =
-                            Some(String::from("Response body copied to clipboard."));
+                        app.status_message = Some(String::from("Request copied as cURL command!"));
                     }
                     Err(_) => {
                         app.status_message = Some(String::from(
@@ -816,24 +824,39 @@ pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) {
                     }
                 }
             }
-            None => {}
-        },
-        _ => {}
-    };
+            ActiveBlock::ResponseBody => match &http_trace.response_body {
+                Some(body) => {
+                    match clippers::Clipboard::get().write_text(pretty_parse_body(body).unwrap()) {
+                        Ok(_) => {
+                            app.status_message =
+                                Some(String::from("Response body copied to clipboard."));
+                        }
+                        Err(_) => {
+                            app.status_message = Some(String::from(
+                                "Something went wrong while copying to the clipboard!",
+                            ));
+                        }
+                    }
+                }
+                None => {}
+            },
+            _ => {}
+        };
 
-    app.abort_handlers.iter().for_each(|handler| {
-        handler.abort();
-    });
-
-    app.abort_handlers.clear();
-
-    if let Some(s) = sender {
-        let thread_handler = tokio::spawn(async move {
-            sleep(Duration::from_millis(5000)).await;
-
-            s.send(Action::ClearStatusMessage)
+        app.abort_handlers.iter().for_each(|handler| {
+            handler.abort();
         });
-        app.abort_handlers.push(thread_handler.abort_handle());
+
+        app.abort_handlers.clear();
+
+        if let Some(s) = sender {
+            let thread_handler = tokio::spawn(async move {
+                sleep(Duration::from_millis(5000)).await;
+
+                s.send(Action::ClearStatusMessage)
+            });
+            app.abort_handlers.push(thread_handler.abort_handle());
+        }
     }
 }
 
@@ -917,7 +940,8 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) {
             }
         }
         ActiveBlock::RequestDetails => {
-            let item = get_currently_selected_trace(app);
+            let item = get_currently_selected_http_trace(app);
+
             let item = item.unwrap();
 
             let content = get_content_length(app);
@@ -957,7 +981,7 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) {
             }
         }
         ActiveBlock::ResponseDetails => {
-            let item = get_currently_selected_trace(app);
+            let item = get_currently_selected_http_trace(app);
             let item = item.unwrap();
             let content = get_content_length(app);
 
@@ -1061,14 +1085,173 @@ pub fn handle_general_status(app: &mut Home, s: String) {
     app.status_message = Some(s);
 }
 
-pub fn handle_wss_status(app: &mut Home) {
-    app.ws_status = if app.wss_connected {
-        if app.wss_connection_count > 0 {
-            format!("🟢 {:?} clients connected", app.wss_connection_count)
-        } else {
-            "🟠 Waiting for connection".to_string()
+pub fn handle_select(app: &mut Home) {
+    match app.active_block {
+        ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
+            let blocks = vec!["method", "source", "status"];
+
+            let selected_filter = blocks.iter().nth(app.filter_index).cloned();
+
+            if selected_filter.is_none() {
+                return;
+            }
+
+            match selected_filter.unwrap() {
+                "method" => {
+                    app.previous_blocks
+                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+
+                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod)
+                }
+                "source" => {
+                    app.previous_blocks
+                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+
+                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterSource)
+                }
+                "status" => {
+                    app.previous_blocks
+                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+
+                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus)
+                }
+                _ => {}
+            };
+
+            app.filter_index = 0;
         }
-    } else {
-        "⭕ Server closed".to_string()
-    };
+
+        ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
+            let current_service = app
+                .status_filters
+                .iter()
+                .map(|(key, _item)| key)
+                .nth(app.filter_index);
+
+            if current_service.is_none() {
+                return;
+            }
+
+            if let Some(filter) = current_service {
+                if let Some(status_filter) = app.status_filters.get(filter) {
+                    let d = status_filter.clone();
+
+                    app.status_filters.insert(
+                        filter.clone(),
+                        StatusFilter {
+                            name: d.name.clone(),
+                            status: d.status.clone(),
+                            selected: !d.selected,
+                        },
+                    );
+                }
+            };
+
+            reset_request_and_response_body_ui_state(app);
+
+            app.main.index = 0;
+
+            app.main.offset = 0;
+
+            app.main.scroll_state = app.main.scroll_state.position(0);
+        }
+        ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
+            let current_service = app
+                .method_filters
+                .iter()
+                .map(|(a, _item)| a)
+                .nth(app.filter_index);
+
+            if current_service.is_none() {
+                return;
+            }
+
+            if let Some(filter) = current_service {
+                if let Some(d) = app.method_filters.get(filter) {
+                    let d = d.clone();
+
+                    app.method_filters.insert(
+                        filter.clone(),
+                        MethodFilter {
+                            name: d.name.clone(),
+                            method: d.method.clone(),
+                            selected: !d.selected,
+                        },
+                    );
+                }
+            };
+
+            reset_request_and_response_body_ui_state(app);
+
+            app.main.index = 0;
+
+            app.main.offset = 0;
+
+            app.main.scroll_state = app.main.scroll_state.position(0);
+        }
+        ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
+            let mut services = get_services_from_traces(app);
+
+            let mut a: Vec<String> = vec!["All".to_string()];
+
+            a.append(&mut services);
+
+            services = a;
+
+            let selected_filter = services.iter().nth(app.filter_index).cloned();
+
+            if selected_filter.is_none() {
+                return;
+            }
+
+            if let Some(filter) = selected_filter {
+                match filter.as_str() {
+                    "All" => app.set_filter_source(FilterSource::All),
+                    source => match app.get_filter_source() {
+                        FilterSource::All => {
+                            let mut set = HashSet::new();
+
+                            set.insert(source.to_string());
+
+                            app.set_filter_source(FilterSource::Applied(set))
+                        }
+                        FilterSource::Applied(applied_sources) => {
+                            if applied_sources.contains(&source.to_string()) {
+                                let mut set = applied_sources.clone();
+
+                                set.remove(source);
+
+                                app.set_filter_source(FilterSource::Applied(set))
+                            } else {
+                                let mut set = applied_sources.clone();
+
+                                set.insert(source.to_string());
+
+                                if set.len() == get_services_from_traces(app).len() {
+                                    app.set_filter_source(FilterSource::All)
+                                } else {
+                                    app.set_filter_source(FilterSource::Applied(set))
+                                }
+                            }
+                        }
+                    },
+                }
+            };
+
+            reset_request_and_response_body_ui_state(app);
+
+            app.main.index = 0;
+
+            app.main.offset = 0;
+
+            let items = get_rendered_items(app);
+
+            let length = items.len();
+
+            set_content_length(app);
+
+            app.main.scroll_state = app.main.scroll_state.content_length(length as u16);
+        }
+        _ => {}
+    }
 }
