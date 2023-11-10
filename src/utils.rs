@@ -107,7 +107,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             let method = &trace.http.as_ref().unwrap().status;
 
             if method.is_none() {
-                return false;
+                return true;
             }
 
             let method_as_string = method.as_ref().unwrap().clone().as_u16().to_string();

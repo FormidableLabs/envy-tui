@@ -18,7 +18,6 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::get_currently_selected_trace,
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -134,7 +133,7 @@ impl Home {
     }
 
     fn mark_trace_as_timed_out(&mut self, id: String) {
-        let selected_trace = get_currently_selected_trace(self);
+        let selected_trace = self.items.iter().find(|trace| trace.id == id);
 
         if selected_trace.is_some() {
             let selected_trace = selected_trace.unwrap().clone();
