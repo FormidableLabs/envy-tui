@@ -226,6 +226,13 @@ impl Component for Home {
 
                 self.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMain)
             }
+            Action::OpenSort => {
+                let current_block = self.active_block;
+
+                self.previous_blocks.push(current_block);
+
+                self.active_block = ActiveBlock::Sort;
+            }
             Action::DeleteItem => handlers::handle_delete_item(self),
             Action::CopyToClipBoard => handlers::handle_yank(self, self.action_tx.clone()),
             Action::GoToEnd => handlers::handle_go_to_end(self, metadata),
@@ -311,6 +318,15 @@ impl Component for Home {
                     .split(frame.size());
 
                 render::render_filters_method(self, frame, main_layout[0]);
+            }
+            ActiveBlock::Sort => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_sort(self, frame, main_layout[0]);
             }
             ActiveBlock::Debug => {
                 let main_layout = Layout::default()

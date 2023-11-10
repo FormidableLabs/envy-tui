@@ -1342,3 +1342,67 @@ pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, a
 
     frame.render_widget(list.clone(), area);
 }
+
+pub fn render_sort(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let filter_items = vec!["method", "source", "status"];
+
+    let current_service = filter_items.iter().nth(app.filter_index).cloned();
+
+    let filter_item_rows = filter_items
+        .iter()
+        .map(|item| {
+            let column_a =
+                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
+
+            // let is_current_seleceted = app.filters.iter().find(|x| x.clone() == item).is_some();
+
+            let column_b = 
+            // let column_b = if is_current_seleceted {
+                Cell::from(
+                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+                );
+            // } else {
+            // Cell::from(
+            //     Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
+            // )
+            // };
+
+            let row_style = if current_service.is_some()
+                && current_service.clone().unwrap() == item.deref().clone()
+            {
+                RowStyle::Selected
+            } else {
+                RowStyle::Default
+            };
+
+            let middle = Cell::from(
+                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
+            );
+
+            Row::new(vec![column_b, middle, column_a]).style(get_row_style(row_style))
+        })
+        .collect::<Vec<_>>();
+
+    let list = Table::new([filter_item_rows].concat())
+        .style(get_text_style(true))
+        .header(
+            Row::new(vec!["Selected", "Type", "Value"])
+                .style(Style::default().fg(Color::Yellow))
+                .bottom_margin(1),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(get_border_style(true))
+                .title("[Filters]")
+                .border_type(BorderType::Plain),
+        )
+        .widths(&[
+            Constraint::Percentage(15),
+            Constraint::Percentage(15),
+            Constraint::Percentage(60),
+        ])
+        .column_spacing(10);
+
+    frame.render_widget(list.clone(), area);
+}
