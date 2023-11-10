@@ -64,6 +64,7 @@ pub enum ActiveBlock {
     Help,
     Debug,
     Filter(FilterScreen),
+    Sort,
 }
 
 #[derive(Default, Clone)]
@@ -91,6 +92,7 @@ pub enum Action {
     GoToEnd,
     HandleFilter(FilterScreen),
     OpenFilter,
+    OpenSort,
     Select,
     GoToStart,
     NextSection,

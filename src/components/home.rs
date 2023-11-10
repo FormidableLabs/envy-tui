@@ -18,7 +18,7 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::get_currently_selected_trace,
+    utils::{Ordering, TraceSort},
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -80,10 +80,12 @@ pub struct Home {
     pub wss_connection_count: usize,
     pub wss_state: WebSockerInternalState,
     pub filter_index: usize,
+    pub sort_index: usize,
     metadata: Option<handlers::HandlerMetadata>,
     filter_source: FilterSource,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
+    pub order: TraceSort,
 }
 
 impl Home {
@@ -91,6 +93,7 @@ impl Home {
         let config = crate::config::Config::new()?;
         let mut home = Home {
             key_map: config.mapping.0,
+
             ..Self::default()
         };
 
@@ -134,7 +137,7 @@ impl Home {
     }
 
     fn mark_trace_as_timed_out(&mut self, id: String) {
-        let selected_trace = get_currently_selected_trace(self);
+        let selected_trace = self.items.iter().find(|trace| trace.id == id);
 
         if selected_trace.is_some() {
             let selected_trace = selected_trace.unwrap().clone();
@@ -200,20 +203,17 @@ impl Component for Home {
             .clone();
 
         match action {
-            Action::Quit => match self.active_block {
-                ActiveBlock::Help | ActiveBlock::Debug | ActiveBlock::Filter(_) => {
-                    let last_block = self.previous_blocks.pop();
+            Action::Quit => {
+                let last_block = self.previous_blocks.pop();
 
-                    if last_block.is_none() {
-                        return Ok(Some(Action::QuitApplication));
-                    }
-
-                    self.filter_index = 0;
-
-                    self.active_block = last_block.unwrap();
+                if last_block.is_none() {
+                    return Ok(Some(Action::QuitApplication));
                 }
-                _ => return Ok(Some(Action::QuitApplication)),
-            },
+
+                self.filter_index = 0;
+
+                self.active_block = last_block.unwrap();
+            }
             Action::NextSection => handlers::handle_tab(self),
             Action::OnMount => handlers::handle_adjust_scroll_bar(self, metadata),
             Action::Help => handlers::handle_help(self),
@@ -226,6 +226,13 @@ impl Component for Home {
                 self.previous_blocks.push(current_block);
 
                 self.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMain)
+            }
+            Action::OpenSort => {
+                let current_block = self.active_block;
+
+                self.previous_blocks.push(current_block);
+
+                self.active_block = ActiveBlock::Sort;
             }
             Action::DeleteItem => handlers::handle_delete_item(self),
             Action::CopyToClipBoard => handlers::handle_yank(self, self.action_tx.clone()),
@@ -312,6 +319,15 @@ impl Component for Home {
                     .split(frame.size());
 
                 render::render_filters_method(self, frame, main_layout[0]);
+            }
+            ActiveBlock::Sort => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_sort(self, frame, main_layout[0]);
             }
             ActiveBlock::Debug => {
                 let main_layout = Layout::default()
