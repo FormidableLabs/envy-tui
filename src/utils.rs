@@ -1,6 +1,8 @@
+use core::str::FromStr;
 use http::Uri;
+use regex::Regex;
 
-use crate::components::home::Home;
+use crate::components::home::{FilterSource, Home};
 use crate::services::websocket::Trace;
 
 pub enum UIDispatchEvent {
@@ -43,10 +45,172 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
     }
 }
 
-pub fn get_currently_selected_trace(app: &Home) -> Option<&Trace> {
-    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
+fn fuzzy_regex(query: String) -> Regex {
+    if query.is_empty() {
+        return Regex::new(r".*").unwrap();
+    }
 
-    items_as_vector.get(app.main.index).copied()
+    let mut fuzzy_query = String::new();
+
+    for c in query.chars() {
+        fuzzy_query.extend([c, '.', '*']);
+    }
+
+    return Regex::from_str(&fuzzy_query).unwrap();
+}
+
+enum Ordering {
+    Ascending,
+    Descending,
+}
+
+enum TraceSort {
+    Method(Ordering),
+    Status(Ordering),
+    Url(Ordering),
+    Duration(Ordering),
+    Timestamp(Ordering),
+    None,
+}
+
+pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
+    let re = fuzzy_regex(app.search_query.clone());
+
+    let no_applied_method_filter = app
+        .method_filters
+        .iter()
+        .filter(|(_key, method_filter)| method_filter.selected == true)
+        .collect::<Vec<_>>()
+        .is_empty();
+
+    let no_applied_statud_filter = app
+        .status_filters
+        .iter()
+        .filter(|(_key, method_filter)| method_filter.selected == true)
+        .collect::<Vec<_>>()
+        .is_empty();
+
+    let mut items_as_vector = app
+        .items
+        .iter()
+        .filter(|trace| re.is_match(&trace.http.as_ref().unwrap().uri))
+        .filter(
+            |trace| match (app.get_filter_source(), trace.service_name.as_ref()) {
+                (FilterSource::All, _) => true,
+                (FilterSource::Applied(sources), Some(trace_source)) => {
+                    sources.contains(trace_source)
+                }
+                _ => false,
+            },
+        )
+        .filter(|trace| {
+            let method = &trace.http.as_ref().unwrap().status;
+
+            if method.is_none() {
+                return false;
+            }
+
+            let method_as_string = method.as_ref().unwrap().clone().as_u16().to_string();
+
+            let first_char = method_as_string.chars().nth(0).unwrap();
+
+            let matcher = match first_char {
+                '1' => "1xx",
+                '2' => "2xx",
+                '3' => "3xx",
+                '4' => "4xx",
+                '5' => "5xx",
+                _ => "",
+            };
+
+            match (no_applied_statud_filter, app.status_filters.get(matcher)) {
+                (true, _) => true,
+                (_, Some(status_filter)) => status_filter.selected.clone(),
+                (_, _) => false,
+            }
+        })
+        .filter(|trace| {
+            match (
+                no_applied_method_filter,
+                app.method_filters.get(&trace.http.as_ref().unwrap().method),
+            ) {
+                (true, _) => true,
+                (_, Some(method_filter)) => method_filter.selected.clone(),
+                (_, _) => false,
+            }
+        })
+        .collect::<Vec<&Trace>>();
+
+    let test_sort = TraceSort::Status(Ordering::Descending);
+
+    items_as_vector.sort_by(|a, b| match test_sort {
+        TraceSort::Duration(Ordering::Ascending) => a
+            .http
+            .as_ref()
+            .unwrap()
+            .duration
+            .unwrap_or(0)
+            .cmp(&b.http.as_ref().unwrap().duration.unwrap_or(0)),
+        TraceSort::Duration(Ordering::Descending) => b
+            .http
+            .as_ref()
+            .unwrap()
+            .duration
+            .unwrap_or(0)
+            .cmp(&a.http.as_ref().unwrap().duration.unwrap_or(0)),
+        TraceSort::Status(Ordering::Descending) => {
+            let a_has = a.http.as_ref().unwrap().status.is_some();
+            let b_has = b.http.as_ref().unwrap().status.is_some();
+
+            if a_has && b_has {
+                b.http
+                    .as_ref()
+                    .unwrap()
+                    .status
+                    .unwrap()
+                    .as_u16()
+                    .cmp(&a.http.as_ref().unwrap().status.unwrap().as_u16())
+            } else if a_has {
+                std::cmp::Ordering::Less
+            } else if b_has {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }
+        TraceSort::Status(Ordering::Ascending) => {
+            let a_has = a.http.as_ref().unwrap().status.is_some();
+            let b_has = b.http.as_ref().unwrap().status.is_some();
+
+            if a_has && b_has {
+                a.http
+                    .as_ref()
+                    .unwrap()
+                    .status
+                    .unwrap()
+                    .as_u16()
+                    .cmp(&b.http.as_ref().unwrap().status.unwrap().as_u16())
+            } else if a_has {
+                std::cmp::Ordering::Less
+            } else if b_has {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }
+        TraceSort::Url(_) => a.timestamp.cmp(&b.timestamp),
+        _ => a.cmp(&b),
+    });
+
+    items_as_vector
+}
+
+pub fn get_currently_selected_trace(app: &Home) -> Option<Trace> {
+    let items_as_vector = get_rendered_items(app);
+
+    let trace = items_as_vector.get(app.main.index).copied();
+
+    trace.map(|x| x.clone())
 }
 
 pub fn calculate_scrollbar_position(
@@ -90,7 +254,13 @@ pub fn get_content_length(app: &Home) -> ContentLengthElements {
         return content_length;
     }
 
-    let item = trace.unwrap();
+    let http_trace = trace.unwrap().http;
+
+    if http_trace.is_none() {
+        return content_length;
+    }
+
+    let item = http_trace.unwrap();
 
     if !item.response_headers.is_empty() {
         content_length.response_headers = Some(ContentLength {
