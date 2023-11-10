@@ -11,7 +11,7 @@ use crate::render::{get_currently_selected_http_trace, get_services_from_traces}
 use crate::services::websocket::Trace;
 use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
-    get_rendered_items, parse_query_params, set_content_length,
+    get_rendered_items, parse_query_params, set_content_length, Ordering, TraceSort,
 };
 use crossterm::event::{KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
@@ -237,6 +237,10 @@ pub fn handle_up(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMetad
                 Some(v) => app.filter_index = v,
                 _ => {}
             },
+            (ActiveBlock::Sort, _) => match app.sort_index.checked_sub(1) {
+                Some(v) => app.sort_index = v,
+                _ => {}
+            },
             (ActiveBlock::TracesBlock, _) => {
                 if app.main.index > 0 {
                     app.main.index -= 1;
@@ -422,6 +426,11 @@ pub fn handle_down(app: &mut Home, key: KeyEvent, additinal_metadata: HandlerMet
             (ActiveBlock::Filter(FilterScreen::FilterStatus), _) => {
                 if app.filter_index + 1 < app.status_filters.len() {
                     app.filter_index += 1;
+                }
+            }
+            (ActiveBlock::Sort, _) => {
+                if app.sort_index + 1 < 12 {
+                    app.sort_index += 1;
                 }
             }
             (ActiveBlock::TracesBlock, _) => {
@@ -1087,6 +1096,42 @@ pub fn handle_general_status(app: &mut Home, s: String) {
 
 pub fn handle_select(app: &mut Home) {
     match app.active_block {
+        ActiveBlock::Sort => {
+            let filter_items = vec![
+                ("Method", "Asc"),
+                ("Method", "Desc"),
+                ("Source", "Asc"),
+                ("Source", "Desc"),
+                ("Status", "Asc"),
+                ("Status", "Desc"),
+                ("Timestamp", "Asc"),
+                ("Timestamp", "Desc"),
+                ("Duration", "Asc"),
+                ("Duration", "Desc"),
+                ("Url", "Asc"),
+                ("Url", "Desc"),
+            ];
+
+            let selected_filter = filter_items.iter().nth(app.sort_index).cloned();
+
+            if let Some(selected_filter) = selected_filter {
+                match selected_filter {
+                    ("Method", "Asc") => app.order = TraceSort::Method(Ordering::Ascending),
+                    ("Method", "Desc") => app.order = TraceSort::Method(Ordering::Descending),
+                    ("Status", "Asc") => app.order = TraceSort::Status(Ordering::Ascending),
+                    ("Status", "Desc") => app.order = TraceSort::Status(Ordering::Descending),
+                    ("Timestamp", "Asc") => app.order = TraceSort::Timestamp(Ordering::Ascending),
+                    ("Timestamp", "Desc") => app.order = TraceSort::Timestamp(Ordering::Descending),
+                    ("Url", "Asc") => app.order = TraceSort::Url(Ordering::Ascending),
+                    ("Url", "Desc") => app.order = TraceSort::Url(Ordering::Descending),
+                    ("Duration", "Asc") => app.order = TraceSort::Duration(Ordering::Ascending),
+                    ("Duration", "Desc") => app.order = TraceSort::Duration(Ordering::Descending),
+                    ("Source", "Asc") => app.order = TraceSort::Source(Ordering::Ascending),
+                    ("Source", "Desc") => app.order = TraceSort::Source(Ordering::Descending),
+                    (_, _) => {}
+                }
+            }
+        }
         ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
             let blocks = vec!["method", "source", "status"];
 

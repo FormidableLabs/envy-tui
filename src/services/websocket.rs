@@ -80,7 +80,11 @@ impl Hash for Trace {
 
 impl Display for Trace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ID: {:?}", self.id,)
+        write!(
+            f,
+            "Time: {:?}",
+            chrono::DateTime::from_timestamp((self.timestamp / 1000).try_into().unwrap(), 0)
+        )
     }
 }
 

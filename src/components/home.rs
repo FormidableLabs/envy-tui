@@ -18,6 +18,7 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
+    utils::{Ordering, TraceSort},
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -79,10 +80,12 @@ pub struct Home {
     pub wss_connection_count: usize,
     pub wss_state: WebSockerInternalState,
     pub filter_index: usize,
+    pub sort_index: usize,
     metadata: Option<handlers::HandlerMetadata>,
     filter_source: FilterSource,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
+    pub order: TraceSort,
 }
 
 impl Home {
@@ -90,6 +93,7 @@ impl Home {
         let config = crate::config::Config::new()?;
         let mut home = Home {
             key_map: config.mapping.0,
+
             ..Self::default()
         };
 
@@ -199,20 +203,17 @@ impl Component for Home {
             .clone();
 
         match action {
-            Action::Quit => match self.active_block {
-                ActiveBlock::Help | ActiveBlock::Debug | ActiveBlock::Filter(_) => {
-                    let last_block = self.previous_blocks.pop();
+            Action::Quit => {
+                let last_block = self.previous_blocks.pop();
 
-                    if last_block.is_none() {
-                        return Ok(Some(Action::QuitApplication));
-                    }
-
-                    self.filter_index = 0;
-
-                    self.active_block = last_block.unwrap();
+                if last_block.is_none() {
+                    return Ok(Some(Action::QuitApplication));
                 }
-                _ => return Ok(Some(Action::QuitApplication)),
-            },
+
+                self.filter_index = 0;
+
+                self.active_block = last_block.unwrap();
+            }
             Action::NextSection => handlers::handle_tab(self),
             Action::OnMount => handlers::handle_adjust_scroll_bar(self, metadata),
             Action::Help => handlers::handle_help(self),
