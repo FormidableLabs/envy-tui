@@ -29,6 +29,29 @@ pub enum WebSockerInternalState {
     Closed,
 }
 
+#[derive(Clone, PartialEq, Debug, Eq, Default)]
+pub enum FilterSource {
+    #[default]
+    All,
+    Applied(HashSet<String>), // Source(String),
+                              // Method(http::method::Method),
+                              // Status(String),
+}
+
+#[derive(Default)]
+pub struct MethodFilter {
+    pub method: http::method::Method,
+    pub name: String,
+    pub selected: bool,
+}
+
+#[derive(Default)]
+pub struct StatusFilter {
+    pub status: String,
+    pub name: String,
+    pub selected: bool,
+}
+
 #[derive(Default)]
 pub struct Home {
     pub action_tx: Option<UnboundedSender<Action>>,
