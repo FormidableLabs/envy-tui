@@ -16,6 +16,7 @@ pub trait Component {
     ) -> Result<(), Box<dyn Error>> {
         Ok(())
     }
+
     fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>, Box<dyn Error>> {
         let r = match event {
             Some(Event::Key(key_event)) => self.handle_key_events(key_event)?,
@@ -23,14 +24,17 @@ pub trait Component {
         };
         Ok(r)
     }
+
     #[allow(unused_variables)]
     fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>, Box<dyn Error>> {
         Ok(None)
     }
+
     #[allow(unused_variables)]
     fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
         Ok(None)
     }
+
     fn render(&self, f: &mut Frame<'_>) -> Result<(), Box<dyn Error>>;
 
     fn on_mount(&mut self) -> Result<Option<Action>, Box<dyn Error>>;

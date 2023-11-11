@@ -147,7 +147,7 @@ pub struct Services {
 #[derive(Default)]
 pub struct App {
     pub action_tx: Option<UnboundedSender<Action>>,
-    pub components: Vec<Arc<Mutex<dyn Component>>>,
+    pub components: Vec<Box<dyn Component>>,
     pub services: Services,
     pub is_first_render: bool,
     pub logs: Vec<String>,
@@ -160,12 +160,12 @@ impl App {
     pub fn new() -> Result<App, Box<dyn Error>> {
         let config = crate::config::Config::new()?;
 
-        let home = Arc::new(Mutex::new(Home::new()?));
+        let home = Home::new()?;
 
         let websocket_client = Arc::new(Mutex::new(Client::new()));
 
         let app = App {
-            components: vec![home],
+            components: vec![Box::new(home)],
             services: Services { websocket_client },
             key_map: config.mapping.0,
             ..Self::default()
@@ -200,11 +200,8 @@ impl App {
 
         t.enter()?;
 
-        for component in self.components.iter() {
-            component
-                .lock()
-                .await
-                .register_action_handler(action_tx.clone())?;
+        for component in self.components.iter_mut() {
+            component.register_action_handler(action_tx.clone())?;
         }
 
         self.services.websocket_client.lock().await.init();
@@ -212,7 +209,7 @@ impl App {
         let action_to_clone = self.action_tx.as_ref().unwrap().clone();
 
         tokio::spawn(async move {
-            client(Some(action_to_clone)).await;
+            let _ = client(Some(action_to_clone)).await;
         });
 
         loop {
@@ -220,9 +217,9 @@ impl App {
 
             if let Some(Event::Render) = event {
                 for component in self.components.iter() {
-                    let c = component.lock().await;
                     t.terminal.draw(|frame| {
-                        let r = c.render(frame);
+                        let r = component.render(frame);
+
                         if let Err(e) = r {
                             action_tx
                                 .send(Action::Error(format!("Failed to draw: {:?}", e)))
@@ -233,8 +230,8 @@ impl App {
             };
 
             if let Some(Event::OnMount) = event {
-                for component in self.components.iter() {
-                    if let Some(action) = component.lock().await.on_mount()? {
+                for component in self.components.iter_mut() {
+                    if let Some(action) = component.on_mount()? {
                         action_tx.send(action.clone())?;
                     }
                 }
@@ -253,8 +250,8 @@ impl App {
                 }
             };
 
-            for component in self.components.iter() {
-                if let Some(action) = component.lock().await.handle_events(event)? {
+            for component in self.components.iter_mut() {
+                if let Some(action) = component.handle_events(event)? {
                     action_tx.send(action.clone())?;
                 }
             }
@@ -264,8 +261,8 @@ impl App {
                     self.should_quit = true;
                 }
 
-                for component in self.components.iter() {
-                    if let Some(action) = component.lock().await.update(action.clone())? {
+                for component in self.components.iter_mut() {
+                    if let Some(action) = component.update(action.clone())? {
                         action_tx.send(action.clone())?;
                     }
                 }
