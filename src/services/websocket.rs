@@ -2,6 +2,8 @@ use crate::app::Action;
 use crate::mock;
 use crate::parser::{parse_raw_trace, Payload};
 use crate::wss::WebSocket;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::error::Error;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
@@ -44,12 +46,27 @@ pub struct HTTPTrace {
     pub port: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum GraphQLOperationType {
+    Query,
+    Mutation,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GraphQLTrace {
+    pub query: String,
+    pub operation_name: Option<String>,
+    pub variables: serde_json::Map<String, Value>,
+    pub operation_type: GraphQLOperationType,
+}
+
 #[derive(Clone, Debug)]
 pub struct Trace {
     pub id: String,
     pub timestamp: u64,
     pub service_name: Option<String>,
     pub http: Option<HTTPTrace>,
+    pub graphql: Option<GraphQLTrace>,
 }
 
 impl PartialEq<Trace> for Trace {
@@ -82,7 +99,8 @@ impl Display for Trace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Time: {:?}",
+            "ID: {:?}, Time: {:?}",
+            self.id,
             chrono::DateTime::from_timestamp((self.timestamp / 1000).try_into().unwrap(), 0)
         )
     }

@@ -27,7 +27,7 @@ use crate::utils::{
 };
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
-enum RowStyle {
+pub enum RowStyle {
     Default,
     Selected,
     Inactive,
@@ -141,6 +141,20 @@ pub fn get_currently_selected_http_trace(app: &Home) -> Option<HTTPTrace> {
 }
 
 pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    let trace = get_currently_selected_trace(app);
+
+    let matching_plugin = app.plugins.iter().find(|plugin| {
+        if let Some(trace) = &trace {
+            plugin.is_match(trace)
+        } else {
+            false
+        }
+    });
+
+    if let Some(plugin) = matching_plugin {
+        return plugin.render(app, &trace.unwrap(), frame, area);
+    }
+
     match get_currently_selected_http_trace(app) {
         Some(request) => match &request.pretty_response_body {
             Some(pretty_json) => {
@@ -191,7 +205,7 @@ pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
     }
 }
 
-fn get_row_style(row_style: RowStyle) -> Style {
+pub fn get_row_style(row_style: RowStyle) -> Style {
     let default_style = Style::default().fg(Color::White);
 
     let selected_style = Style::default().fg(Color::Black).bg(Color::LightRed);
@@ -205,7 +219,7 @@ fn get_row_style(row_style: RowStyle) -> Style {
     }
 }
 
-fn get_border_style(active: bool) -> Style {
+pub fn get_border_style(active: bool) -> Style {
     if active {
         Style::default().fg(Color::White)
     } else {
@@ -213,7 +227,7 @@ fn get_border_style(active: bool) -> Style {
     }
 }
 
-fn get_text_style(active: bool) -> Style {
+pub fn get_text_style(active: bool) -> Style {
     if active {
         Style::default().fg(Color::White)
     } else {
@@ -816,16 +830,12 @@ pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>
                 .border_type(BorderType::Plain),
         );
 
-    let wss_status_message = match app.wss_state {
-        crate::components::home::WebSockerInternalState::Connected(1) => {
-            "🟢 1 client connected".to_string()
-        }
-        crate::components::home::WebSockerInternalState::Connected(v) => {
+    let wss_status_message = match app.wss.len() {
+        0 => "🟠 Waiting for connection".to_string(),
+        1 => "🟢 1 client connected".to_string(),
+        v => {
             format!("🟢 {:?} clients connected", v)
         }
-        crate::components::home::WebSockerInternalState::Closed => "⭕ Server closed".to_string(),
-
-        _ => "🟠 Waiting for connection".to_string(),
     };
 
     let status_bar = Paragraph::new(format!("{} {}", general_status, wss_status_message))
@@ -981,10 +991,16 @@ pub fn render_help(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area
 }
 
 pub fn render_debug(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+    // let debug_lines = app
+    //     .logs
+    //     .iter()
+    //     .map(|item| ListItem::new(Line::from(Span::raw(item))))
+    //     .collect::<Vec<_>>();
+
     let debug_lines = app
-        .logs
+        .wss
         .iter()
-        .map(|item| ListItem::new(Line::from(Span::raw(item))))
+        .map(|item| ListItem::new(Line::from(Span::raw(item.path.clone()))))
         .collect::<Vec<_>>();
 
     // TODO: Render different Keybindings that are relevant for the given `active_block`.

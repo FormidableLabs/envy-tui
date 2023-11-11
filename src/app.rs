@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 
 use crate::components::component::Component;
 use crate::components::handlers::HandlerMetadata;
-use crate::components::home::{Home, WebSockerInternalState};
+use crate::components::home::Home;
 use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
 use crate::wss::client;
@@ -78,6 +78,12 @@ pub struct UIState {
     pub horizontal_scroll_state: ScrollbarState,
 }
 
+#[derive(Default, Clone, PartialEq, Eq, Debug, Hash)]
+pub struct WssClient {
+    pub path: String,
+    pub address: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Action {
     #[serde(skip)]
@@ -121,13 +127,15 @@ pub enum Action {
     #[serde(skip)]
     SetGeneralStatus(String),
     #[serde(skip)]
-    SetWebsocketStatus(WebSockerInternalState),
-    #[serde(skip)]
     MarkTraceAsTimedOut(String),
     #[serde(skip)]
     ClearStatusMessage,
     #[serde(skip)]
     AddTrace(Trace),
+    #[serde(skip)]
+    AddClient(WssClient),
+    #[serde(skip)]
+    RemoveClient(WssClient),
     AddTraceError,
 }
 

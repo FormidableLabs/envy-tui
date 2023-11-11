@@ -119,14 +119,6 @@ impl WebSocket {
         }
     }
 
-    pub fn get_connections(&self) -> usize {
-        self.peer_map.lock().unwrap().iter().len()
-    }
-
-    pub fn is_open(&self) -> bool {
-        self.open
-    }
-
     pub async fn stop(&mut self) -> Result<(), String> {
         if self.open {
             self.open = false;
@@ -195,21 +187,13 @@ pub async fn client(
                             }
                         };
                     }
-                    tungstenite::Message::Close(_) => {
-                        break;
-                    }
-                    _ => {
-                        panic!()
-                    }
+                    tungstenite::Message::Close(_) => {}
+                    _ => {}
                 };
             }
-            Err(_e) => {
-                break;
-            }
+            Err(_e) => {}
         }
     }
-
-    Ok(())
 }
 
 pub async fn handle_connection(
@@ -238,24 +222,10 @@ pub async fn handle_connection(
         },
     );
 
-    let number_of_connections = peer_map.lock().unwrap().len();
-
-    match number_of_connections - 1 {
-        0 => {
-            let _ = action_sender.send(Action::SetWebsocketStatus(
-                crate::components::home::WebSockerInternalState::Open,
-            ));
-
-            ()
-        }
-        v => {
-            let _ = action_sender.send(Action::SetWebsocketStatus(
-                crate::components::home::WebSockerInternalState::Connected(v),
-            ));
-
-            ()
-        }
-    }
+    let _ = action_sender.send(Action::AddClient(crate::app::WssClient {
+        path: path.clone(),
+        address: addr.to_string(),
+    }));
 
     let (outgoing, incoming) = ws_stream.split();
 
@@ -285,24 +255,17 @@ pub async fn handle_connection(
         path
     )));
 
+    if path == "/inner_client" {
+        let s = action_sender.clone();
+        tokio::spawn(async {
+            let _ = client(Some(s)).await;
+        });
+    }
+
     peer_map.lock().unwrap().remove(&addr);
 
-    let number_of_connections = peer_map.lock().unwrap().len();
-
-    if path != "/inner_client" {
-        match number_of_connections - 1 {
-            0 => {
-                let _ = action_sender.send(Action::SetWebsocketStatus(
-                    crate::components::home::WebSockerInternalState::Open,
-                ));
-                ()
-            }
-            v => {
-                let _ = action_sender.send(Action::SetWebsocketStatus(
-                    crate::components::home::WebSockerInternalState::Connected(v),
-                ));
-                ()
-            }
-        }
-    }
+    let _ = action_sender.send(Action::RemoveClient(crate::app::WssClient {
+        path: path.clone(),
+        address: addr.to_string(),
+    }));
 }
