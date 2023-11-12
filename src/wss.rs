@@ -7,8 +7,6 @@ use std::time::Duration;
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, StreamExt, TryStreamExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
-use tokio::task::AbortHandle;
 use tokio::time::sleep;
 use tungstenite::connect;
 use tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
@@ -25,6 +23,7 @@ pub struct ConnectionMeta {
     tx: Tx,
     path: String,
 }
+
 pub type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, ConnectionMeta>>>;
 
 #[derive(Default)]
@@ -44,17 +43,10 @@ impl Callback for &mut RequestPath {
     }
 }
 
-#[derive(Default, Debug)]
-pub struct WebSocketState {
-    main_abort_handle: Option<AbortHandle>,
-    handles: Vec<AbortHandle>,
-}
-
 #[derive(Default)]
 pub struct WebSocket {
     address: String,
     peer_map: PeerMap,
-    web_socket_state: Arc<Mutex<WebSocketState>>,
     open: bool,
 }
 
@@ -68,10 +60,6 @@ impl WebSocket {
             open: false,
             address,
             peer_map,
-            web_socket_state: Arc::new(Mutex::new(WebSocketState {
-                handles: vec![],
-                main_abort_handle: None,
-            })),
         }
     }
 
@@ -89,54 +77,19 @@ impl WebSocket {
 
             let cloned_peer_map = peer_map.clone();
 
-            let websocket_state = &self.web_socket_state;
-
-            let cloned_websocket_state = websocket_state.clone();
-
-            let main_join_handle = tokio::spawn(async move {
+            tokio::spawn(async move {
                 while let Ok((stream, addr)) = listener.accept().await {
-                    let join_handle = tokio::spawn(handle_connection(
+                    tokio::spawn(handle_connection(
                         cloned_peer_map.clone(),
                         stream,
                         addr,
                         tx.clone(),
                     ));
-
-                    cloned_websocket_state
-                        .clone()
-                        .lock()
-                        .await
-                        .handles
-                        .push(join_handle.abort_handle());
                 }
             });
 
-            let state = &mut self.web_socket_state.lock().await;
-
-            state.main_abort_handle = Some(main_join_handle.abort_handle());
-
             self.open = true;
         }
-    }
-
-    pub async fn stop(&mut self) -> Result<(), String> {
-        if self.open {
-            self.open = false;
-
-            let websocket_state = &mut self.web_socket_state.lock().await;
-
-            websocket_state.main_abort_handle.as_ref().unwrap().abort();
-
-            websocket_state.handles.iter().for_each(|x| {
-                x.abort();
-            });
-
-            websocket_state.handles.clear();
-
-            websocket_state.main_abort_handle = None;
-        }
-
-        Ok(())
     }
 }
 

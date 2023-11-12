@@ -1,14 +1,12 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 
 use crossterm::event::KeyEvent;
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::Mutex;
 
 use crate::components::component::Component;
 use crate::components::handlers::HandlerMetadata;
@@ -141,7 +139,7 @@ pub enum Action {
 
 #[derive(Default)]
 pub struct Services {
-    websocket_client: Arc<Mutex<Client>>,
+    websocket_client: Client,
 }
 
 #[derive(Default)]
@@ -162,7 +160,7 @@ impl App {
 
         let home = Home::new()?;
 
-        let websocket_client = Arc::new(Mutex::new(Client::new()));
+        let websocket_client = Client::new();
 
         let app = App {
             components: vec![Box::new(home)],
@@ -190,11 +188,9 @@ impl App {
 
         self.services
             .websocket_client
-            .lock()
-            .await
             .register_action_handler(action_tx.clone())?;
 
-        self.services.websocket_client.lock().await.start();
+        self.services.websocket_client.start();
 
         let mut t = Tui::new();
 
@@ -204,7 +200,7 @@ impl App {
             component.register_action_handler(action_tx.clone())?;
         }
 
-        self.services.websocket_client.lock().await.init();
+        self.services.websocket_client.init();
 
         let action_to_clone = self.action_tx.as_ref().unwrap().clone();
 
@@ -267,12 +263,7 @@ impl App {
                     }
                 }
 
-                self.services
-                    .websocket_client
-                    .clone()
-                    .lock()
-                    .await
-                    .update(action.clone());
+                self.services.websocket_client.update(action.clone());
             }
 
             if self.should_quit {

@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 
 #[derive(Default)]
 pub struct Services {
-    pub collector_server: Arc<Mutex<WebSocket>>,
+    pub collector_server: WebSocket,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -110,7 +110,6 @@ impl Display for Trace {
 pub struct Client {
     pub action_tx: Option<UnboundedSender<Action>>,
     pub open: bool,
-    pub services: Services,
 }
 
 impl Client {
@@ -118,9 +117,6 @@ impl Client {
         Client {
             action_tx: None,
             open: false,
-            services: Services {
-                collector_server: Arc::new(Mutex::new(WebSocket::new())),
-            },
         }
     }
     pub fn register_action_handler(
@@ -133,31 +129,12 @@ impl Client {
     }
 
     pub fn start(&mut self) {
-        let collector_server = self.services.collector_server.clone();
-
         let cloned_dispatcher = self.action_tx.as_ref().unwrap().clone();
 
         tokio::spawn(async move {
-            collector_server.lock().await.start(cloned_dispatcher).await;
+            WebSocket::new().start(cloned_dispatcher).await;
         });
     }
-
-    pub fn stop(&mut self) {
-        self.open = false;
-
-        let collector_server = self.services.collector_server.clone();
-
-        tokio::spawn(async move {
-            collector_server.lock().await.stop().await.unwrap();
-        });
-    }
-
-    // fn dispatch(&mut self, action: Action) {
-    //     let tx = self.action_tx.clone().unwrap();
-    //     tokio::spawn(async move {
-    //         tx.send(action).unwrap();
-    //     });
-    // }
 
     fn schedule_server_stop(&mut self) {
         let tx = self.action_tx.clone().unwrap();
@@ -178,7 +155,6 @@ impl Client {
             Action::ScheduleStartWebSocketServer => self.schedule_server_start(),
             Action::ScheduleStopWebSocketServer => self.schedule_server_stop(),
             Action::StartWebSocketServer => self.start(),
-            Action::StopWebSocketServer => self.stop(),
             _ => {}
         }
     }

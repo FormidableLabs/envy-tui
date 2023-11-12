@@ -152,7 +152,7 @@ pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
     });
 
     if let Some(plugin) = matching_plugin {
-        return plugin.render(app, &trace.unwrap(), frame, area);
+        return plugin.render_request_body(app, &trace.unwrap(), frame, area);
     }
 
     match get_currently_selected_http_trace(app) {
