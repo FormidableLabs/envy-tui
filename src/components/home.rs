@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
-    layout::Layout,
+    layout::{Layout, Rect},
     prelude::{Constraint, Direction},
 };
 use std::collections::{BTreeSet, HashMap};
@@ -12,9 +12,11 @@ use crate::{
     app::{Action, ActiveBlock, Mode, RequestDetailsPane, ResponseDetailsPane, UIState},
     components::component::Component,
     components::handlers,
+    components::jsonviewer,
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
+    utils::get_currently_selected_trace,
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -184,14 +186,14 @@ impl Component for Home {
         Ok(None)
     }
 
-    fn render(&self, frame: &mut Frame) -> Result<(), Box<dyn Error>> {
+    fn render(&self, frame: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
         match self.active_block {
             ActiveBlock::Help => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_help(self, frame, main_layout[0]);
             }
@@ -200,7 +202,7 @@ impl Component for Home {
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_debug(self, frame, main_layout[0]);
             }
@@ -212,7 +214,7 @@ impl Component for Home {
                         .direction(Direction::Vertical)
                         .margin(1)
                         .constraints([Constraint::Percentage(95), Constraint::Length(3)].as_ref())
-                        .split(frame.size());
+                        .split(rect);
 
                     let split_layout = Layout::default()
                         .direction(Direction::Horizontal)
@@ -253,7 +255,15 @@ impl Component for Home {
 
                     render::render_request_summary(self, frame, details_layout[0]);
                     render::render_response_block(self, frame, response_layout[0]);
-                    render::render_response_body(self, frame, response_layout[1]);
+                    // TODO: Call render on the jsonviewer component, making sure that it renders
+                    // into the correct area of the response_layout
+                    if let Some(trace) = get_currently_selected_trace(self) {
+                        if let Some(response_body) = trace.response_body.clone() {
+                            let mut jv = jsonviewer::JSONViewer::new(&response_body)?;
+                            jv.render(frame, response_layout[1]);
+                        }
+                    }
+                    // render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_footer(self, frame, main_layout[1]);
 
@@ -282,7 +292,7 @@ impl Component for Home {
                             ]
                             .as_ref(),
                         )
-                        .split(frame.size());
+                        .split(rect);
 
                     let request_layout = Layout::default()
                         .direction(Direction::Horizontal)
@@ -304,7 +314,13 @@ impl Component for Home {
 
                     render::render_request_summary(self, frame, main_layout[1]);
                     render::render_response_block(self, frame, response_layout[0]);
-                    render::render_response_body(self, frame, response_layout[1]);
+                    if let Some(trace) = get_currently_selected_trace(self) {
+                        if let Some(response_body) = trace.response_body.clone() {
+                            let mut jv = jsonviewer::JSONViewer::new(&response_body)?;
+                            jv.render(frame, response_layout[1]);
+                        }
+                    }
+                    // render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);

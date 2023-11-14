@@ -193,7 +193,7 @@ impl App {
                 for component in self.components.iter() {
                     let c = component.lock().await;
                     t.terminal.draw(|frame| {
-                        let r = c.render(frame);
+                        let r = c.render(frame, frame.size());
                         if let Err(e) = r {
                             action_tx
                                 .send(Action::Error(format!("Failed to draw: {:?}", e)))
@@ -230,6 +230,7 @@ impl App {
                 }
             }
 
+            // Consume all actions that have been broadcast
             while let Ok(action) = action_rx.try_recv() {
                 if let Action::QuitApplication = action {
                     self.should_quit = true;

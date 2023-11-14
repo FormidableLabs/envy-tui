@@ -5,7 +5,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     app::Action,
-    tui::{Event, Frame},
+    tui::{Event, Frame, Rect},
 };
 
 pub trait Component {
@@ -31,7 +31,7 @@ pub trait Component {
     fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
         Ok(None)
     }
-    fn render(&self, f: &mut Frame<'_>) -> Result<(), Box<dyn Error>>;
+    fn render(&self, f: &mut Frame<'_>, r: Rect) -> Result<(), Box<dyn Error>>;
 
     fn on_mount(&mut self) -> Result<Option<Action>, Box<dyn Error>>;
 }
