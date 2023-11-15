@@ -127,57 +127,6 @@ pub fn render_body(
     }
 }
 
-pub fn render_response_body(app: &Home, frame: &mut Frame, area: Rect) {
-    match get_currently_selected_trace(app) {
-        Some(request) => match &request.pretty_response_body {
-            Some(pretty_json) => {
-                render_body(
-                    pretty_json.to_string(),
-                    &mut app.response_body.clone(),
-                    app.active_block,
-                    frame,
-                    area,
-                    ActiveBlock::ResponseBody,
-                );
-            }
-            _ => {
-                let copy = if request.duration.is_some() {
-                    "This trace does not have a response body."
-                } else {
-                    "Loading..."
-                };
-
-                let body_to_render = Paragraph::new(copy)
-                    .alignment(Alignment::Center)
-                    .style(
-                        Style::default()
-                            .fg(if app.active_block == ActiveBlock::ResponseBody {
-                                Color::White
-                            } else {
-                                Color::DarkGray
-                            })
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .style(Style::default().fg(
-                                if app.active_block == ActiveBlock::ResponseBody {
-                                    Color::White
-                                } else {
-                                    Color::DarkGray
-                                },
-                            ))
-                            .title("Request body")
-                            .border_type(BorderType::Plain),
-                    );
-                frame.render_widget(body_to_render, area)
-            }
-        },
-        _ => {}
-    }
-}
-
 fn get_row_style(row_style: RowStyle) -> Style {
     let default_style = Style::default().fg(Color::White);
 

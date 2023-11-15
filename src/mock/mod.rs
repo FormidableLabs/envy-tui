@@ -243,3 +243,22 @@ pub const TEST_JSON_18: &str = r#"{
     }
 
 }"#;
+
+pub const TEST_JSON_19: &str = r#"{
+    "type": "trace",
+"data": {
+"id":"1","type":"HttpRequest","timestamp":1694891653602,"http": { "timings": {
+      "blocked": 1.701791,
+      "dns": 37.977375,
+      "connect": 38.259209,
+      "state": "received",
+      "send": 0.03825,
+      "wait": 50.718333,
+      "receive": 1.474667,
+      "ssl": 21.786959
+}, "duration":200,
+
+      "state": "received",
+"httpVersion":"1.1","method":"GET","host":"testserver.com","port":443,"path":"/auth?client=mock_client","url":"http://testserver.com?client=mock_client","requestHeaders":{"Authorization":["Basic dXNlcm5hbWU6cGFzc3dvcmQ="],"Content-Type":["application/x-www-form-urlencoded"],"Accept":["*/*"],"Content-Length":["0"],"User-Agent":["node-fetch/1.0 (+https://github.com/bitinn/node-fetch)"],"Accept-Encoding":["gzip,deflate"],"Connection":["close"]},"statusCode":200,"statusMessage":"OK","responseHeaders":{"content-type":"application/json","transfer-encoding":"chunked","connection":"close","cache-control":"no-store","content-encoding":"gzip","strict-transport-security":"max-age=31536000; includeSubDomains","vary":"Accept-Encoding, User-Agent","pragma":"no-cache"},"responseBody":"{\"name\":\"Juan J Hartley\",\"empty\":null,\"boolean_a\":true,\"boolean_b\":false,\"phones\":[\"+44 1234567\",\"+44 2345678\"],\"age\":43,\"nested\":{\"name\":\"Imogene Thompson\"}}"
+}
+} }"#;

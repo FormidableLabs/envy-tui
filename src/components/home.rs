@@ -1,10 +1,11 @@
+use std::collections::{BTreeSet, HashMap};
+use std::error::Error;
+
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Layout, Rect},
     prelude::{Constraint, Direction},
 };
-use std::collections::{BTreeSet, HashMap};
-use std::error::Error;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
@@ -54,6 +55,7 @@ pub struct Home {
     pub wss_connected: bool,
     pub wss_connection_count: usize,
     pub wss_state: WebSockerInternalState,
+    pub json_viewer: jsonviewer::JSONViewer,
     metadata: Option<handlers::HandlerMetadata>,
 }
 
@@ -61,6 +63,7 @@ impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
         let config = crate::config::Config::new()?;
         let home = Home {
+            json_viewer: jsonviewer::JSONViewer::new()?,
             key_map: config.mapping.0,
             ..Self::default()
         };
@@ -96,6 +99,7 @@ impl Component for Home {
         &mut self,
         tx: UnboundedSender<Action>,
     ) -> Result<(), Box<dyn Error>> {
+        self.json_viewer.register_action_handler(tx.clone())?;
         self.action_tx = Some(tx);
         Ok(())
     }
@@ -122,6 +126,10 @@ impl Component for Home {
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
+        if self.active_block == ActiveBlock::ResponseBody {
+            self.json_viewer.update(action.clone())?;
+        }
+
         let metadata = self
             .metadata
             .as_ref()
@@ -255,15 +263,18 @@ impl Component for Home {
 
                     render::render_request_summary(self, frame, details_layout[0]);
                     render::render_response_block(self, frame, response_layout[0]);
-                    // TODO: Call render on the jsonviewer component, making sure that it renders
-                    // into the correct area of the response_layout
                     if let Some(trace) = get_currently_selected_trace(self) {
                         if let Some(response_body) = trace.response_body.clone() {
-                            let mut jv = jsonviewer::JSONViewer::new(&response_body)?;
-                            jv.render(frame, response_layout[1]);
+                            let active = self.active_block == ActiveBlock::ResponseBody;
+
+                            self.json_viewer.render(
+                                frame,
+                                response_layout[1],
+                                response_body,
+                                active,
+                            )?;
                         }
                     }
-                    // render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_footer(self, frame, main_layout[1]);
 
@@ -316,11 +327,15 @@ impl Component for Home {
                     render::render_response_block(self, frame, response_layout[0]);
                     if let Some(trace) = get_currently_selected_trace(self) {
                         if let Some(response_body) = trace.response_body.clone() {
-                            let mut jv = jsonviewer::JSONViewer::new(&response_body)?;
-                            jv.render(frame, response_layout[1]);
+                            let active = self.active_block == ActiveBlock::ResponseBody;
+                            self.json_viewer.render(
+                                frame,
+                                response_layout[1],
+                                response_body.clone(),
+                                active,
+                            )?;
                         }
                     }
-                    // render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);

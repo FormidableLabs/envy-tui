@@ -184,6 +184,7 @@ impl Client {
             mock::TEST_JSON_16,
             mock::TEST_JSON_17,
             mock::TEST_JSON_18,
+            mock::TEST_JSON_19,
         ];
 
         for json_string in json_strings {
