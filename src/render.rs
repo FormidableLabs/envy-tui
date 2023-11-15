@@ -667,7 +667,16 @@ pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, ar
         return result;
     });
 
-    let filter_message = match status_len + method_len {
+    let applied_source_filters = match app.get_filter_source() {
+        FilterSource::Applied(applied) => applied.iter().collect::<Vec<_>>(),
+        FilterSource::All => {
+            vec![]
+        }
+    };
+
+    let source_len = applied_source_filters.len();
+
+    let filter_message = match status_len + method_len + source_len {
         0 => String::from("No filters selected"),
         _ => {
             let mut filters_text = format!("Active filter(s): ");
@@ -682,6 +691,10 @@ pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, ar
                 if filter_status.selected {
                     filters_text.push_str((format!(" {} (Status)", filter_status.name)).as_str());
                 }
+            });
+
+            applied_source_filters.iter().for_each(|s| {
+                filters_text.push_str((format!(" {} (Source)", s)).as_str());
             });
 
             filters_text
@@ -830,13 +843,21 @@ pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>
                 .border_type(BorderType::Plain),
         );
 
-    let wss_status_message = match app.wss.len() {
+    let mut wss_status_message = match app
+        .wss
+        .iter()
+        .filter(|x| x.path != "/collector_client")
+        .collect::<Vec<_>>()
+        .len()
+    {
         0 => "🟠 Waiting for connection".to_string(),
         1 => "🟢 1 client connected".to_string(),
         v => {
             format!("🟢 {:?} clients connected", v)
         }
     };
+
+    wss_status_message.push_str(" [W]");
 
     let status_bar = Paragraph::new(format!("{} {}", general_status, wss_status_message))
         .style(
@@ -1278,10 +1299,6 @@ pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, a
             let column_a =
                 Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
 
-            let column_b = Cell::from(
-                Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
-            );
-
             let row_style = if current_service.is_some()
                 && current_service.clone().unwrap() == item.deref().clone()
             {
@@ -1291,17 +1308,17 @@ pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, a
             };
 
             let middle = Cell::from(
-                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
+                Line::from(vec![Span::raw("Filter".to_string())]).alignment(Alignment::Left),
             );
 
-            Row::new(vec![column_b, middle, column_a]).style(get_row_style(row_style))
+            Row::new(vec![middle, column_a]).style(get_row_style(row_style))
         })
         .collect::<Vec<_>>();
 
     let list = Table::new([filter_item_rows].concat())
         .style(get_text_style(true))
         .header(
-            Row::new(vec!["Selected", "Type", "Value"])
+            Row::new(vec!["Type", "Value"])
                 .style(Style::default().fg(Color::Yellow))
                 .bottom_margin(1),
         )
@@ -1312,11 +1329,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, a
                 .title("[Filters]")
                 .border_type(BorderType::Plain),
         )
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ])
+        .widths(&[Constraint::Percentage(50), Constraint::Percentage(50)])
         .column_spacing(10);
 
     frame.render_widget(list.clone(), area);

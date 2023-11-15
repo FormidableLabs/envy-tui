@@ -97,7 +97,8 @@ pub async fn client(
     tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>,
 ) -> Result<(), Box<dyn Error>> {
     let (mut socket, _response) =
-        connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
+        connect(Url::parse("ws://127.0.0.1:9999/collector_client").unwrap())
+            .expect("Can't connect");
 
     loop {
         let msg = socket.read();
@@ -208,7 +209,7 @@ pub async fn handle_connection(
         path
     )));
 
-    if path == "/inner_client" {
+    if path == "/collector_client" {
         let s = action_sender.clone();
         tokio::spawn(async {
             let _ = client(Some(s)).await;

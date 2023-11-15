@@ -296,7 +296,8 @@ impl Component for Home {
             ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .margin(3)
+                    .vertical_margin(10)
+                    .horizontal_margin(20)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
@@ -305,7 +306,8 @@ impl Component for Home {
             ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .margin(3)
+                    .vertical_margin(10)
+                    .horizontal_margin(20)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
@@ -314,7 +316,8 @@ impl Component for Home {
             ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .margin(3)
+                    .vertical_margin(10)
+                    .horizontal_margin(20)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
@@ -323,7 +326,8 @@ impl Component for Home {
             ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .margin(3)
+                    .vertical_margin(10)
+                    .horizontal_margin(20)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
