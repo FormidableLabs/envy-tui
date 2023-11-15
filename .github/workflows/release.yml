@@ -1,9 +1,9 @@
 name: Relase
 
-on:
-  push:
-    tags:
-      - "v*.*.*"
+on: push
+  # push:
+  #   tags:
+  #     - "v*.*.*"
 
 jobs:
   publish:
@@ -19,7 +19,7 @@ jobs:
             target: aarch64-apple-darwin
             binary_postfix: ""
           - os: macos-latest
-            artifact_prefix: macos
+            artifact_prefix: macos_intel
             target: x86_64-apple-darwin
             binary_postfix: ""
           - os: ubuntu-latest
