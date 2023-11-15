@@ -1,7 +1,6 @@
 q: Quit
 ">": GoToEnd
 <: GoToStart
-q: Quit
 tab: NextSection
 backtab: PreviousSection
 y: CopyToClipBoard
@@ -22,3 +21,5 @@ p: ToggleDebug
 d: DeleteItem
 "]": NextPane
 "[": PreviousPane
+e: ExpandAll
+E: CollapseAll

@@ -12,7 +12,8 @@ use crate::app::Action;
 pub struct JSONViewer {
     pub action_tx: Option<UnboundedSender<Action>>,
     testvalue: serde_json::Value,
-    expanded: Vec<usize>,
+    expanded: bool,
+    expanded_idxs: Vec<usize>,
     cursor_position: usize,
 }
 
@@ -37,8 +38,12 @@ impl JSONViewer {
             Action::NavigateDown(Some(_)) => {
                 self.cursor_position = self.cursor_position.saturating_add(1)
             }
-            Action::NavigateLeft(Some(_)) => self.expanded.retain(|&x| x != self.cursor_position),
-            Action::NavigateRight(Some(_)) => self.expanded.push(self.cursor_position),
+            Action::NavigateLeft(Some(_)) => {
+                self.expanded_idxs.retain(|&x| x != self.cursor_position)
+            }
+            Action::NavigateRight(Some(_)) => self.expanded_idxs.push(self.cursor_position),
+            Action::ExpandAll => self.expanded = true,
+            Action::CollapseAll => self.expanded = false,
             _ => {}
         }
 
@@ -66,8 +71,13 @@ impl JSONViewer {
         let padding = Padding::zero();
 
         let lines = match active {
-            true => active_lines(data, self.expanded.clone(), self.cursor_position)?,
-            false => raw_lines(data, self.expanded.clone())?,
+            true => active_lines(
+                data,
+                self.expanded_idxs.clone(),
+                self.expanded,
+                self.cursor_position,
+            )?,
+            false => raw_lines(data, self.expanded_idxs.clone(), self.expanded)?,
         };
 
         let json = Paragraph::new(lines)
@@ -114,10 +124,11 @@ impl JSONViewer {
 
 fn active_lines(
     data: String,
-    expanded: Vec<usize>,
+    expanded_idxs: Vec<usize>,
+    expanded: bool,
     cursor_position: usize,
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
-    let mut lines = raw_lines(data, expanded)?;
+    let mut lines = raw_lines(data, expanded_idxs, expanded)?;
 
     let style = Style::default()
         .fg(Color::Green)
@@ -130,7 +141,11 @@ fn active_lines(
     Ok(lines)
 }
 
-fn raw_lines(data: String, expanded: Vec<usize>) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
+fn raw_lines(
+    data: String,
+    expanded_idxs: Vec<usize>,
+    expanded: bool,
+) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
     let value = serde_json::from_str(data.as_str())?;
     let mut items = vec![];
     let mut idx = 0;
@@ -145,7 +160,7 @@ fn raw_lines(data: String, expanded: Vec<usize>) -> Result<Vec<Line<'static>>, B
         // TODO: why does this require an into_iter() vs iter() call?
         for (k, v) in o.into_iter() {
             if let serde_json::Value::Object(o) = v {
-                if expanded.contains(&idx) {
+                if expanded || expanded_idxs.contains(&idx) {
                     for line in obj_lines(o)? {
                         items.push(line);
                         idx += 1;

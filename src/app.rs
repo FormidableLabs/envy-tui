@@ -108,6 +108,8 @@ pub enum Action {
     #[serde(skip)]
     AddTrace(Trace),
     AddTraceError,
+    ExpandAll,
+    CollapseAll,
 }
 
 #[derive(Default)]
