@@ -14,12 +14,16 @@ pub struct JSONViewer {
     testvalue: serde_json::Value,
     expanded: bool,
     expanded_idxs: Vec<usize>,
+    indent_spacing: usize,
     cursor_position: usize,
 }
 
 impl JSONViewer {
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        Ok(Self::default())
+        Ok(Self {
+            indent_spacing: 4,
+            ..Self::default()
+        })
     }
 
     pub fn register_action_handler(
@@ -70,7 +74,7 @@ impl JSONViewer {
 
         let padding = Padding::zero();
 
-        let lines = match active {
+        let mut lines = match active {
             true => active_lines(
                 data,
                 self.expanded_idxs.clone(),
@@ -79,6 +83,31 @@ impl JSONViewer {
             )?,
             false => raw_lines(data, self.expanded_idxs.clone(), self.expanded)?,
         };
+
+        let mut indent = 0;
+        for line in lines.iter_mut() {
+            if line
+                .spans
+                .get(0)
+                .unwrap_or(&Span::raw(""))
+                .content
+                .starts_with("{")
+            {
+                line.spans.insert(0, Span::raw(" ".repeat(indent)));
+                indent += self.indent_spacing;
+                continue;
+            } else if line
+                .spans
+                .get(0)
+                .unwrap_or(&Span::raw(""))
+                .content
+                .ends_with("}")
+            {
+                indent -= self.indent_spacing;
+            }
+
+            line.spans.insert(0, Span::raw(" ".repeat(indent)));
+        }
 
         let json = Paragraph::new(lines)
             .block(
@@ -192,7 +221,7 @@ fn raw_lines(
                     r#"""#.into(),
                     ": ".into(),
                     as_str.into(),
-                    if idx < len - 1 { ",".into() } else { "".into() },
+                    if idx < len { ",".into() } else { "".into() },
                 ]));
                 idx += 1;
             }
