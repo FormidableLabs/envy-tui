@@ -39,6 +39,12 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
           target: ${{ matrix.target }}
+      - name: "Install Rust (ARM)"
+        shell: bash
+        run: "rustup target add aarch64-apple-darwin"
+      - name: "Install Rust (Intel)"
+        shell: bash
+        run: "rustup target add x86_64-apple-darwin"
       - name: Installing needed macOS dependencies
         if: matrix.os == 'macos-latest'
         run: brew install openssl@1.1
