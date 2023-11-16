@@ -1,18 +1,17 @@
 name: Relase
 
-on: push
-  # push:
-  #   tags:
-  #     - "v*.*.*"
+on: 
+  push:
+    tags:
+      - "v*.*.*"
 
 jobs:
   publish:
-    name: Publishing for ${{ matrix.os }}
+    name: Publishing for ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin, x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc]
-        # os: [macos-latest, ubuntu-latest, windows-latest]
         rust: [stable]
         include:
           - os: macos-latest
@@ -41,9 +40,11 @@ jobs:
           override: true
           target: ${{ matrix.target }}
       - name: "Install Rust (ARM)"
+        if: matrix.target == 'aarch64-apple-darwin'
         shell: bash
         run: "rustup target add aarch64-apple-darwin"
       - name: "Install Rust (Intel)"
+        if: matrix.target == 'x86_64-apple-darwin'
         shell: bash
         run: "rustup target add x86_64-apple-darwin"
       - name: Installing needed macOS dependencies
