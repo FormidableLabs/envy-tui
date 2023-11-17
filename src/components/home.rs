@@ -258,7 +258,18 @@ impl Component for Home {
                         .split(details_layout[2]);
 
                     render::render_request_block(self, frame, request_layout[0]);
-                    render::render_request_body(self, frame, request_layout[1]);
+                    if let Some(trace) = get_currently_selected_trace(self) {
+                        if let Some(request_body) = trace.request_body.clone() {
+                            let active = self.active_block == ActiveBlock::RequestBody;
+
+                            self.json_viewer.render(
+                                frame,
+                                request_layout[1],
+                                request_body,
+                                active,
+                            )?;
+                        }
+                    }
                     render::render_traces(self, frame, split_layout[0]);
 
                     render::render_request_summary(self, frame, details_layout[0]);
@@ -320,7 +331,21 @@ impl Component for Home {
                         .split(main_layout[3]);
 
                     render::render_request_block(self, frame, request_layout[0]);
-                    render::render_request_body(self, frame, request_layout[1]);
+                    // TODO: pass a title prop "Request body" or "Response body" accordingly
+                    // TODO: fix line navigation
+                    // TODO: add scrolling for overflows (see render::render_body method)
+                    if let Some(trace) = get_currently_selected_trace(self) {
+                        if let Some(request_body) = trace.request_body.clone() {
+                            let active = self.active_block == ActiveBlock::RequestBody;
+
+                            self.json_viewer.render(
+                                frame,
+                                request_layout[1],
+                                request_body,
+                                active,
+                            )?;
+                        }
+                    }
                     render::render_traces(self, frame, main_layout[0]);
 
                     render::render_request_summary(self, frame, main_layout[1]);

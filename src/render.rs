@@ -412,51 +412,6 @@ pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
     };
 }
 
-pub fn render_request_body(app: &Home, frame: &mut Frame, area: Rect) {
-    match get_currently_selected_trace(app) {
-        Some(request) => match &request.pretty_request_body {
-            Some(pretty_json) => {
-                render_body(
-                    pretty_json.to_string(),
-                    &mut app.request_body.clone(),
-                    app.active_block,
-                    frame,
-                    area,
-                    ActiveBlock::RequestBody,
-                );
-            }
-            _ => {
-                let body_to_render = Paragraph::new("This trace does not have a request body.")
-                    .alignment(Alignment::Center)
-                    .style(
-                        Style::default()
-                            .fg(if app.active_block == ActiveBlock::RequestBody {
-                                Color::White
-                            } else {
-                                Color::DarkGray
-                            })
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .style(Style::default().fg(
-                                if app.active_block == ActiveBlock::RequestBody {
-                                    Color::White
-                                } else {
-                                    Color::DarkGray
-                                },
-                            ))
-                            .title("Request body")
-                            .border_type(BorderType::Plain),
-                    );
-                frame.render_widget(body_to_render, area)
-            }
-        },
-        _ => {}
-    }
-}
-
 pub fn render_response_block(app: &Home, frame: &mut Frame, area: Rect) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
