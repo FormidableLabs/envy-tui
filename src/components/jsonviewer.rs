@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::error::Error;
 
 use ratatui::prelude::*;
@@ -67,11 +68,6 @@ impl JSONViewer {
         //     "Loading..."
         // };
 
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(5)])
-            .split(rect);
-
         let padding = Padding::zero();
 
         let mut lines = match active {
@@ -109,43 +105,55 @@ impl JSONViewer {
             line.spans.insert(0, Span::raw(" ".repeat(indent)));
         }
 
-        let json = Paragraph::new(lines)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .padding(padding)
-                    .style(Style::default().fg(if active {
-                        Color::White
-                    } else {
-                        Color::DarkGray
-                    }))
-                    .title("Request body")
-                    .border_type(BorderType::Plain),
-            )
-            .style(
-                Style::default()
-                    .fg(if active {
-                        Color::White
-                    } else {
-                        Color::DarkGray
-                    })
-                    .add_modifier(Modifier::BOLD),
-            );
-        f.render_widget(json, layout[0]);
+        let outer_block = Block::default()
+            .borders(Borders::ALL)
+            .padding(padding)
+            .style(Style::default().fg(if active {
+                Color::White
+            } else {
+                Color::DarkGray
+            }))
+            .title("Request body")
+            .border_type(BorderType::Plain);
 
-        let debug_text = vec![
-            Line::from(vec![
-                Span::styled("Cursor Position: ", Style::new().green().italic()),
-                self.cursor_position.to_string().into(),
-            ]),
-            Line::from(vec![
-                Span::styled("Expanded lines: ", Style::new().green().italic()),
-                Span::raw(format! {"{:?}", self.expanded}),
-            ]),
-        ];
-        let debug = Paragraph::new(debug_text);
+        let outer_area = rect;
+        let inner_area = outer_block.inner(outer_area);
 
-        f.render_widget(debug, layout[1]);
+        let inner_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(4), Constraint::Min(0)])
+            .split(inner_area);
+
+        let mut line_counters = vec![];
+        let max_count = lines.len() + 1;
+        for n in 1..max_count {
+            line_counters.push(Line::from(vec![Span::styled(
+                format!(
+                    "{:>width$}",
+                    n,
+                    // https://stackoverflow.com/questions/43704758/how-to-idiomatically-convert-between-u32-and-usize
+                    width = 2 + usize::try_from(max_count.checked_ilog(10).unwrap_or(2))?
+                ),
+                Style::new().yellow().on_light_red(),
+            )]));
+        }
+
+        let json = Paragraph::new(lines).style(
+            Style::default()
+                .fg(if active {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                })
+                .add_modifier(Modifier::BOLD),
+        );
+
+        f.render_widget(outer_block, outer_area);
+
+        let line_count_paragraph = Paragraph::new(line_counters).alignment(Alignment::Right);
+
+        f.render_widget(line_count_paragraph, inner_layout[0]);
+        f.render_widget(json, inner_layout[1]);
 
         Ok(())
     }
