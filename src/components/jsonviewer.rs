@@ -12,7 +12,6 @@ use crate::app::Action;
 #[derive(Default)]
 pub struct JSONViewer {
     pub action_tx: Option<UnboundedSender<Action>>,
-    testvalue: serde_json::Value,
     expanded: bool,
     expanded_idxs: Vec<usize>,
     indent_spacing: usize,

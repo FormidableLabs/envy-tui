@@ -55,7 +55,8 @@ pub struct Home {
     pub wss_connected: bool,
     pub wss_connection_count: usize,
     pub wss_state: WebSockerInternalState,
-    pub json_viewer: jsonviewer::JSONViewer,
+    pub request_json_viewer: jsonviewer::JSONViewer,
+    pub response_json_viewer: jsonviewer::JSONViewer,
     metadata: Option<handlers::HandlerMetadata>,
 }
 
@@ -63,8 +64,9 @@ impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
         let config = crate::config::Config::new()?;
         let home = Home {
-            json_viewer: jsonviewer::JSONViewer::new()?,
             key_map: config.mapping.0,
+            request_json_viewer: jsonviewer::JSONViewer::new()?,
+            response_json_viewer: jsonviewer::JSONViewer::new()?,
             ..Self::default()
         };
 
@@ -99,7 +101,10 @@ impl Component for Home {
         &mut self,
         tx: UnboundedSender<Action>,
     ) -> Result<(), Box<dyn Error>> {
-        self.json_viewer.register_action_handler(tx.clone())?;
+        self.request_json_viewer
+            .register_action_handler(tx.clone())?;
+        self.response_json_viewer
+            .register_action_handler(tx.clone())?;
         self.action_tx = Some(tx);
         Ok(())
     }
@@ -126,8 +131,11 @@ impl Component for Home {
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
+        if self.active_block == ActiveBlock::RequestBody {
+            self.request_json_viewer.update(action.clone())?;
+        }
         if self.active_block == ActiveBlock::ResponseBody {
-            self.json_viewer.update(action.clone())?;
+            self.response_json_viewer.update(action.clone())?;
         }
 
         let metadata = self
@@ -262,7 +270,7 @@ impl Component for Home {
                         if let Some(request_body) = trace.request_body.clone() {
                             let active = self.active_block == ActiveBlock::RequestBody;
 
-                            self.json_viewer.render(
+                            self.request_json_viewer.render(
                                 frame,
                                 request_layout[1],
                                 request_body,
@@ -278,7 +286,7 @@ impl Component for Home {
                         if let Some(response_body) = trace.response_body.clone() {
                             let active = self.active_block == ActiveBlock::ResponseBody;
 
-                            self.json_viewer.render(
+                            self.response_json_viewer.render(
                                 frame,
                                 response_layout[1],
                                 response_body,
@@ -332,13 +340,11 @@ impl Component for Home {
 
                     render::render_request_block(self, frame, request_layout[0]);
                     // TODO: pass a title prop "Request body" or "Response body" accordingly
-                    // TODO: fix line navigation
                     // TODO: add scrolling for overflows (see render::render_body method)
                     if let Some(trace) = get_currently_selected_trace(self) {
                         if let Some(request_body) = trace.request_body.clone() {
                             let active = self.active_block == ActiveBlock::RequestBody;
-
-                            self.json_viewer.render(
+                            self.request_json_viewer.render(
                                 frame,
                                 request_layout[1],
                                 request_body,
@@ -353,7 +359,7 @@ impl Component for Home {
                     if let Some(trace) = get_currently_selected_trace(self) {
                         if let Some(response_body) = trace.response_body.clone() {
                             let active = self.active_block == ActiveBlock::ResponseBody;
-                            self.json_viewer.render(
+                            self.response_json_viewer.render(
                                 frame,
                                 response_layout[1],
                                 response_body.clone(),
