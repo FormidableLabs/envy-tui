@@ -266,10 +266,10 @@ impl Component for Home {
                         .split(details_layout[2]);
 
                     render::render_request_block(self, frame, request_layout[0]);
+
                     if let Some(trace) = get_currently_selected_trace(self) {
                         if let Some(request_body) = trace.request_body.clone() {
                             let active = self.active_block == ActiveBlock::RequestBody;
-
                             self.request_json_viewer.render(
                                 frame,
                                 request_layout[1],
@@ -277,15 +277,8 @@ impl Component for Home {
                                 active,
                             )?;
                         }
-                    }
-                    render::render_traces(self, frame, split_layout[0]);
-
-                    render::render_request_summary(self, frame, details_layout[0]);
-                    render::render_response_block(self, frame, response_layout[0]);
-                    if let Some(trace) = get_currently_selected_trace(self) {
                         if let Some(response_body) = trace.response_body.clone() {
                             let active = self.active_block == ActiveBlock::ResponseBody;
-
                             self.response_json_viewer.render(
                                 frame,
                                 response_layout[1],
@@ -294,6 +287,11 @@ impl Component for Home {
                             )?;
                         }
                     }
+
+                    render::render_traces(self, frame, split_layout[0]);
+
+                    render::render_request_summary(self, frame, details_layout[0]);
+                    render::render_response_block(self, frame, response_layout[0]);
 
                     render::render_footer(self, frame, main_layout[1]);
 
@@ -351,12 +349,6 @@ impl Component for Home {
                                 active,
                             )?;
                         }
-                    }
-                    render::render_traces(self, frame, main_layout[0]);
-
-                    render::render_request_summary(self, frame, main_layout[1]);
-                    render::render_response_block(self, frame, response_layout[0]);
-                    if let Some(trace) = get_currently_selected_trace(self) {
                         if let Some(response_body) = trace.response_body.clone() {
                             let active = self.active_block == ActiveBlock::ResponseBody;
                             self.response_json_viewer.render(
@@ -367,6 +359,10 @@ impl Component for Home {
                             )?;
                         }
                     }
+                    render::render_traces(self, frame, main_layout[0]);
+
+                    render::render_request_summary(self, frame, main_layout[1]);
+                    render::render_response_block(self, frame, response_layout[0]);
 
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);

@@ -40,6 +40,7 @@ impl JSONViewer {
                 self.cursor_position = self.cursor_position.saturating_sub(1)
             }
             Action::NavigateDown(Some(_)) => {
+                // TODO: Clamp cursor_position to number of lines
                 self.cursor_position = self.cursor_position.saturating_add(1)
             }
             Action::NavigateLeft(Some(_)) => {
@@ -112,14 +113,14 @@ impl JSONViewer {
             .split(inner_area);
 
         let mut line_counters = vec![];
-        let max_count = lines.len() + 1;
-        for n in 1..max_count {
+        let line_count = lines.len() + 1;
+        for n in 1..line_count {
             line_counters.push(Line::from(vec![Span::styled(
                 format!(
                     "{:>width$}",
                     n,
                     // https://stackoverflow.com/questions/43704758/how-to-idiomatically-convert-between-u32-and-usize
-                    width = 2 + usize::try_from(max_count.checked_ilog(10).unwrap_or(2))?
+                    width = 2 + usize::try_from(line_count.checked_ilog(10).unwrap_or(2))?
                 ),
                 Style::new().yellow().on_light_red(),
             )]));
@@ -157,6 +158,8 @@ fn active_lines(
     let style = Style::default().fg(Color::Green);
 
     if let Some(elem) = lines.get_mut(cursor_position) {
+        elem.patch_style(style);
+    } else if let Some(elem) = lines.last_mut() {
         elem.patch_style(style);
     }
 
