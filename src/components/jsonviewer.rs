@@ -79,26 +79,14 @@ impl JSONViewer {
             false => raw_lines(data, self.expanded_idxs.clone(), self.expanded)?,
         };
 
-        let mut indent = 0;
+        let mut indent: usize = 0;
         for line in lines.iter_mut() {
-            if line
-                .spans
-                .get(0)
-                .unwrap_or(&Span::raw(""))
-                .content
-                .starts_with("{")
-            {
+            if line.spans.iter().any(|s| s.content == "{") {
                 line.spans.insert(0, Span::raw(" ".repeat(indent)));
-                indent += self.indent_spacing;
+                indent = indent.saturating_add(self.indent_spacing);
                 continue;
-            } else if line
-                .spans
-                .get(0)
-                .unwrap_or(&Span::raw(""))
-                .content
-                .ends_with("}")
-            {
-                indent -= self.indent_spacing;
+            } else if line.spans.iter().any(|s| s.content == "}") {
+                indent = indent.saturating_sub(self.indent_spacing);
             }
 
             line.spans.insert(0, Span::raw(" ".repeat(indent)));
@@ -166,9 +154,7 @@ fn active_lines(
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
     let mut lines = raw_lines(data, expanded_idxs, expanded)?;
 
-    let style = Style::default()
-        .fg(Color::Green)
-        .add_modifier(Modifier::ITALIC);
+    let style = Style::default().fg(Color::Green);
 
     if let Some(elem) = lines.get_mut(cursor_position) {
         elem.patch_style(style);
@@ -197,6 +183,20 @@ fn raw_lines(
         for (k, v) in o.into_iter() {
             if let serde_json::Value::Object(o) = v {
                 if expanded || expanded_idxs.contains(&idx) {
+                    let as_str = "{".to_string();
+                    items.push(Line::from(vec![
+                        r#"""#.into(),
+                        k.into(),
+                        r#"""#.into(),
+                        ": ".into(),
+                        as_str.into(),
+                        if idx < len.saturating_sub(1) {
+                            ",".into()
+                        } else {
+                            "".into()
+                        },
+                    ]));
+                    idx += 1;
                     for line in obj_lines(o)? {
                         items.push(line);
                         idx += 1;
@@ -209,7 +209,11 @@ fn raw_lines(
                         r#"""#.into(),
                         ": ".into(),
                         as_str.into(),
-                        if idx < len - 1 { ",".into() } else { "".into() },
+                        if idx < len.saturating_sub(1) {
+                            ",".into()
+                        } else {
+                            "".into()
+                        },
                     ]));
                     idx += 1;
                 }
@@ -246,8 +250,6 @@ fn obj_lines(
     let mut items = vec![];
     let mut idx = 0;
     let len = value.len();
-
-    items.push(Line::raw("{"));
 
     for (k, v) in value.into_iter() {
         let as_str: String = match v {
