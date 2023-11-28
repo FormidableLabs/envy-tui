@@ -269,14 +269,7 @@ fn raw_lines(
                     idx += 1;
                 }
             } else {
-                let as_str: String = match v {
-                    serde_json::Value::Bool(b) => b.to_string(),
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::String(s) => format!(r#""{}""#, s),
-                    serde_json::Value::Null => "null".to_string(),
-                    serde_json::Value::Array(a) => format!("{:?}", a),
-                    serde_json::Value::Object(_) => "{..}".to_string(),
-                };
+                let as_str: String = value_to_string(v);
                 items.push(Line::from(vec![
                     r#"""#.into(),
                     k.into(),
@@ -295,6 +288,17 @@ fn raw_lines(
     Ok(items)
 }
 
+fn value_to_string(v: serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => format!(r#""{}""#, s),
+        serde_json::Value::Null => "null".to_string(),
+        serde_json::Value::Array(a) => format!("{:?}", a),
+        serde_json::Value::Object(_) => "{..}".to_string(),
+    }
+}
+
 fn obj_lines(
     value: serde_json::Map<String, serde_json::Value>,
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
@@ -303,14 +307,7 @@ fn obj_lines(
     let len = value.len();
 
     for (k, v) in value.into_iter() {
-        let as_str: String = match v {
-            serde_json::Value::Bool(b) => b.to_string(),
-            serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::String(s) => format!(r#""{}""#, s),
-            serde_json::Value::Null => "null".to_string(),
-            serde_json::Value::Array(a) => format!("{:?}", a),
-            serde_json::Value::Object(_) => "{..}".to_string(),
-        };
+        let as_str: String = value_to_string(v);
         items.push(Line::from(vec![
             r#"""#.into(),
             k.into(),
