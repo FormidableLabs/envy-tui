@@ -3,11 +3,14 @@ use std::error::Error;
 
 use ratatui::prelude::*;
 use ratatui::widgets::block::Padding;
-use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
+use ratatui::widgets::{
+    Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+};
 use ratatui::Frame;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::app::Action;
+use crate::consts::RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE;
 
 #[derive(Default)]
 pub struct JSONViewer {
@@ -113,30 +116,75 @@ impl JSONViewer {
             .split(inner_area);
 
         let mut line_counters = vec![];
-        let line_count = lines.len() + 1;
-        for n in 1..line_count {
+        let number_of_lines = lines.len() + 1;
+        for n in 1..number_of_lines {
             line_counters.push(Line::from(vec![Span::styled(
                 format!(
                     "{:>width$}",
                     n,
                     // https://stackoverflow.com/questions/43704758/how-to-idiomatically-convert-between-u32-and-usize
-                    width = 2 + usize::try_from(line_count.checked_ilog(10).unwrap_or(2))?
+                    width = 2 + usize::try_from(number_of_lines.checked_ilog(10).unwrap_or(2))?
                 ),
                 Style::new().yellow().on_light_red(),
             )]));
         }
 
-        let json = Paragraph::new(lines).style(
-            Style::default()
-                .fg(if active {
-                    Color::White
-                } else {
-                    Color::DarkGray
-                })
-                .add_modifier(Modifier::BOLD),
-        );
+        // let has_overflown_x_axis = lines.iter().any(|l| l.width() > rect.width.into());
+        let available_height = inner_layout[1]
+            .height
+            .saturating_sub(RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE.try_into()?);
+        let overflown_number_count = available_height.saturating_sub(number_of_lines.try_into()?);
+        let has_overflown_y_axis = overflown_number_count > 0;
+
+        let json = Paragraph::new(lines)
+            .style(
+                Style::default()
+                    .fg(if active {
+                        Color::White
+                    } else {
+                        Color::DarkGray
+                    })
+                    .add_modifier(Modifier::BOLD),
+            )
+            .scroll((
+                self.cursor_position
+                    .saturating_sub(available_height.into())
+                    .try_into()?,
+                0,
+            ));
 
         f.render_widget(outer_block, outer_area);
+        if has_overflown_y_axis {
+            // TODO: should number of lines be one fewer?
+            let mut scrollbar_state =
+                ScrollbarState::new(number_of_lines).position(self.cursor_position);
+
+            f.render_stateful_widget(
+                Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight),
+                outer_area.inner(&Margin {
+                    vertical: 1,
+                    horizontal: 0,
+                }),
+                &mut scrollbar_state,
+            );
+        }
+
+        // if has_overflown_x_axis {
+        //     let mut scrollbar_state =
+        //         ScrollbarState::new(number_of_lines).position(self.cursor_position);
+        //     let horizontal_scroll = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
+        //         .begin_symbol(Some("<-"))
+        //         .end_symbol(Some("->"));
+
+        //     f.render_stateful_widget(
+        //         horizontal_scroll,
+        //         outer_area.inner(&Margin {
+        //             vertical: 0,
+        //             horizontal: 1,
+        //         }),
+        //         &mut scrollbar_state,
+        //     );
+        // }
 
         let line_count_paragraph = Paragraph::new(line_counters).alignment(Alignment::Right);
 
