@@ -219,70 +219,22 @@ fn raw_lines(
     expanded_idxs: Vec<usize>,
     expanded: bool,
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
-    let value = serde_json::from_str(data.as_str())?;
+    let v = serde_json::from_str(data.as_str())?;
     let mut items = vec![];
-    let mut idx = 0;
+    // let mut idx = 0;
 
-    // TODO: Display raw, non-object top-level json values which are also valid
-    if let serde_json::Value::Object(o) = value {
-        items.push(Line::raw("{"));
-        idx += 1;
-
-        let len = o.len();
-
-        // TODO: why does this require an into_iter() vs iter() call?
-        for (k, v) in o.into_iter() {
-            if let serde_json::Value::Object(o) = v {
-                if expanded || expanded_idxs.contains(&idx) {
-                    let as_str = "{".to_string();
-                    items.push(Line::from(vec![
-                        r#"""#.into(),
-                        k.into(),
-                        r#"""#.into(),
-                        ": ".into(),
-                        as_str.into(),
-                        if idx < len.saturating_sub(1) {
-                            ",".into()
-                        } else {
-                            "".into()
-                        },
-                    ]));
-                    idx += 1;
-                    for line in obj_lines(o)? {
-                        items.push(line);
-                        idx += 1;
-                    }
-                } else {
-                    let as_str = "{..}".to_string();
-                    items.push(Line::from(vec![
-                        r#"""#.into(),
-                        k.into(),
-                        r#"""#.into(),
-                        ": ".into(),
-                        as_str.into(),
-                        if idx < len.saturating_sub(1) {
-                            ",".into()
-                        } else {
-                            "".into()
-                        },
-                    ]));
-                    idx += 1;
-                }
-            } else {
-                let as_str: String = value_to_string(v);
-                items.push(Line::from(vec![
-                    r#"""#.into(),
-                    k.into(),
-                    r#"""#.into(),
-                    ": ".into(),
-                    as_str.into(),
-                    if idx < len { ",".into() } else { "".into() },
-                ]));
-                idx += 1;
-            }
+    if let serde_json::Value::Object(o) = v {
+        for line in obj_lines(o, &expanded_idxs, expanded, None)? {
+            items.push(line);
+            // idx += 1;
         }
-
-        items.push(Line::raw("}"));
+    } else {
+        let as_str: String = value_to_string(v);
+        items.push(Line::from(vec![
+            r#"""#.into(),
+            as_str.into(),
+            r#"""#.into(),
+        ]));
     }
 
     Ok(items)
@@ -300,23 +252,46 @@ fn value_to_string(v: serde_json::Value) -> String {
 }
 
 fn obj_lines(
-    value: serde_json::Map<String, serde_json::Value>,
+    v: serde_json::Map<String, serde_json::Value>,
+    expanded_idxs: &Vec<usize>,
+    expand_all_objects: bool,
+    key: Option<String>,
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
     let mut items = vec![];
     let mut idx = 0;
-    let len = value.len();
+    let len = v.len();
 
-    for (k, v) in value.into_iter() {
-        let as_str: String = value_to_string(v);
+    let as_str = "{".to_string();
+    if let Some(k) = key {
         items.push(Line::from(vec![
             r#"""#.into(),
             k.into(),
             r#"""#.into(),
             ": ".into(),
             as_str.into(),
-            if idx < len - 1 { ",".into() } else { "".into() },
-        ]));
-        idx += 1;
+        ]))
+    } else {
+        items.push(Line::from(vec![as_str.into()]));
+    }
+
+    for (k, v) in v.into_iter() {
+        if !v.is_object() || expand_all_objects || expanded_idxs.contains(&idx) {
+            let as_str: String = value_to_string(v.clone());
+            items.push(Line::from(vec![
+                r#"""#.into(),
+                k.into(),
+                r#"""#.into(),
+                ": ".into(),
+                as_str.into(),
+                if idx < len - 1 { ",".into() } else { "".into() },
+            ]));
+            idx += 1;
+        } else if let serde_json::Value::Object(o) = v.clone() {
+            for line in obj_lines(o, expanded_idxs, expand_all_objects, Some(k))? {
+                items.push(line);
+                idx += 1;
+            }
+        }
     }
 
     items.push(Line::raw("}"));
