@@ -150,8 +150,6 @@ impl JSONViewer {
             }
         }
 
-        let line_indicators_paragraph = Paragraph::new(line_indicators).alignment(Alignment::Right);
-
         let outer_block = Block::default()
             .borders(Borders::ALL)
             .padding(padding)
@@ -171,9 +169,8 @@ impl JSONViewer {
             .constraints([Constraint::Length(4), Constraint::Min(0)])
             .split(inner_area);
 
-        let number_of_lines = lines.len() + 1;
-
         // let has_overflown_x_axis = lines.iter().any(|l| l.width() > rect.width.into());
+        let number_of_lines = lines.len();
         let available_height = inner_layout[1]
             .height
             .saturating_sub(RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE.try_into()?);
@@ -193,13 +190,22 @@ impl JSONViewer {
             .scroll((
                 self.cursor_position
                     .saturating_sub(available_height.into())
+                    .saturating_sub(1)
+                    .try_into()?,
+                0,
+            ));
+        let line_indicators_paragraph = Paragraph::new(line_indicators)
+            .alignment(Alignment::Right)
+            .scroll((
+                self.cursor_position
+                    .saturating_sub(available_height.into())
+                    .saturating_sub(1)
                     .try_into()?,
                 0,
             ));
 
         f.render_widget(outer_block, outer_area);
         if has_overflown_y_axis {
-            // TODO: should number of lines be one fewer?
             let mut scrollbar_state =
                 ScrollbarState::new(number_of_lines).position(self.cursor_position);
 
