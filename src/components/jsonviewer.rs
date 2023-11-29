@@ -227,7 +227,7 @@ fn raw_lines(
     // let mut idx = 0;
 
     if let serde_json::Value::Object(o) = v {
-        for line in obj_lines(o, &expanded_idxs, expanded, None)? {
+        for line in obj_lines(o, &expanded_idxs, expanded, None, 0)? {
             items.push(line);
             // idx += 1;
         }
@@ -259,9 +259,10 @@ fn obj_lines(
     expanded_idxs: &Vec<usize>,
     expand_all_objects: bool,
     key: Option<String>,
+    initial_idx: usize,
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
     let mut items = vec![];
-    let mut idx = 0;
+    let mut idx = initial_idx;
     let len = v.len();
 
     let as_str = "{";
@@ -281,7 +282,7 @@ fn obj_lines(
     for (k, v) in v.into_iter() {
         if let serde_json::Value::Object(o) = v.clone() {
             if expand_all_objects || expanded_idxs.contains(&idx) {
-                for line in obj_lines(o, expanded_idxs, expand_all_objects, Some(k))? {
+                for line in obj_lines(o, expanded_idxs, expand_all_objects, Some(k), idx)? {
                     items.push(line);
                     idx += 1;
                 }
