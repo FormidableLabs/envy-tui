@@ -65,8 +65,8 @@ impl Home {
         let config = crate::config::Config::new()?;
         let home = Home {
             key_map: config.mapping.0,
-            request_json_viewer: jsonviewer::JSONViewer::new()?,
-            response_json_viewer: jsonviewer::JSONViewer::new()?,
+            request_json_viewer: jsonviewer::JSONViewer::new(4, "Request body")?,
+            response_json_viewer: jsonviewer::JSONViewer::new(4, "Response body")?,
             ..Self::default()
         };
 

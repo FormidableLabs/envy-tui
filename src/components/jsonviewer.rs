@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::error::Error;
 
 use ratatui::prelude::*;
@@ -19,12 +18,14 @@ pub struct JSONViewer {
     expanded_idxs: Vec<usize>,
     indent_spacing: usize,
     cursor_position: usize,
+    title: String,
 }
 
 impl JSONViewer {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn new(indent_spacing: usize, title: &str) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
-            indent_spacing: 4,
+            indent_spacing,
+            title: title.to_string(),
             ..Self::default()
         })
     }
@@ -66,7 +67,7 @@ impl JSONViewer {
         f: &mut Frame,
         rect: Rect,
         data: String,
-        active: bool,
+        active: bool, // TODO(vandosant): Could this be moved to self.active?
     ) -> Result<(), Box<dyn Error>> {
         // let copy = if request.duration.is_some() {
         //     "This trace does not have a response body."
@@ -159,7 +160,7 @@ impl JSONViewer {
             } else {
                 Color::DarkGray
             }))
-            .title("Request body")
+            .title(self.title.to_string())
             .border_type(BorderType::Plain);
 
         let outer_area = rect;
