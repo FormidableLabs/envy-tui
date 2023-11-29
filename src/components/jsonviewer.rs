@@ -76,14 +76,15 @@ impl JSONViewer {
 
         let padding = Padding::zero();
 
-        let mut lines = match active {
-            true => active_lines(
+        let mut lines = if active {
+            active_lines(
                 data,
                 self.expanded_idxs.clone(),
                 self.expanded,
                 self.cursor_position,
-            )?,
-            false => raw_lines(data, self.expanded_idxs.clone(), self.expanded)?,
+            )?
+        } else {
+            raw_lines(data, self.expanded_idxs.clone(), self.expanded)?
         };
 
         let mut indent: usize = 0;
@@ -98,6 +99,57 @@ impl JSONViewer {
 
             line.spans.insert(0, Span::raw(" ".repeat(indent)));
         }
+        let mut line_indicators = vec![];
+        for (idx, line) in lines.iter_mut().enumerate() {
+            if idx == 0 {
+                line_indicators.push(Line::from(vec![Span::styled(
+                    "  ",
+                    Style::default()
+                        .fg(if active {
+                            Color::White
+                        } else {
+                            Color::DarkGray
+                        })
+                        .add_modifier(Modifier::BOLD),
+                )]));
+            } else if line.spans.iter().any(|s| s.content == "{..}") {
+                line_indicators.push(Line::from(vec![Span::styled(
+                    "˃ ",
+                    Style::default()
+                        .fg(if active {
+                            Color::White
+                        } else {
+                            Color::DarkGray
+                        })
+                        .add_modifier(Modifier::BOLD),
+                )]));
+                continue;
+            } else if line.spans.iter().any(|s| s.content == "{") {
+                line_indicators.push(Line::from(vec![Span::styled(
+                    "˅ ",
+                    Style::default()
+                        .fg(if active {
+                            Color::White
+                        } else {
+                            Color::DarkGray
+                        })
+                        .add_modifier(Modifier::BOLD),
+                )]));
+            } else {
+                line_indicators.push(Line::from(vec![Span::styled(
+                    "  ",
+                    Style::default()
+                        .fg(if active {
+                            Color::White
+                        } else {
+                            Color::DarkGray
+                        })
+                        .add_modifier(Modifier::BOLD),
+                )]));
+            }
+        }
+
+        let line_indicators_paragraph = Paragraph::new(line_indicators).alignment(Alignment::Right);
 
         let outer_block = Block::default()
             .borders(Borders::ALL)
@@ -118,19 +170,7 @@ impl JSONViewer {
             .constraints([Constraint::Length(4), Constraint::Min(0)])
             .split(inner_area);
 
-        let mut line_counters = vec![];
         let number_of_lines = lines.len() + 1;
-        for n in 1..number_of_lines {
-            line_counters.push(Line::from(vec![Span::styled(
-                format!(
-                    "{:>width$}",
-                    n,
-                    // https://stackoverflow.com/questions/43704758/how-to-idiomatically-convert-between-u32-and-usize
-                    width = 2 + usize::try_from(number_of_lines.checked_ilog(10).unwrap_or(2))?
-                ),
-                Style::new().yellow().on_light_red(),
-            )]));
-        }
 
         // let has_overflown_x_axis = lines.iter().any(|l| l.width() > rect.width.into());
         let available_height = inner_layout[1]
@@ -189,9 +229,7 @@ impl JSONViewer {
         //     );
         // }
 
-        let line_count_paragraph = Paragraph::new(line_counters).alignment(Alignment::Right);
-
-        f.render_widget(line_count_paragraph, inner_layout[0]);
+        f.render_widget(line_indicators_paragraph, inner_layout[0]);
         f.render_widget(json, inner_layout[1]);
 
         Ok(())
@@ -224,12 +262,10 @@ fn raw_lines(
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
     let v = serde_json::from_str(data.as_str())?;
     let mut items = vec![];
-    // let mut idx = 0;
 
     if let serde_json::Value::Object(o) = v {
         for line in obj_lines(o, &expanded_idxs, expanded, None, 0)? {
             items.push(line);
-            // idx += 1;
         }
     } else {
         let as_str: String = value_to_string(v);
