@@ -51,7 +51,10 @@ impl JSONViewer {
             }
             Action::NavigateRight(Some(_)) => self.expanded_idxs.push(self.cursor_position),
             Action::ExpandAll => self.expanded = true,
-            Action::CollapseAll => self.expanded = false,
+            Action::CollapseAll => {
+                self.expanded = false;
+                self.expanded_idxs.clear();
+            }
             _ => {}
         }
 
@@ -261,7 +264,7 @@ fn obj_lines(
     let mut idx = 0;
     let len = v.len();
 
-    let as_str = "{".to_string();
+    let as_str = "{";
     if let Some(k) = key {
         items.push(Line::from(vec![
             r#"""#.into(),
@@ -273,9 +276,28 @@ fn obj_lines(
     } else {
         items.push(Line::from(vec![as_str.into()]));
     }
+    idx += 1;
 
     for (k, v) in v.into_iter() {
-        if !v.is_object() || expand_all_objects || expanded_idxs.contains(&idx) {
+        if let serde_json::Value::Object(o) = v.clone() {
+            if expand_all_objects || expanded_idxs.contains(&idx) {
+                for line in obj_lines(o, expanded_idxs, expand_all_objects, Some(k))? {
+                    items.push(line);
+                    idx += 1;
+                }
+            } else {
+                let as_str: String = value_to_string(v.clone());
+                items.push(Line::from(vec![
+                    r#"""#.into(),
+                    k.into(),
+                    r#"""#.into(),
+                    ": ".into(),
+                    as_str.into(),
+                    if idx < len - 1 { ",".into() } else { "".into() },
+                ]));
+                idx += 1;
+            }
+        } else {
             let as_str: String = value_to_string(v.clone());
             items.push(Line::from(vec![
                 r#"""#.into(),
@@ -286,15 +308,13 @@ fn obj_lines(
                 if idx < len - 1 { ",".into() } else { "".into() },
             ]));
             idx += 1;
-        } else if let serde_json::Value::Object(o) = v.clone() {
-            for line in obj_lines(o, expanded_idxs, expand_all_objects, Some(k))? {
-                items.push(line);
-                idx += 1;
-            }
         }
     }
 
-    items.push(Line::raw("}"));
+    items.push(Line::from(vec![
+        "}".into(),
+        if idx < len - 1 { ",".into() } else { "".into() },
+    ]));
 
     Ok(items)
 }
