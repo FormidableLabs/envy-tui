@@ -263,7 +263,7 @@ fn obj_lines(
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
     let mut items = vec![];
     let mut idx = initial_idx;
-    let len = v.len();
+    let mut len = v.len();
 
     let as_str = "{";
     if let Some(k) = key {
@@ -282,7 +282,12 @@ fn obj_lines(
     for (k, v) in v.into_iter() {
         if let serde_json::Value::Object(o) = v.clone() {
             if expand_all_objects || expanded_idxs.contains(&idx) {
-                for line in obj_lines(o, expanded_idxs, expand_all_objects, Some(k), idx)? {
+                let lines = obj_lines(o, expanded_idxs, expand_all_objects, Some(k), idx)?;
+                len += lines.len();
+                for mut line in lines {
+                    if idx < len && !line.spans.iter().any(|span| span.content.ends_with(&"{")) {
+                        line.spans.push(",".into())
+                    }
                     items.push(line);
                     idx += 1;
                 }
@@ -294,7 +299,7 @@ fn obj_lines(
                     r#"""#.into(),
                     ": ".into(),
                     as_str.into(),
-                    if idx < len - 1 { ",".into() } else { "".into() },
+                    if idx < len { ",".into() } else { "".into() },
                 ]));
                 idx += 1;
             }
@@ -306,7 +311,7 @@ fn obj_lines(
                 r#"""#.into(),
                 ": ".into(),
                 as_str.into(),
-                if idx < len - 1 { ",".into() } else { "".into() },
+                if idx < len { ",".into() } else { "".into() },
             ]));
             idx += 1;
         }
@@ -314,7 +319,7 @@ fn obj_lines(
 
     items.push(Line::from(vec![
         "}".into(),
-        if idx < len - 1 { ",".into() } else { "".into() },
+        if idx < len { ",".into() } else { "".into() },
     ]));
 
     Ok(items)
