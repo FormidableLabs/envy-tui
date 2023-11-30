@@ -275,7 +275,7 @@ fn raw_lines(
             items.push(line);
         }
     } else {
-        let as_str: String = value_to_string(v);
+        let as_str: String = value_to_string(v)?;
         items.push(Line::from(vec![
             r#"""#.into(),
             as_str.into(),
@@ -286,14 +286,14 @@ fn raw_lines(
     Ok(items)
 }
 
-fn value_to_string(v: serde_json::Value) -> String {
+fn value_to_string(v: serde_json::Value) -> Result<String, serde_json::Error> {
     match v {
-        serde_json::Value::Bool(b) => b.to_string(),
-        serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::String(s) => format!(r#""{}""#, s),
-        serde_json::Value::Null => "null".to_string(),
-        serde_json::Value::Array(a) => format!("{:?}", a),
-        serde_json::Value::Object(_) => "{..}".to_string(),
+        serde_json::Value::Bool(b) => Ok(b.to_string()),
+        serde_json::Value::Number(n) => Ok(n.to_string()),
+        serde_json::Value::String(s) => Ok(format!(r#""{}""#, s)),
+        serde_json::Value::Null => Ok(v.to_string()),
+        serde_json::Value::Array(_) => serde_json::to_string_pretty(&v),
+        serde_json::Value::Object(_) => Ok("{..}".to_string()),
     }
 }
 
@@ -335,7 +335,7 @@ fn obj_lines(
                     idx += 1;
                 }
             } else {
-                let as_str: String = value_to_string(v.clone());
+                let as_str: String = value_to_string(v.clone())?;
                 items.push(Line::from(vec![
                     r#"""#.into(),
                     k.into(),
@@ -347,7 +347,7 @@ fn obj_lines(
                 idx += 1;
             }
         } else {
-            let as_str: String = value_to_string(v.clone());
+            let as_str: String = value_to_string(v.clone())?;
             items.push(Line::from(vec![
                 r#"""#.into(),
                 k.into(),
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn exploration() {
         let data = r#"{ "foo": "bar" }"#;
-        let result = jsonviewer::JSONViewer::new();
+        let result = jsonviewer::JSONViewer::new(4, "Test title");
         assert!(result.is_ok());
     }
 }
