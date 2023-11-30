@@ -288,12 +288,9 @@ fn raw_lines(
 
 fn value_to_string(v: serde_json::Value) -> Result<String, serde_json::Error> {
     match v {
-        serde_json::Value::Bool(b) => Ok(b.to_string()),
-        serde_json::Value::Number(n) => Ok(n.to_string()),
-        serde_json::Value::String(s) => Ok(format!(r#""{}""#, s)),
-        serde_json::Value::Null => Ok(v.to_string()),
         serde_json::Value::Array(_) => serde_json::to_string_pretty(&v),
         serde_json::Value::Object(_) => Ok("{..}".to_string()),
+        _ => Ok(v.to_string()),
     }
 }
 
