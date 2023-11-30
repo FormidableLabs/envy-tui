@@ -1,6 +1,8 @@
 use std::error::Error;
 
-use ratatui::prelude::*;
+use ratatui::prelude::{
+    Alignment, Color, Constraint, Direction, Layout, Line, Margin, Modifier, Rect, Span, Style,
+};
 use ratatui::widgets::block::Padding;
 use ratatui::widgets::{
     Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
@@ -90,15 +92,21 @@ impl JSONViewer {
 
         let mut indent: usize = 0;
         for line in lines.iter_mut() {
-            if line.spans.iter().any(|s| s.content == "{") {
+            if line
+                .spans
+                .iter()
+                .any(|s| s.content == "{" || s.content.ends_with('{'))
+            {
                 line.spans.insert(0, Span::raw(" ".repeat(indent)));
                 indent = indent.saturating_add(self.indent_spacing);
-                continue;
-            } else if line.spans.iter().any(|s| s.content == "}") {
+            } else if line.spans.iter().any(|s| {
+                !s.content.contains("{..}") && (s.content == "}" || s.content.ends_with("},"))
+            }) {
                 indent = indent.saturating_sub(self.indent_spacing);
+                line.spans.insert(0, Span::raw(" ".repeat(indent)));
+            } else {
+                line.spans.insert(0, Span::raw(" ".repeat(indent)));
             }
-
-            line.spans.insert(0, Span::raw(" ".repeat(indent)));
         }
         let mut line_indicators = vec![];
         for (idx, line) in lines.iter_mut().enumerate() {
@@ -113,7 +121,7 @@ impl JSONViewer {
                         })
                         .add_modifier(Modifier::BOLD),
                 )]));
-            } else if line.spans.iter().any(|s| s.content == "{..}") {
+            } else if line.spans.iter().any(|s| s.content.contains("{..}")) {
                 line_indicators.push(Line::from(vec![Span::styled(
                     "˃ ",
                     Style::default()
@@ -125,7 +133,7 @@ impl JSONViewer {
                         .add_modifier(Modifier::BOLD),
                 )]));
                 continue;
-            } else if line.spans.iter().any(|s| s.content == "{") {
+            } else if line.spans.iter().any(|s| s.content.ends_with("{")) {
                 line_indicators.push(Line::from(vec![Span::styled(
                     "˅ ",
                     Style::default()
@@ -305,17 +313,10 @@ fn obj_lines(
     let mut idx = initial_idx;
     let mut len = v.len();
 
-    let as_str = "{";
     if let Some(k) = key {
-        items.push(Line::from(vec![
-            r#"""#.into(),
-            k.into(),
-            r#"""#.into(),
-            ": ".into(),
-            as_str.into(),
-        ]))
+        items.push(Line::raw(format!(r#""{key}": {{"#, key = k,)))
     } else {
-        items.push(Line::from(vec![as_str.into()]));
+        items.push(Line::raw("{"));
     }
     idx += 1;
 
@@ -325,7 +326,14 @@ fn obj_lines(
                 let lines = obj_lines(o, expanded_idxs, expand_all_objects, Some(k), idx)?;
                 len += lines.len();
                 for mut line in lines {
-                    if idx < len && !line.spans.iter().any(|span| span.content.ends_with(&"{")) {
+                    if idx < len
+                        && !line
+                            .spans
+                            .last()
+                            .unwrap_or(&"".into())
+                            .content
+                            .ends_with(&"{")
+                    {
                         line.spans.push(",".into())
                     }
                     items.push(line);
@@ -333,34 +341,45 @@ fn obj_lines(
                 }
             } else {
                 let as_str: String = value_to_string(v.clone())?;
-                items.push(Line::from(vec![
-                    r#"""#.into(),
-                    k.into(),
-                    r#"""#.into(),
-                    ": ".into(),
-                    as_str.into(),
-                    if idx < len { ",".into() } else { "".into() },
-                ]));
+                if idx < len {
+                    items.push(Line::raw(format!(
+                        r#""{key}": {value},"#,
+                        key = k,
+                        value = as_str,
+                    )));
+                } else {
+                    items.push(Line::raw(format!(
+                        r#""{key}": {value}"#,
+                        key = k,
+                        value = as_str,
+                    )));
+                }
                 idx += 1;
             }
         } else {
             let as_str: String = value_to_string(v.clone())?;
-            items.push(Line::from(vec![
-                r#"""#.into(),
-                k.into(),
-                r#"""#.into(),
-                ": ".into(),
-                as_str.into(),
-                if idx < len { ",".into() } else { "".into() },
-            ]));
+            if idx < len {
+                items.push(Line::raw(format!(
+                    r#""{key}": {value},"#,
+                    key = k,
+                    value = as_str,
+                )));
+            } else {
+                items.push(Line::raw(format!(
+                    r#""{key}": {value}"#,
+                    key = k,
+                    value = as_str,
+                )));
+            }
             idx += 1;
         }
     }
 
-    items.push(Line::from(vec![
-        "}".into(),
-        if idx < len { ",".into() } else { "".into() },
-    ]));
+    if idx < len {
+        items.push(Line::raw("},"));
+    } else {
+        items.push(Line::raw("}"));
+    }
 
     Ok(items)
 }
@@ -368,11 +387,73 @@ fn obj_lines(
 #[cfg(test)]
 mod tests {
     use crate::components::jsonviewer;
+    use ratatui::prelude::Line;
+    use std::error::Error;
 
     #[test]
-    fn exploration() {
-        let data = r#"{ "foo": "bar" }"#;
-        let result = jsonviewer::JSONViewer::new(4, "Test title");
-        assert!(result.is_ok());
+    fn test_lines_expanded() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "code": 200,
+            "success": true,
+            "payload": {
+                "features": [
+                    "json",
+                    "viewer"
+                ],
+                "homepage": null
+            }
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], true, None, 0)?;
+
+        assert_eq!(result.len(), 8);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lines_collapsed() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "code": 200,
+            "success": true,
+            "payload": {
+                "features": [
+                    "json",
+                    "viewer"
+                ],
+                "homepage": null
+            }
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
+
+        assert_eq!(result.len(), 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lines_joined_values() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "code": 200,
+            "success": true
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
+
+        assert_eq!(
+            result,
+            vec![
+                Line::raw("{"),
+                Line::raw("code: 200,"),
+                Line::raw("success: true"),
+                Line::raw("}"),
+            ]
+        );
+
+        Ok(())
     }
 }
