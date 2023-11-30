@@ -387,7 +387,8 @@ fn obj_lines(
 #[cfg(test)]
 mod tests {
     use crate::components::jsonviewer;
-    use ratatui::prelude::Line;
+    use pretty_assertions::assert_eq;
+    use ratatui::prelude::{Line, Span};
     use std::error::Error;
 
     #[test]
@@ -413,29 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_collapsed() -> Result<(), Box<dyn Error>> {
-        let input = serde_json::json!({
-            "code": 200,
-            "success": true,
-            "payload": {
-                "features": [
-                    "json",
-                    "viewer"
-                ],
-                "homepage": null
-            }
-        });
-
-        let result =
-            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
-
-        assert_eq!(result.len(), 5);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_lines_joined_values() -> Result<(), Box<dyn Error>> {
+    fn test_lines_joined_lines() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "code": 200,
             "success": true
@@ -448,9 +427,59 @@ mod tests {
             result,
             vec![
                 Line::raw("{"),
-                Line::raw("code: 200,"),
-                Line::raw("success: true"),
+                Line::raw("\"code\": 200,"),
+                Line::raw("\"success\": true"),
                 Line::raw("}"),
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lines_collapsed_objects() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "one": {
+                "a": 1
+            }
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
+
+        assert_eq!(
+            result,
+            vec![Line::raw("{"), Line::raw("\"one\": {..}"), Line::raw("}"),]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lines_expanded_objects() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "one": {
+                "a": 1
+            },
+            "two": {
+                "b": 2
+            }
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], true, None, 0)?;
+
+        assert_eq!(
+            result,
+            vec![
+                Line::raw("{"),
+                Line::raw("\"one\": {"),
+                Line::from(vec![Span::raw("\"a\": 1"), Span::raw(",")]),
+                Line::from(vec![Span::raw("}"), Span::raw(",")]),
+                Line::raw("\"two\": {"),
+                Line::from(vec![Span::raw("\"b\": 2"), Span::raw(",")]),
+                Line::from(vec![Span::raw("}"), Span::raw(",")]),
+                Line::raw("},"),
             ]
         );
 
