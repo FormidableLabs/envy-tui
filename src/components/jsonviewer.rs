@@ -325,18 +325,21 @@ fn obj_lines(
             if expand_all_objects || expanded_idxs.contains(&idx) {
                 let lines = obj_lines(o, expanded_idxs, expand_all_objects, Some(k), idx)?;
                 len += lines.len();
+                let inner_len = lines.len().saturating_sub(2);
+                let mut inner_idx = 0;
                 for mut line in lines {
-                    if idx < len
-                        && !line
-                            .spans
-                            .last()
-                            .unwrap_or(&"".into())
-                            .content
-                            .ends_with(&"{")
-                    {
-                        line.spans.push(",".into())
+                    if let Some(last_span) = line.spans.last() {
+                        if last_span.content.ends_with(&"}")
+                            || (inner_idx < inner_len && !last_span.content.ends_with(&"{"))
+                        {
+                            if let Some(last_span) = line.spans.last_mut() {
+                                *last_span =
+                                    Span::raw(String::from(last_span.content.clone() + ","));
+                            }
+                        }
                     }
                     items.push(line);
+                    inner_idx += 1;
                     idx += 1;
                 }
             } else {
@@ -375,11 +378,7 @@ fn obj_lines(
         }
     }
 
-    if idx < len {
-        items.push(Line::raw("},"));
-    } else {
-        items.push(Line::raw("}"));
-    }
+    items.push(Line::raw("}"));
 
     Ok(items)
 }
@@ -408,7 +407,7 @@ mod tests {
         let result =
             jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], true, None, 0)?;
 
-        assert_eq!(result.len(), 8);
+        assert_eq!(8, result.len());
 
         Ok(())
     }
@@ -424,13 +423,13 @@ mod tests {
             jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
 
         assert_eq!(
-            result,
             vec![
                 Line::raw("{"),
                 Line::raw("\"code\": 200,"),
                 Line::raw("\"success\": true"),
                 Line::raw("}"),
-            ]
+            ],
+            result,
         );
 
         Ok(())
@@ -448,8 +447,8 @@ mod tests {
             jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
 
         assert_eq!(
+            vec![Line::raw("{"), Line::raw("\"one\": {..}"), Line::raw("}"),],
             result,
-            vec![Line::raw("{"), Line::raw("\"one\": {..}"), Line::raw("}"),]
         );
 
         Ok(())
@@ -459,10 +458,12 @@ mod tests {
     fn test_lines_expanded_objects() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "one": {
-                "a": 1
+                "a": 1,
+                "b": 2
             },
             "two": {
-                "b": 2
+                "c": 3,
+                "d": 4
             }
         });
 
@@ -470,17 +471,19 @@ mod tests {
             jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], true, None, 0)?;
 
         assert_eq!(
-            result,
             vec![
                 Line::raw("{"),
                 Line::raw("\"one\": {"),
-                Line::from(vec![Span::raw("\"a\": 1"), Span::raw(",")]),
-                Line::from(vec![Span::raw("}"), Span::raw(",")]),
+                Line::from(vec![Span::raw("\"a\": 1,")]),
+                Line::from(vec![Span::raw("\"b\": 2")]),
+                Line::from(vec![Span::raw("},")]),
                 Line::raw("\"two\": {"),
-                Line::from(vec![Span::raw("\"b\": 2"), Span::raw(",")]),
-                Line::from(vec![Span::raw("}"), Span::raw(",")]),
-                Line::raw("},"),
-            ]
+                Line::from(vec![Span::raw("\"c\": 3,")]),
+                Line::from(vec![Span::raw("\"d\": 4")]),
+                Line::from(vec![Span::raw("},")]),
+                Line::raw("}"),
+            ],
+            result,
         );
 
         Ok(())
