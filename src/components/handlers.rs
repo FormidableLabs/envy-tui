@@ -1090,8 +1090,28 @@ pub fn handle_delete_item(app: &mut Home) {
     let _ = &app.items.remove(current_trace);
 }
 
-pub fn handle_general_status(app: &mut Home, s: String) {
-    app.status_message = Some(s);
+pub fn handle_general_status(
+    app: &mut Home,
+    message: String,
+    sender: Option<UnboundedSender<Action>>,
+) {
+    app.status_message = Some(message);
+
+    app.abort_handlers.iter().for_each(|handler| {
+        handler.abort();
+    });
+
+    app.abort_handlers.clear();
+
+    if let Some(sender) = sender {
+        let thread_handler = tokio::spawn(async move {
+            sleep(Duration::from_millis(5000)).await;
+
+            sender.send(Action::ClearStatusMessage)
+        });
+
+        app.abort_handlers.push(thread_handler.abort_handle());
+    }
 }
 
 pub fn handle_select(app: &mut Home) {

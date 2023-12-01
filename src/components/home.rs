@@ -12,30 +12,21 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
 use crate::{
-    app::{Action, ActiveBlock, Mode, RequestDetailsPane, ResponseDetailsPane, UIState},
+    app::{Action, ActiveBlock, Mode, RequestDetailsPane, ResponseDetailsPane, UIState, WssClient},
     components::component::Component,
     components::handlers,
+    plugins::graphql::{GraphQLPlugin, Plugin},
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::{Ordering, TraceSort},
+    utils::TraceSort,
 };
-
-#[derive(Default, PartialEq, Eq, Debug, Clone)]
-pub enum WebSockerInternalState {
-    Connected(usize),
-    Open,
-    #[default]
-    Closed,
-}
 
 #[derive(Clone, PartialEq, Debug, Eq, Default)]
 pub enum FilterSource {
     #[default]
     All,
-    Applied(HashSet<String>), // Source(String),
-                              // Method(http::method::Method),
-                              // Status(String),
+    Applied(HashSet<String>),
 }
 
 #[derive(Default)]
@@ -78,7 +69,6 @@ pub struct Home {
     pub ws_status: String,
     pub wss_connected: bool,
     pub wss_connection_count: usize,
-    pub wss_state: WebSockerInternalState,
     pub filter_index: usize,
     pub sort_index: usize,
     metadata: Option<handlers::HandlerMetadata>,
@@ -86,6 +76,8 @@ pub struct Home {
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub order: TraceSort,
+    pub plugins: Vec<Box<dyn Plugin>>,
+    pub wss: HashSet<WssClient>,
 }
 
 impl Home {
@@ -100,6 +92,10 @@ impl Home {
         let methods = vec!["POST", "GET", "DELETE", "PUT", "PATCH", "OPTION"];
 
         let statuses = vec!["1xx", "2xx", "3xx", "4xx", "5xx"];
+
+        let gql_plugin = GraphQLPlugin::new();
+
+        home.plugins.push(Box::new(gql_plugin));
 
         statuses.iter().for_each(|status| {
             home.status_filters.insert(
@@ -219,7 +215,9 @@ impl Component for Home {
             Action::Help => handlers::handle_help(self),
             Action::ToggleDebug => handlers::handle_debug(self),
             Action::Select => handlers::handle_select(self),
-            Action::HandleFilter(l) => handlers::handle_general_status(self, l.to_string()),
+            Action::HandleFilter(l) => {
+                handlers::handle_general_status(self, l.to_string(), self.action_tx.clone())
+            }
             Action::OpenFilter => {
                 let current_block = self.active_block;
 
@@ -249,8 +247,9 @@ impl Component for Home {
             Action::FocusOnTraces => handlers::handle_esc(self),
             Action::StopWebSocketServer => self.wss_connected = false,
             Action::StartWebSocketServer => self.wss_connected = true,
-            Action::SetGeneralStatus(s) => handlers::handle_general_status(self, s),
-            Action::SetWebsocketStatus(s) => self.wss_state = s,
+            Action::SetGeneralStatus(message) => {
+                handlers::handle_general_status(self, message, self.action_tx.clone())
+            }
             Action::NavigateUp(Some(key)) => handlers::handle_up(self, key, metadata),
             Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
             Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),
@@ -267,6 +266,16 @@ impl Component for Home {
                 handlers::handle_adjust_scroll_bar(self, metadata);
             }
             Action::MarkTraceAsTimedOut(id) => self.mark_trace_as_timed_out(id),
+            Action::AddClient(client) => {
+                self.wss.replace(client);
+
+                ()
+            }
+            Action::RemoveClient(client) => {
+                self.wss.remove(&client);
+
+                ()
+            }
             _ => {}
         }
 
@@ -287,7 +296,8 @@ impl Component for Home {
             ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .margin(3)
+                    .vertical_margin(10)
+                    .horizontal_margin(20)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
@@ -296,7 +306,8 @@ impl Component for Home {
             ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .margin(3)
+                    .vertical_margin(10)
+                    .horizontal_margin(20)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
@@ -305,7 +316,8 @@ impl Component for Home {
             ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .margin(3)
+                    .vertical_margin(10)
+                    .horizontal_margin(20)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
@@ -314,7 +326,8 @@ impl Component for Home {
             ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
-                    .margin(3)
+                    .vertical_margin(10)
+                    .horizontal_margin(20)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 

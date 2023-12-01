@@ -96,6 +96,9 @@ pub const TEST_JSON_6: &str = r#"{
 "id":"6","type":"HttpRequest","timestamp":1694948931869, 
 
 "serviceName": "mockData",
+"graphql": {
+    "operationName": "RegisterPerson", "operationType": "query", "query": "mutation RegisterPerson($id: String) {  registerPerson(id: $id) { success }}", "variables": {}
+},
 
 "http": {
       "state": "received",

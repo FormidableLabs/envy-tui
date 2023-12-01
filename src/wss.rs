@@ -7,8 +7,6 @@ use std::time::Duration;
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, StreamExt, TryStreamExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
-use tokio::task::AbortHandle;
 use tokio::time::sleep;
 use tungstenite::connect;
 use tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
@@ -25,6 +23,7 @@ pub struct ConnectionMeta {
     tx: Tx,
     path: String,
 }
+
 pub type PeerMap = Arc<std::sync::Mutex<HashMap<SocketAddr, ConnectionMeta>>>;
 
 #[derive(Default)]
@@ -44,17 +43,10 @@ impl Callback for &mut RequestPath {
     }
 }
 
-#[derive(Default, Debug)]
-pub struct WebSocketState {
-    main_abort_handle: Option<AbortHandle>,
-    handles: Vec<AbortHandle>,
-}
-
 #[derive(Default)]
 pub struct WebSocket {
     address: String,
     peer_map: PeerMap,
-    web_socket_state: Arc<Mutex<WebSocketState>>,
     open: bool,
 }
 
@@ -68,10 +60,6 @@ impl WebSocket {
             open: false,
             address,
             peer_map,
-            web_socket_state: Arc::new(Mutex::new(WebSocketState {
-                handles: vec![],
-                main_abort_handle: None,
-            })),
         }
     }
 
@@ -89,62 +77,19 @@ impl WebSocket {
 
             let cloned_peer_map = peer_map.clone();
 
-            let websocket_state = &self.web_socket_state;
-
-            let cloned_websocket_state = websocket_state.clone();
-
-            let main_join_handle = tokio::spawn(async move {
+            tokio::spawn(async move {
                 while let Ok((stream, addr)) = listener.accept().await {
-                    let join_handle = tokio::spawn(handle_connection(
+                    tokio::spawn(handle_connection(
                         cloned_peer_map.clone(),
                         stream,
                         addr,
                         tx.clone(),
                     ));
-
-                    cloned_websocket_state
-                        .clone()
-                        .lock()
-                        .await
-                        .handles
-                        .push(join_handle.abort_handle());
                 }
             });
 
-            let state = &mut self.web_socket_state.lock().await;
-
-            state.main_abort_handle = Some(main_join_handle.abort_handle());
-
             self.open = true;
         }
-    }
-
-    pub fn get_connections(&self) -> usize {
-        self.peer_map.lock().unwrap().iter().len()
-    }
-
-    pub fn is_open(&self) -> bool {
-        self.open
-    }
-
-    pub async fn stop(&mut self) -> Result<(), String> {
-        if self.open {
-            self.open = false;
-
-            let websocket_state = &mut self.web_socket_state.lock().await;
-
-            websocket_state.main_abort_handle.as_ref().unwrap().abort();
-
-            websocket_state.handles.iter().for_each(|x| {
-                x.abort();
-            });
-
-            websocket_state.handles.clear();
-
-            websocket_state.main_abort_handle = None;
-        }
-
-        Ok(())
     }
 }
 
@@ -152,7 +97,8 @@ pub async fn client(
     tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>,
 ) -> Result<(), Box<dyn Error>> {
     let (mut socket, _response) =
-        connect(Url::parse("ws://127.0.0.1:9999/inner_client").unwrap()).expect("Can't connect");
+        connect(Url::parse("ws://127.0.0.1:9999/collector_client").unwrap())
+            .expect("Can't connect");
 
     loop {
         let msg = socket.read();
@@ -195,21 +141,13 @@ pub async fn client(
                             }
                         };
                     }
-                    tungstenite::Message::Close(_) => {
-                        break;
-                    }
-                    _ => {
-                        panic!()
-                    }
+                    tungstenite::Message::Close(_) => {}
+                    _ => {}
                 };
             }
-            Err(_e) => {
-                break;
-            }
+            Err(_e) => {}
         }
     }
-
-    Ok(())
 }
 
 pub async fn handle_connection(
@@ -238,24 +176,10 @@ pub async fn handle_connection(
         },
     );
 
-    let number_of_connections = peer_map.lock().unwrap().len();
-
-    match number_of_connections - 1 {
-        0 => {
-            let _ = action_sender.send(Action::SetWebsocketStatus(
-                crate::components::home::WebSockerInternalState::Open,
-            ));
-
-            ()
-        }
-        v => {
-            let _ = action_sender.send(Action::SetWebsocketStatus(
-                crate::components::home::WebSockerInternalState::Connected(v),
-            ));
-
-            ()
-        }
-    }
+    let _ = action_sender.send(Action::AddClient(crate::app::WssClient {
+        path: path.clone(),
+        address: addr.to_string(),
+    }));
 
     let (outgoing, incoming) = ws_stream.split();
 
@@ -285,24 +209,17 @@ pub async fn handle_connection(
         path
     )));
 
+    if path == "/collector_client" {
+        let s = action_sender.clone();
+        tokio::spawn(async {
+            let _ = client(Some(s)).await;
+        });
+    }
+
     peer_map.lock().unwrap().remove(&addr);
 
-    let number_of_connections = peer_map.lock().unwrap().len();
-
-    if path != "/inner_client" {
-        match number_of_connections - 1 {
-            0 => {
-                let _ = action_sender.send(Action::SetWebsocketStatus(
-                    crate::components::home::WebSockerInternalState::Open,
-                ));
-                ()
-            }
-            v => {
-                let _ = action_sender.send(Action::SetWebsocketStatus(
-                    crate::components::home::WebSockerInternalState::Connected(v),
-                ));
-                ()
-            }
-        }
-    }
+    let _ = action_sender.send(Action::RemoveClient(crate::app::WssClient {
+        path: path.clone(),
+        address: addr.to_string(),
+    }));
 }

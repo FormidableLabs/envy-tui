@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 
 use regex::Regex;
 
-use crate::services::websocket::{HTTPTrace, State, Trace};
+use crate::services::websocket::{GraphQLOperationType, GraphQLTrace, HTTPTrace, State, Trace};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct HTTPTimings {
@@ -56,6 +56,65 @@ pub enum Payload {
     Connection(ConnectionStatus),
 }
 
+fn gql_parse(graphql: &Option<&Value>) -> Option<GraphQLTrace> {
+    if graphql.is_none() {
+        return None;
+    }
+
+    let gql = graphql.unwrap();
+
+    let query = gql.get("query");
+
+    let operation_name = gql.get("operationName");
+
+    let operation_type = gql.get("operationType");
+
+    let variables = gql.get("variables");
+
+    if query.is_none() || variables.is_none() || operation_type.is_none() {
+        return None;
+    }
+
+    let operation_type = match operation_type.unwrap() {
+        Value::String(s) => match s.to_lowercase().as_str() {
+            "query" => Ok(GraphQLOperationType::Query),
+            "mutation" => Ok(GraphQLOperationType::Mutation),
+            _ => Err(""),
+        },
+        _ => Err(""),
+    }
+    .ok();
+
+    let operation_name = match operation_name.unwrap() {
+        Value::String(s) => Ok(s),
+        _ => Err(""),
+    }
+    .ok();
+
+    let variables = match variables.unwrap() {
+        Value::Object(s) => Ok(s),
+        _ => Err(""),
+    }
+    .ok();
+
+    let query = match query.unwrap() {
+        Value::String(s) => Ok(s),
+        _ => Err(""),
+    }
+    .ok();
+
+    if operation_type.is_none() || query.is_none() || variables.is_none() {
+        return None;
+    }
+
+    Some(GraphQLTrace {
+        variables: variables.unwrap().clone(),
+        query: query.unwrap().to_string(),
+        operation_type: operation_type.unwrap(),
+        operation_name: operation_name.cloned(),
+    })
+}
+
 pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::error::Error>> {
     let potential_json_body: Value = serde_json::from_str(stringified_json)?;
 
@@ -78,6 +137,8 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
             let data = &potential_json_body["data"];
 
             let http = &data["http"];
+
+            let graphql = &data.get("graphql");
 
             let id = &data["id"];
 
@@ -114,6 +175,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
                 timestamp,
                 service_name: service_name.cloned(),
                 http: None,
+                graphql: None,
             };
 
             match http {
@@ -215,10 +277,14 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
                     }
                     .ok();
 
-                    let timinggs = match http.get("timings") {
-                        Some(d) => serde_json::from_value::<HTTPTimings>(d.clone()).ok(),
+                    let timings = match http.get("timings") {
+                        Some(parsed_value) => {
+                            serde_json::from_value::<HTTPTimings>(parsed_value.clone()).ok()
+                        }
                         _ => None,
                     };
+
+                    request.graphql = gql_parse(graphql);
 
                     let mut http_trace = HTTPTrace {
                         port,
