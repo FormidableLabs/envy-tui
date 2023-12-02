@@ -20,6 +20,7 @@ pub struct JSONViewer {
     expanded_idxs: Vec<usize>,
     indent_spacing: usize,
     cursor_position: usize,
+    horizontal_position: usize,
     title: String,
 }
 
@@ -76,8 +77,27 @@ impl JSONViewer {
         // } else {
         //     "Loading..."
         // };
-
         let padding = Padding::zero();
+
+        let outer_area = rect;
+
+        let outer_block = Block::default()
+            .borders(Borders::ALL)
+            .padding(padding)
+            .style(Style::default().fg(if active {
+                Color::White
+            } else {
+                Color::DarkGray
+            }))
+            .title(self.title.to_string())
+            .border_type(BorderType::Plain);
+
+        let inner_area = outer_block.inner(outer_area);
+
+        let inner_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(4), Constraint::Min(0)])
+            .split(inner_area);
 
         let mut lines = if active {
             active_lines(
@@ -89,6 +109,9 @@ impl JSONViewer {
         } else {
             raw_lines(data, self.expanded_idxs.clone(), self.expanded)?
         };
+
+        let longest_line_length = lines.iter().map(|line| line.width()).max().unwrap_or(0);
+        let has_overflown_x_axis = longest_line_length > inner_layout[1].width.into();
 
         let mut indent: usize = 0;
         for line in lines.iter_mut() {
@@ -158,26 +181,6 @@ impl JSONViewer {
             }
         }
 
-        let outer_block = Block::default()
-            .borders(Borders::ALL)
-            .padding(padding)
-            .style(Style::default().fg(if active {
-                Color::White
-            } else {
-                Color::DarkGray
-            }))
-            .title(self.title.to_string())
-            .border_type(BorderType::Plain);
-
-        let outer_area = rect;
-        let inner_area = outer_block.inner(outer_area);
-
-        let inner_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(4), Constraint::Min(0)])
-            .split(inner_area);
-
-        // let has_overflown_x_axis = lines.iter().any(|l| l.width() > rect.width.into());
         let number_of_lines = lines.len();
         let available_height = inner_layout[1]
             .height
@@ -202,6 +205,7 @@ impl JSONViewer {
                     .try_into()?,
                 0,
             ));
+
         let line_indicators_paragraph = Paragraph::new(line_indicators)
             .alignment(Alignment::Right)
             .scroll((
@@ -213,39 +217,30 @@ impl JSONViewer {
             ));
 
         f.render_widget(outer_block, outer_area);
-        if has_overflown_y_axis {
-            let mut scrollbar_state =
-                ScrollbarState::new(number_of_lines).position(self.cursor_position);
-
-            f.render_stateful_widget(
-                Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight),
-                outer_area.inner(&Margin {
-                    vertical: 1,
-                    horizontal: 0,
-                }),
-                &mut scrollbar_state,
-            );
-        }
-
-        // if has_overflown_x_axis {
-        //     let mut scrollbar_state =
-        //         ScrollbarState::new(number_of_lines).position(self.cursor_position);
-        //     let horizontal_scroll = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-        //         .begin_symbol(Some("<-"))
-        //         .end_symbol(Some("->"));
-
-        //     f.render_stateful_widget(
-        //         horizontal_scroll,
-        //         outer_area.inner(&Margin {
-        //             vertical: 0,
-        //             horizontal: 1,
-        //         }),
-        //         &mut scrollbar_state,
-        //     );
-        // }
-
-        f.render_widget(line_indicators_paragraph, inner_layout[0]);
         f.render_widget(json, inner_layout[1]);
+        f.render_widget(line_indicators_paragraph, inner_layout[0]);
+
+        let mut scrollbar_y_state =
+            ScrollbarState::new(number_of_lines).position(self.cursor_position);
+        f.render_stateful_widget(
+            Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight),
+            outer_area.inner(&Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut scrollbar_y_state,
+        );
+
+        let mut scrollbar_x_state =
+            ScrollbarState::new(longest_line_length).position(self.horizontal_position);
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::HorizontalBottom),
+            outer_area.inner(&Margin {
+                vertical: 0,
+                horizontal: 1,
+            }),
+            &mut scrollbar_x_state,
+        );
 
         Ok(())
     }
