@@ -20,7 +20,6 @@ pub struct JSONViewer {
     expanded_idxs: Vec<usize>,
     indent_spacing: usize,
     cursor_position: usize,
-    horizontal_position: usize,
     title: String,
 }
 
@@ -216,7 +215,7 @@ impl JSONViewer {
         f.render_widget(json, inner_layout[1]);
         f.render_widget(line_indicators_paragraph, inner_layout[0]);
 
-        let mut scrollbar_y_state =
+        let mut scrollbar_state =
             ScrollbarState::new(number_of_lines).position(self.cursor_position);
         f.render_stateful_widget(
             Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight),
@@ -224,7 +223,7 @@ impl JSONViewer {
                 vertical: 1,
                 horizontal: 0,
             }),
-            &mut scrollbar_y_state,
+            &mut scrollbar_state,
         );
 
         Ok(())
@@ -375,7 +374,7 @@ fn obj_lines(
 mod tests {
     use crate::components::jsonviewer;
     use pretty_assertions::assert_eq;
-    use ratatui::prelude::{Line, Span};
+    use ratatui::prelude::Line;
     use std::error::Error;
 
     #[test]
