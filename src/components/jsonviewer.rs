@@ -3,9 +3,9 @@ use std::error::Error;
 use ratatui::prelude::{
     Alignment, Color, Constraint, Direction, Layout, Line, Margin, Modifier, Rect, Span, Style,
 };
-use ratatui::widgets::block::Padding;
 use ratatui::widgets::{
-    Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    block::Padding, Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation,
+    ScrollbarState, Wrap,
 };
 use ratatui::Frame;
 use tokio::sync::mpsc::UnboundedSender;
@@ -110,9 +110,6 @@ impl JSONViewer {
             raw_lines(data, self.expanded_idxs.clone(), self.expanded)?
         };
 
-        let longest_line_length = lines.iter().map(|line| line.width()).max().unwrap_or(0);
-        let has_overflown_x_axis = longest_line_length > inner_layout[1].width.into();
-
         let mut indent: usize = 0;
         for line in lines.iter_mut() {
             if line
@@ -185,8 +182,6 @@ impl JSONViewer {
         let available_height = inner_layout[1]
             .height
             .saturating_sub(RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE.try_into()?);
-        let overflown_number_count = available_height.saturating_sub(number_of_lines.try_into()?);
-        let has_overflown_y_axis = overflown_number_count > 0;
 
         let json = Paragraph::new(lines)
             .style(
@@ -204,7 +199,8 @@ impl JSONViewer {
                     .saturating_sub(1)
                     .try_into()?,
                 0,
-            ));
+            ))
+            .wrap(Wrap { trim: false });
 
         let line_indicators_paragraph = Paragraph::new(line_indicators)
             .alignment(Alignment::Right)
@@ -229,17 +225,6 @@ impl JSONViewer {
                 horizontal: 0,
             }),
             &mut scrollbar_y_state,
-        );
-
-        let mut scrollbar_x_state =
-            ScrollbarState::new(longest_line_length).position(self.horizontal_position);
-        f.render_stateful_widget(
-            Scrollbar::new(ScrollbarOrientation::HorizontalBottom),
-            outer_area.inner(&Margin {
-                vertical: 0,
-                horizontal: 1,
-            }),
-            &mut scrollbar_x_state,
         );
 
         Ok(())
