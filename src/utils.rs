@@ -74,7 +74,7 @@ pub struct ContentLengthElements {
 }
 
 pub fn get_content_length(app: &Home) -> ContentLengthElements {
-    let trace = get_currently_selected_trace(app);
+    let trace = app.selected_trace.as_ref();
 
     let mut content_length = ContentLengthElements {
         request_body: None,

@@ -10,22 +10,30 @@ use ratatui::widgets::{
 use ratatui::Frame;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::app::Action;
+use crate::app::{Action, ActiveBlock};
 use crate::consts::RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE;
 
 #[derive(Default)]
 pub struct JSONViewer {
     pub action_tx: Option<UnboundedSender<Action>>,
-    expanded: bool,
+    active_block: ActiveBlock,
+    is_active: bool,
+    is_expanded: bool,
     expanded_idxs: Vec<usize>,
     indent_spacing: usize,
     cursor_position: usize,
     title: String,
+    data: Option<String>,
 }
 
 impl JSONViewer {
-    pub fn new(indent_spacing: usize, title: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        active_block: ActiveBlock,
+        indent_spacing: usize,
+        title: &str,
+    ) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
+            active_block,
             indent_spacing,
             title: title.to_string(),
             ..Self::default()
@@ -43,20 +51,48 @@ impl JSONViewer {
     pub fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
         match action {
             Action::NavigateUp(Some(_)) => {
-                self.cursor_position = self.cursor_position.saturating_sub(1)
+                if self.is_active {
+                    self.cursor_position = self.cursor_position.saturating_sub(1)
+                }
             }
             Action::NavigateDown(Some(_)) => {
-                // TODO: Clamp cursor_position to number of lines
-                self.cursor_position = self.cursor_position.saturating_add(1)
+                if self.is_active {
+                    self.cursor_position = self.cursor_position.saturating_add(1)
+                }
             }
             Action::NavigateLeft(Some(_)) => {
-                self.expanded_idxs.retain(|&x| x != self.cursor_position)
+                if self.is_active {
+                    self.expanded_idxs.retain(|&x| x != self.cursor_position)
+                }
             }
-            Action::NavigateRight(Some(_)) => self.expanded_idxs.push(self.cursor_position),
-            Action::ExpandAll => self.expanded = true,
+            Action::NavigateRight(Some(_)) => {
+                if self.is_active {
+                    self.expanded_idxs.push(self.cursor_position)
+                }
+            }
+            Action::ExpandAll => {
+                if self.is_active {
+                    self.is_expanded = true;
+                }
+            }
             Action::CollapseAll => {
-                self.expanded = false;
-                self.expanded_idxs.clear();
+                if self.is_active {
+                    self.is_expanded = false;
+                    self.expanded_idxs.clear();
+                }
+            }
+            Action::SelectTrace(maybe_trace) => {
+                if let Some(trace) = maybe_trace {
+                    if ActiveBlock::RequestBody == self.active_block {
+                        self.data = trace.request_body;
+                    }
+                    if ActiveBlock::ResponseBody == self.active_block {
+                        self.data = trace.response_body;
+                    }
+                }
+            }
+            Action::ActivateBlock(current_active_block) => {
+                self.is_active = current_active_block == self.active_block;
             }
             _ => {}
         }
@@ -64,18 +100,7 @@ impl JSONViewer {
         Ok(None)
     }
 
-    pub fn render(
-        &self,
-        f: &mut Frame,
-        rect: Rect,
-        data: String,
-        active: bool, // TODO(vandosant): Could this be moved to self.active?
-    ) -> Result<(), Box<dyn Error>> {
-        // let copy = if request.duration.is_some() {
-        //     "This trace does not have a response body."
-        // } else {
-        //     "Loading..."
-        // };
+    pub fn render(&self, f: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
         let padding = Padding::zero();
 
         let outer_area = rect;
@@ -83,7 +108,7 @@ impl JSONViewer {
         let outer_block = Block::default()
             .borders(Borders::ALL)
             .padding(padding)
-            .style(Style::default().fg(if active {
+            .style(Style::default().fg(if self.is_active {
                 Color::White
             } else {
                 Color::DarkGray
@@ -98,15 +123,19 @@ impl JSONViewer {
             .constraints([Constraint::Length(4), Constraint::Min(0)])
             .split(inner_area);
 
-        let mut lines = if active {
+        let mut lines = if self.is_active {
             active_lines(
-                data,
+                self.data.clone(),
                 self.expanded_idxs.clone(),
-                self.expanded,
+                self.is_expanded,
                 self.cursor_position,
             )?
         } else {
-            raw_lines(data, self.expanded_idxs.clone(), self.expanded)?
+            raw_lines(
+                self.data.clone(),
+                self.expanded_idxs.clone(),
+                self.is_expanded,
+            )?
         };
 
         let mut indent: usize = 0;
@@ -133,7 +162,7 @@ impl JSONViewer {
                 line_indicators.push(Line::from(vec![Span::styled(
                     "  ",
                     Style::default()
-                        .fg(if active {
+                        .fg(if self.is_active {
                             Color::White
                         } else {
                             Color::DarkGray
@@ -144,7 +173,7 @@ impl JSONViewer {
                 line_indicators.push(Line::from(vec![Span::styled(
                     "˃ ",
                     Style::default()
-                        .fg(if active {
+                        .fg(if self.is_active {
                             Color::White
                         } else {
                             Color::DarkGray
@@ -156,7 +185,7 @@ impl JSONViewer {
                 line_indicators.push(Line::from(vec![Span::styled(
                     "˅ ",
                     Style::default()
-                        .fg(if active {
+                        .fg(if self.is_active {
                             Color::White
                         } else {
                             Color::DarkGray
@@ -167,7 +196,7 @@ impl JSONViewer {
                 line_indicators.push(Line::from(vec![Span::styled(
                     "  ",
                     Style::default()
-                        .fg(if active {
+                        .fg(if self.is_active {
                             Color::White
                         } else {
                             Color::DarkGray
@@ -185,7 +214,7 @@ impl JSONViewer {
         let json = Paragraph::new(lines)
             .style(
                 Style::default()
-                    .fg(if active {
+                    .fg(if self.is_active {
                         Color::White
                     } else {
                         Color::DarkGray
@@ -231,12 +260,12 @@ impl JSONViewer {
 }
 
 fn active_lines(
-    data: String,
+    maybe_data: Option<String>,
     expanded_idxs: Vec<usize>,
     expanded: bool,
     cursor_position: usize,
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
-    let mut lines = raw_lines(data, expanded_idxs, expanded)?;
+    let mut lines = raw_lines(maybe_data, expanded_idxs, expanded)?;
 
     let style = Style::default().fg(Color::Green);
 
@@ -250,24 +279,22 @@ fn active_lines(
 }
 
 fn raw_lines(
-    data: String,
+    maybe_data: Option<String>,
     expanded_idxs: Vec<usize>,
     expanded: bool,
 ) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
-    let v = serde_json::from_str(data.as_str())?;
     let mut items = vec![];
 
-    if let serde_json::Value::Object(o) = v {
-        for line in obj_lines(o, &expanded_idxs, expanded, None, 0)? {
-            items.push(line);
+    if let Some(data) = maybe_data {
+        let v = serde_json::from_str(data.as_str())?;
+        if let serde_json::Value::Object(o) = v {
+            for line in obj_lines(o, &expanded_idxs, expanded, None, 0)? {
+                items.push(line);
+            }
+        } else {
+            let as_str: String = value_to_string(v)?;
+            items.push(Line::raw(as_str));
         }
-    } else {
-        let as_str: String = value_to_string(v)?;
-        items.push(Line::from(vec![
-            r#"""#.into(),
-            as_str.into(),
-            r#"""#.into(),
-        ]));
     }
 
     Ok(items)
@@ -374,8 +401,69 @@ fn obj_lines(
 mod tests {
     use crate::components::jsonviewer;
     use pretty_assertions::assert_eq;
-    use ratatui::prelude::Line;
+    use ratatui::prelude::{Color, Line, Style};
     use std::error::Error;
+
+    #[test]
+    fn test_raw_lines_empty() -> Result<(), Box<dyn Error>> {
+        let result = jsonviewer::raw_lines(None, vec![], true)?;
+
+        let expected: Vec<Line> = vec![];
+
+        assert_eq!(expected, result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_raw_lines_object() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "code": 200,
+        });
+
+        let result = jsonviewer::raw_lines(Some(input.to_string()), vec![], true)?;
+
+        assert_eq!(
+            vec![Line::raw("{"), Line::raw("\"code\": 200"), Line::raw("}"),],
+            result
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_raw_lines_non_object_value() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!(200);
+
+        let result = jsonviewer::raw_lines(Some(input.to_string()), vec![], true)?;
+
+        assert_eq!(vec![Line::raw("200")], result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_active_lines_applies_styles() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "code": 200,
+        });
+
+        let result = jsonviewer::active_lines(Some(input.to_string()), vec![], true, 1)?;
+
+        let default_style = Style::default();
+        let selected_style = Style::default().fg(Color::Green);
+
+        assert_eq!(
+            vec![
+                Line::styled("{", default_style),
+                Line::styled("\"code\": 200", selected_style),
+                Line::styled("}", default_style),
+            ],
+            result
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn test_lines_expanded() -> Result<(), Box<dyn Error>> {

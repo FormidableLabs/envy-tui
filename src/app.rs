@@ -36,7 +36,7 @@ pub enum Mode {
     Normal,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
+#[derive(Clone, Copy, Default, Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub enum ActiveBlock {
     #[default]
     TracesBlock,
@@ -87,6 +87,8 @@ pub enum Action {
     ToggleDebug,
     DeleteItem,
     FocusOnTraces,
+    SelectTrace(Option<Trace>),
+    UpdateTraceIndex(usize),
     ShowTraceDetails,
     NextPane,
     PreviousPane,
@@ -110,6 +112,7 @@ pub enum Action {
     AddTraceError,
     ExpandAll,
     CollapseAll,
+    ActivateBlock(ActiveBlock),
 }
 
 #[derive(Default)]

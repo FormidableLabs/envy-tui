@@ -17,7 +17,6 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::get_currently_selected_trace,
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -57,6 +56,7 @@ pub struct Home {
     pub wss_state: WebSockerInternalState,
     pub request_json_viewer: jsonviewer::JSONViewer,
     pub response_json_viewer: jsonviewer::JSONViewer,
+    pub selected_trace: Option<Trace>,
     metadata: Option<handlers::HandlerMetadata>,
 }
 
@@ -65,8 +65,16 @@ impl Home {
         let config = crate::config::Config::new()?;
         let home = Home {
             key_map: config.mapping.0,
-            request_json_viewer: jsonviewer::JSONViewer::new(4, "Request body")?,
-            response_json_viewer: jsonviewer::JSONViewer::new(4, "Response body")?,
+            request_json_viewer: jsonviewer::JSONViewer::new(
+                ActiveBlock::RequestBody,
+                4,
+                "Request body",
+            )?,
+            response_json_viewer: jsonviewer::JSONViewer::new(
+                ActiveBlock::ResponseBody,
+                4,
+                "Response body",
+            )?,
             ..Self::default()
         };
 
@@ -131,12 +139,8 @@ impl Component for Home {
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
-        if self.active_block == ActiveBlock::RequestBody {
-            self.request_json_viewer.update(action.clone())?;
-        }
-        if self.active_block == ActiveBlock::ResponseBody {
-            self.response_json_viewer.update(action.clone())?;
-        }
+        self.request_json_viewer.update(action.clone())?;
+        self.response_json_viewer.update(action.clone())?;
 
         let metadata = self
             .metadata
@@ -150,16 +154,18 @@ impl Component for Home {
             })
             .clone();
 
-        match action {
+        let other_action = match action {
             Action::Quit => match self.active_block {
                 ActiveBlock::Help | ActiveBlock::Debug => {
                     self.active_block = self.previous_block.unwrap_or(ActiveBlock::TracesBlock);
 
                     self.previous_block = None;
+
+                    return Ok(None);
                 }
                 _ => return Ok(Some(Action::QuitApplication)),
             },
-            Action::NextSection => handlers::handle_tab(self),
+            Action::NextSection => return Ok(handlers::handle_tab(self)),
             Action::OnMount => handlers::handle_adjust_scroll_bar(self, metadata),
             Action::Help => handlers::handle_help(self),
             Action::ToggleDebug => handlers::handle_debug(self),
@@ -176,30 +182,46 @@ impl Component for Home {
             Action::ExitSearch => handlers::handle_search_exit(self),
             Action::ShowTraceDetails => handlers::handle_enter(self),
             Action::FocusOnTraces => handlers::handle_esc(self),
-            Action::StopWebSocketServer => self.wss_connected = false,
-            Action::StartWebSocketServer => self.wss_connected = true,
+            Action::StopWebSocketServer => {
+                self.wss_connected = false;
+                None
+            }
+            Action::StartWebSocketServer => {
+                self.wss_connected = true;
+                None
+            }
             Action::SetGeneralStatus(s) => handlers::handle_general_status(self, s),
-            Action::SetWebsocketStatus(s) => self.wss_state = s,
+            Action::SetWebsocketStatus(s) => {
+                self.wss_state = s;
+                None
+            }
             Action::NavigateUp(Some(key)) => handlers::handle_up(self, key, metadata),
             Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
-            Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),
-            Action::NavigateRight(Some(key)) => handlers::handle_right(self, key, metadata),
-            Action::UpdateMeta(metadata) => self.metadata = Some(metadata),
+            Action::UpdateMeta(metadata) => {
+                self.metadata = Some(metadata);
+                None
+            }
             Action::ClearStatusMessage => {
                 self.status_message = None;
+                None
             }
-            Action::GoToRight => handlers::handle_go_to_right(self, metadata),
-            Action::GoToLeft => handlers::handle_go_to_left(self),
             Action::AddTrace(trace) => {
                 self.items.replace(trace);
-
                 handlers::handle_adjust_scroll_bar(self, metadata);
+                None
             }
-            Action::MarkTraceAsTimedOut(id) => self.mark_trace_as_timed_out(id),
-            _ => {}
-        }
+            Action::MarkTraceAsTimedOut(id) => {
+                self.mark_trace_as_timed_out(id);
+                Some(Action::SelectTrace(self.selected_trace.clone()))
+            }
+            Action::SelectTrace(trace) => {
+                self.selected_trace = trace;
+                None
+            }
+            _ => None,
+        };
 
-        Ok(None)
+        Ok(other_action)
     }
 
     fn render(&self, frame: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
@@ -267,26 +289,9 @@ impl Component for Home {
 
                     render::render_request_block(self, frame, request_layout[0]);
 
-                    if let Some(trace) = get_currently_selected_trace(self) {
-                        if let Some(request_body) = trace.request_body.clone() {
-                            let active = self.active_block == ActiveBlock::RequestBody;
-                            self.request_json_viewer.render(
-                                frame,
-                                request_layout[1],
-                                request_body,
-                                active,
-                            )?;
-                        }
-                        if let Some(response_body) = trace.response_body.clone() {
-                            let active = self.active_block == ActiveBlock::ResponseBody;
-                            self.response_json_viewer.render(
-                                frame,
-                                response_layout[1],
-                                response_body,
-                                active,
-                            )?;
-                        }
-                    }
+                    self.request_json_viewer.render(frame, request_layout[1])?;
+                    self.response_json_viewer
+                        .render(frame, response_layout[1])?;
 
                     render::render_traces(self, frame, split_layout[0]);
 
@@ -337,28 +342,9 @@ impl Component for Home {
                         .split(main_layout[3]);
 
                     render::render_request_block(self, frame, request_layout[0]);
-                    // TODO: pass a title prop "Request body" or "Response body" accordingly
-                    // TODO: add scrolling for overflows (see render::render_body method)
-                    if let Some(trace) = get_currently_selected_trace(self) {
-                        if let Some(request_body) = trace.request_body.clone() {
-                            let active = self.active_block == ActiveBlock::RequestBody;
-                            self.request_json_viewer.render(
-                                frame,
-                                request_layout[1],
-                                request_body,
-                                active,
-                            )?;
-                        }
-                        if let Some(response_body) = trace.response_body.clone() {
-                            let active = self.active_block == ActiveBlock::ResponseBody;
-                            self.response_json_viewer.render(
-                                frame,
-                                response_layout[1],
-                                response_body.clone(),
-                                active,
-                            )?;
-                        }
-                    }
+                    self.request_json_viewer.render(frame, request_layout[1])?;
+                    self.response_json_viewer
+                        .render(frame, response_layout[1])?;
                     render::render_traces(self, frame, main_layout[0]);
 
                     render::render_request_summary(self, frame, main_layout[1]);

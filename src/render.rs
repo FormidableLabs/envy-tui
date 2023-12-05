@@ -23,7 +23,7 @@ use crate::consts::{
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::services::websocket::Trace;
-use crate::utils::{get_currently_selected_trace, parse_query_params, truncate};
+use crate::utils::{parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -388,14 +388,16 @@ pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
 
                     let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
-                    let trace = get_currently_selected_trace(app);
-
-                    let content_length = trace.unwrap().response_headers.len() as u16;
+                    let content_length = if let Some(trace) = &app.selected_trace {
+                        trace.response_headers.len()
+                    } else {
+                        0
+                    };
 
                     let viewport_height =
                         area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
 
-                    if content_length > viewport_height {
+                    if content_length > viewport_height.into() {
                         frame.render_stateful_widget(
                             vertical_scroll,
                             area.inner(&Margin {
@@ -498,9 +500,11 @@ pub fn render_response_block(app: &Home, frame: &mut Frame, area: Rect) {
 
         let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
-        let trace = get_currently_selected_trace(app);
-
-        let content_length = trace.unwrap().response_headers.len();
+        let content_length = if let Some(trace) = &app.selected_trace {
+            trace.response_headers.len()
+        } else {
+            0
+        };
 
         if content_length > area.height as usize - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE {
             frame.render_stateful_widget(
