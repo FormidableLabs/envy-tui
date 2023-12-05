@@ -57,7 +57,17 @@ impl JSONViewer {
             }
             Action::NavigateDown(Some(_)) => {
                 if self.is_active {
-                    self.cursor_position = self.cursor_position.saturating_add(1)
+                    let max_cursor_position = raw_lines(
+                        self.data.clone(),
+                        self.expanded_idxs.clone(),
+                        self.is_expanded,
+                    )?
+                    .len()
+                    .saturating_sub(1);
+
+                    if max_cursor_position > self.cursor_position {
+                        self.cursor_position = self.cursor_position.saturating_add(1)
+                    }
                 }
             }
             Action::NavigateLeft(Some(_)) => {
@@ -72,22 +82,33 @@ impl JSONViewer {
             }
             Action::ExpandAll => {
                 if self.is_active {
-                    self.is_expanded = true;
+                    if !self.is_expanded {
+                        self.is_expanded = true;
+                        self.expanded_idxs.clear();
+                        self.cursor_position = 0;
+                    }
                 }
             }
             Action::CollapseAll => {
                 if self.is_active {
-                    self.is_expanded = false;
-                    self.expanded_idxs.clear();
+                    if self.is_expanded {
+                        self.is_expanded = false;
+                        self.expanded_idxs.clear();
+                        self.cursor_position = 0;
+                    }
                 }
             }
             Action::SelectTrace(maybe_trace) => {
                 if let Some(trace) = maybe_trace {
                     if ActiveBlock::RequestBody == self.active_block {
                         self.data = trace.request_body;
+                        self.is_expanded = false;
+                        self.expanded_idxs = vec![];
                     }
                     if ActiveBlock::ResponseBody == self.active_block {
                         self.data = trace.response_body;
+                        self.is_expanded = false;
+                        self.expanded_idxs = vec![];
                     }
                 }
             }
@@ -123,20 +144,13 @@ impl JSONViewer {
             .constraints([Constraint::Length(4), Constraint::Min(0)])
             .split(inner_area);
 
-        let mut lines = if self.is_active {
-            active_lines(
-                self.data.clone(),
-                self.expanded_idxs.clone(),
-                self.is_expanded,
-                self.cursor_position,
-            )?
-        } else {
-            raw_lines(
-                self.data.clone(),
-                self.expanded_idxs.clone(),
-                self.is_expanded,
-            )?
-        };
+        let mut lines = json_to_lines(
+            self.data.clone(),
+            self.is_active,
+            self.is_expanded,
+            self.expanded_idxs.clone(),
+            self.cursor_position,
+        )?;
 
         let mut indent: usize = 0;
         for line in lines.iter_mut() {
@@ -256,6 +270,20 @@ impl JSONViewer {
         );
 
         Ok(())
+    }
+}
+
+fn json_to_lines(
+    maybe_data: Option<String>,
+    is_active: bool,
+    is_expanded: bool,
+    expanded_idxs: Vec<usize>,
+    cursor_position: usize,
+) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
+    if is_active {
+        active_lines(maybe_data, expanded_idxs, is_expanded, cursor_position)
+    } else {
+        raw_lines(maybe_data, expanded_idxs, is_expanded)
     }
 }
 
