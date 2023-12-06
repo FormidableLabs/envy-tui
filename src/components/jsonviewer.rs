@@ -77,7 +77,40 @@ impl JSONViewer {
             }
             Action::NavigateRight(Some(_)) => {
                 if self.is_active {
-                    self.expanded_idxs.push(self.cursor_position)
+                    let idx = self
+                        .expanded_idxs
+                        .partition_point(|&x| x < self.cursor_position);
+
+                    // Expanding values above other expanded values
+                    // pushes the currently expanded values down.
+                    //
+                    // Indices of the currently expanded values
+                    // are increased by the size of
+                    // the value that is being expanded.
+                    if idx < self.expanded_idxs.len() {
+                        let current_length =
+                            raw_lines(self.data.clone(), vec![], self.is_expanded)?.len();
+
+                        let next_length = raw_lines(
+                            self.data.clone(),
+                            vec![self.cursor_position],
+                            self.is_expanded,
+                        )?
+                        .len();
+
+                        self.expanded_idxs.insert(idx, self.cursor_position);
+                        let cascade_len = next_length.saturating_sub(current_length);
+                        let after_expanded_idxs =
+                            self.expanded_idxs.split_off(idx.saturating_add(1));
+                        let mut updated_idxs: Vec<usize> = after_expanded_idxs
+                            .into_iter()
+                            .map(|i| i.saturating_add(cascade_len))
+                            .collect();
+
+                        self.expanded_idxs.append(&mut updated_idxs);
+                    } else {
+                        self.expanded_idxs.insert(idx, self.cursor_position)
+                    }
                 }
             }
             Action::ExpandAll => {
@@ -689,6 +722,43 @@ mod tests {
                 Line::raw("6"),
                 Line::raw("]"),
                 Line::raw("}"),
+                Line::raw("}"),
+            ],
+            result,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lines_expanded_by_index() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "one": {
+                "a": 1,
+                "b": 2
+            },
+           "two": {
+               "c": 3,
+               "d": 4
+           },
+           "three": {
+               "e": 5,
+              "f": 6
+           }
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![2], false, None, 0)?;
+
+        assert_eq!(
+            vec![
+                Line::raw("{"),
+                Line::raw("\"one\": {..},"),
+                Line::raw("\"two\": {"),
+                Line::raw("\"c\": 3,"),
+                Line::raw("\"d\": 4"),
+                Line::raw("},"),
+                Line::raw("\"three\": {..}"),
                 Line::raw("}"),
             ],
             result,
