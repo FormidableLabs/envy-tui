@@ -421,15 +421,22 @@ fn obj_lines(
                     while let Some(lineref) = lineiter.next() {
                         let mut line = lineref.clone();
                         if let Some(span) = line.spans.last_mut() {
+                            // Opening lines never end with commas
                             if !span.content.ends_with("{")
                                 && !span.content.ends_with("[")
+                                // Lines with commas never need additional commas
                                 && !span.content.ends_with(",")
                             {
                                 match lineiter.peek() {
+                                    // If the next line is not the ending line, append a comma
                                     Some(next_line) => {
                                         if let Some(next_span) = next_line.spans.last() {
-                                            if !next_span.content.ends_with("}")
-                                                && !next_span.content.ends_with("]")
+                                            if next_span.content.ends_with("{..}")
+                                                || next_span.content.ends_with("[..]")
+                                                || (!next_span.content.ends_with("}")
+                                                    && !next_span.content.ends_with("},")
+                                                    && !next_span.content.ends_with("]")
+                                                    && !next_span.content.ends_with("],"))
                                             {
                                                 *span = Span::raw(String::from(
                                                     span.content.clone() + ",",
@@ -437,6 +444,9 @@ fn obj_lines(
                                             }
                                         }
                                     }
+                                    // This is the last line of the object: `}`;
+                                    // unless this is the last value in the parent object
+                                    // append a comma
                                     None => {
                                         if obj_idx < len.saturating_sub(1) {
                                             *span =
@@ -482,8 +492,12 @@ fn obj_lines(
                                 match lineiter.peek() {
                                     Some(next_line) => {
                                         if let Some(next_span) = next_line.spans.last() {
-                                            if !next_span.content.ends_with("}")
-                                                && !next_span.content.ends_with("]")
+                                            if next_span.content.ends_with("{..}")
+                                                || next_span.content.ends_with("[..]")
+                                                || (!next_span.content.ends_with("}")
+                                                    && !next_span.content.ends_with("},")
+                                                    && !next_span.content.ends_with("]")
+                                                    && !next_span.content.ends_with("],"))
                                             {
                                                 *span = Span::raw(String::from(
                                                     span.content.clone() + ",",
@@ -491,7 +505,15 @@ fn obj_lines(
                                             }
                                         }
                                     }
-                                    None => {}
+                                    // This is the last line of the array: `]`;
+                                    // unless this is the last value in the parent object
+                                    // append a comma
+                                    None => {
+                                        if obj_idx < len.saturating_sub(1) {
+                                            *span =
+                                                Span::raw(String::from(span.content.clone() + ","));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -550,7 +572,7 @@ mod tests {
     use std::error::Error;
 
     #[test]
-    fn test_raw_lines_empty() -> Result<(), Box<dyn Error>> {
+    fn test_raw_empty() -> Result<(), Box<dyn Error>> {
         let result = jsonviewer::raw_lines(None, vec![], true)?;
 
         let expected: Vec<Line> = vec![];
@@ -561,7 +583,7 @@ mod tests {
     }
 
     #[test]
-    fn test_raw_lines_object() -> Result<(), Box<dyn Error>> {
+    fn test_raw_object() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "code": 200,
         });
@@ -577,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn test_raw_lines_non_object_value() -> Result<(), Box<dyn Error>> {
+    fn test_raw_non_object_value() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!(200);
 
         let result = jsonviewer::raw_lines(Some(input.to_string()), vec![], true)?;
@@ -588,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn test_active_lines_applies_styles() -> Result<(), Box<dyn Error>> {
+    fn test_active_styles() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "code": 200,
         });
@@ -611,19 +633,15 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_collapsed() -> Result<(), Box<dyn Error>> {
+    fn test_simple() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "one": {
                 "a": 1,
                 "b": 2
             },
-            "two": {
-                "c": 3,
-                "d": 4
-            },
-            "three": [
-                5,
-                6
+            "two": [
+                3,
+                4
             ]
         });
 
@@ -634,8 +652,7 @@ mod tests {
             vec![
                 Line::raw("{"),
                 Line::raw("\"one\": {..},"),
-                Line::raw("\"two\": {..},"),
-                Line::raw("\"three\": [..]"),
+                Line::raw("\"two\": [..]"),
                 Line::raw("}"),
             ],
             result,
@@ -645,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_expanded() -> Result<(), Box<dyn Error>> {
+    fn test_simple_objects() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "one": {
                 "a": 1,
@@ -654,10 +671,72 @@ mod tests {
             "two": {
                 "c": 3,
                 "d": 4
+            }
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
+
+        assert_eq!(
+            vec![
+                Line::raw("{"),
+                Line::raw("\"one\": {..},"),
+                Line::raw("\"two\": {..}"),
+                Line::raw("}"),
+            ],
+            result,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_simple_arrays() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "one": [
+                1,
+                2
+            ],
+            "two": [
+                3,
+                4
+            ]
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
+
+        assert_eq!(
+            vec![
+                Line::raw("{"),
+                Line::raw("\"one\": [..],"),
+                Line::raw("\"two\": [..]"),
+                Line::raw("}"),
+            ],
+            result,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_all_expanded() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "one": {
+                "a": 1,
+                "b": 2
             },
-            "three": [
-                5,
-                6
+            "two": [
+                3,
+                4
+            ],
+            "three": {
+                "c": 5,
+                "d": 6
+            },
+            "four": [
+                7,
+                8
             ]
         });
 
@@ -671,13 +750,17 @@ mod tests {
                 Line::raw("\"a\": 1,"),
                 Line::raw("\"b\": 2"),
                 Line::raw("},"),
-                Line::raw("\"two\": {"),
-                Line::raw("\"c\": 3,"),
-                Line::raw("\"d\": 4"),
+                Line::raw("\"two\": ["),
+                Line::raw("3,"),
+                Line::raw("4"),
+                Line::raw("],"),
+                Line::raw("\"three\": {"),
+                Line::raw("\"c\": 5,"),
+                Line::raw("\"d\": 6"),
                 Line::raw("},"),
-                Line::raw("\"three\": ["),
-                Line::raw("5,"),
-                Line::raw("6"),
+                Line::raw("\"four\": ["),
+                Line::raw("7,"),
+                Line::raw("8"),
                 Line::raw("]"),
                 Line::raw("}"),
             ],
@@ -688,14 +771,14 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_expanded_deep() -> Result<(), Box<dyn Error>> {
+    fn test_all_expanded_deep() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "one": {
                 "a": 1,
                 "b": 2,
                 "two": {
                     "c": 3,
-                    "d": 4,
+                    "d": 4
                 },
                 "three": [
                     5,
@@ -731,18 +814,18 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_expanded_by_index() -> Result<(), Box<dyn Error>> {
+    fn test_expanded_by_index() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "one": {
-                "a": 1,
-                "b": 2
+              "a": 1,
+              "b": 2
             },
            "two": {
-               "c": 3,
-               "d": 4
+              "c": 3,
+              "d": 4
            },
            "three": {
-               "e": 5,
+              "e": 5,
               "f": 6
            }
         });
@@ -759,6 +842,43 @@ mod tests {
                 Line::raw("\"d\": 4"),
                 Line::raw("},"),
                 Line::raw("\"three\": {..}"),
+                Line::raw("}"),
+            ],
+            result,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_expanded_deep_by_index() -> Result<(), Box<dyn Error>> {
+        let input = serde_json::json!({
+            "one": {
+                "a": 1,
+                "b": 2,
+                "two": {
+                    "c": 3,
+                    "d": 4
+                },
+                "three": [
+                    5,
+                    6
+                ]
+            }
+        });
+
+        let result =
+            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![1], false, None, 0)?;
+
+        assert_eq!(
+            vec![
+                Line::raw("{"),
+                Line::raw("\"one\": {"),
+                Line::raw("\"a\": 1,"),
+                Line::raw("\"b\": 2,"),
+                Line::raw("\"two\": {..},"),
+                Line::raw("\"three\": [..]"),
+                Line::raw("}"),
                 Line::raw("}"),
             ],
             result,

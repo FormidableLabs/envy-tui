@@ -188,7 +188,8 @@ impl App {
         let action_to_clone = self.action_tx.as_ref().unwrap().clone();
 
         tokio::spawn(async move {
-            client(Some(action_to_clone)).await;
+            //TODO(vandosant) Handle possible Error from this Result
+            let _ = client(Some(action_to_clone)).await;
         });
 
         loop {
