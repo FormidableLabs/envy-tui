@@ -157,12 +157,17 @@ impl JSONViewer {
             if line
                 .spans
                 .iter()
-                .any(|s| s.content == "{" || s.content.ends_with('{'))
+                .any(|s| s.content.ends_with('{') || s.content.ends_with("["))
             {
                 line.spans.insert(0, Span::raw(" ".repeat(indent)));
                 indent = indent.saturating_add(self.indent_spacing);
             } else if line.spans.iter().any(|s| {
-                !s.content.contains("{..}") && (s.content == "}" || s.content.ends_with("},"))
+                !s.content.contains("{..}")
+                    && !s.content.contains("[..]")
+                    && (s.content.ends_with("}")
+                        || s.content.ends_with("},")
+                        || s.content.ends_with("]")
+                        || s.content.ends_with("],"))
             }) {
                 indent = indent.saturating_sub(self.indent_spacing);
                 line.spans.insert(0, Span::raw(" ".repeat(indent)));
@@ -330,10 +335,30 @@ fn raw_lines(
 
 fn value_to_string(v: serde_json::Value) -> Result<String, serde_json::Error> {
     match v {
-        serde_json::Value::Array(_) => serde_json::to_string_pretty(&v),
+        serde_json::Value::Array(_) => Ok("[..]".to_string()),
         serde_json::Value::Object(_) => Ok("{..}".to_string()),
         _ => Ok(v.to_string()),
     }
+}
+
+fn array_lines(
+    v: Vec<serde_json::Value>,
+    key: Option<String>,
+) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
+    let mut items = vec![];
+
+    if let Some(k) = key {
+        items.push(Line::raw(format!(r#""{key}": ["#, key = k,)))
+    } else {
+        items.push(Line::raw("["));
+    }
+
+    for (_idx, item) in v.into_iter().enumerate() {
+        items.push(Line::raw(value_to_string(item)?));
+    }
+    items.push(Line::raw("]"));
+
+    Ok(items)
 }
 
 fn obj_lines(
@@ -355,68 +380,127 @@ fn obj_lines(
     idx += 1;
 
     for (obj_idx, (k, v)) in v.into_iter().enumerate() {
-        if let serde_json::Value::Object(o) = v.clone() {
-            if expand_all_objects || expanded_idxs.contains(&idx) {
-                let lines = obj_lines(o, expanded_idxs, expand_all_objects, Some(k), idx)?;
-                let mut lineiter = lines.iter().peekable();
-                while let Some(lineref) = lineiter.next() {
-                    let mut line = lineref.clone();
-                    if let Some(span) = line.spans.last_mut() {
-                        if !span.content.ends_with("{") && !span.content.ends_with(",") {
-                            match lineiter.peek() {
-                                Some(next_line) => {
-                                    if let Some(next_span) = next_line.spans.last() {
-                                        if !next_span.content.ends_with("}") {
+        match v.clone() {
+            serde_json::Value::Object(o) => {
+                if expand_all_objects || expanded_idxs.contains(&idx) {
+                    let lines = obj_lines(o, expanded_idxs, expand_all_objects, Some(k), idx)?;
+                    let mut lineiter = lines.iter().peekable();
+                    while let Some(lineref) = lineiter.next() {
+                        let mut line = lineref.clone();
+                        if let Some(span) = line.spans.last_mut() {
+                            if !span.content.ends_with("{")
+                                && !span.content.ends_with("[")
+                                && !span.content.ends_with(",")
+                            {
+                                match lineiter.peek() {
+                                    Some(next_line) => {
+                                        if let Some(next_span) = next_line.spans.last() {
+                                            if !next_span.content.ends_with("}")
+                                                && !next_span.content.ends_with("]")
+                                            {
+                                                *span = Span::raw(String::from(
+                                                    span.content.clone() + ",",
+                                                ));
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        if obj_idx < len.saturating_sub(1) {
                                             *span =
                                                 Span::raw(String::from(span.content.clone() + ","));
                                         }
                                     }
                                 }
-                                None => {
-                                    if obj_idx < len.saturating_sub(1) {
-                                        *span = Span::raw(String::from(span.content.clone() + ","));
+                            }
+                        }
+
+                        items.push(line);
+                        idx += 1;
+                    }
+                } else {
+                    let obj_as_str: String = value_to_string(v.clone())?;
+                    if idx < len {
+                        items.push(Line::raw(format!(
+                            r#""{key}": {value},"#,
+                            key = k,
+                            value = obj_as_str,
+                        )));
+                    } else {
+                        items.push(Line::raw(format!(
+                            r#""{key}": {value}"#,
+                            key = k,
+                            value = obj_as_str,
+                        )));
+                    }
+                    idx += 1;
+                }
+            }
+            serde_json::Value::Array(a) => {
+                if expand_all_objects || expanded_idxs.contains(&idx) {
+                    let lines = array_lines(a, Some(k))?;
+                    let mut lineiter = lines.iter().peekable();
+                    while let Some(lineref) = lineiter.next() {
+                        let mut line = lineref.clone();
+                        if let Some(span) = line.spans.last_mut() {
+                            if !span.content.ends_with("{")
+                                && !span.content.ends_with("[")
+                                && !span.content.ends_with(",")
+                            {
+                                match lineiter.peek() {
+                                    Some(next_line) => {
+                                        if let Some(next_span) = next_line.spans.last() {
+                                            if !next_span.content.ends_with("}")
+                                                && !next_span.content.ends_with("]")
+                                            {
+                                                *span = Span::raw(String::from(
+                                                    span.content.clone() + ",",
+                                                ));
+                                            }
+                                        }
                                     }
+                                    None => {}
                                 }
                             }
                         }
-                    }
 
-                    items.push(line);
+                        items.push(line);
+                        idx += 1;
+                    }
+                } else {
+                    let array_as_str: String = value_to_string(v.clone())?;
+                    if idx < len {
+                        items.push(Line::raw(format!(
+                            r#""{key}": {value},"#,
+                            key = k,
+                            value = array_as_str,
+                        )));
+                    } else {
+                        items.push(Line::raw(format!(
+                            r#""{key}": {value}"#,
+                            key = k,
+                            value = array_as_str,
+                        )));
+                    }
                     idx += 1;
                 }
-            } else {
-                let as_str: String = value_to_string(v.clone())?;
+            }
+            _ => {
+                let value_as_str: String = value_to_string(v.clone())?;
                 if idx < len {
                     items.push(Line::raw(format!(
                         r#""{key}": {value},"#,
                         key = k,
-                        value = as_str,
+                        value = value_as_str,
                     )));
                 } else {
                     items.push(Line::raw(format!(
                         r#""{key}": {value}"#,
                         key = k,
-                        value = as_str,
+                        value = value_as_str,
                     )));
                 }
                 idx += 1;
             }
-        } else {
-            let as_str: String = value_to_string(v.clone())?;
-            if idx < len {
-                items.push(Line::raw(format!(
-                    r#""{key}": {value},"#,
-                    key = k,
-                    value = as_str,
-                )));
-            } else {
-                items.push(Line::raw(format!(
-                    r#""{key}": {value}"#,
-                    key = k,
-                    value = as_str,
-                )));
-            }
-            idx += 1;
         }
     }
 
@@ -494,52 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_expanded() -> Result<(), Box<dyn Error>> {
-        let input = serde_json::json!({
-            "code": 200,
-            "success": true,
-            "payload": {
-                "features": [
-                    "json",
-                    "viewer"
-                ],
-                "homepage": null
-            }
-        });
-
-        let result =
-            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], true, None, 0)?;
-
-        assert_eq!(8, result.len());
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_lines_joined_lines() -> Result<(), Box<dyn Error>> {
-        let input = serde_json::json!({
-            "code": 200,
-            "success": true
-        });
-
-        let result =
-            jsonviewer::obj_lines(input.as_object().unwrap().clone(), &vec![], false, None, 0)?;
-
-        assert_eq!(
-            vec![
-                Line::raw("{"),
-                Line::raw("\"code\": 200,"),
-                Line::raw("\"success\": true"),
-                Line::raw("}"),
-            ],
-            result,
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_lines_collapsed_object() -> Result<(), Box<dyn Error>> {
+    fn test_lines_collapsed() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "one": {
                 "a": 1,
@@ -548,7 +587,11 @@ mod tests {
             "two": {
                 "c": 3,
                 "d": 4
-            }
+            },
+            "three": [
+                5,
+                6
+            ]
         });
 
         let result =
@@ -558,7 +601,8 @@ mod tests {
             vec![
                 Line::raw("{"),
                 Line::raw("\"one\": {..},"),
-                Line::raw("\"two\": {..}"),
+                Line::raw("\"two\": {..},"),
+                Line::raw("\"three\": [..]"),
                 Line::raw("}"),
             ],
             result,
@@ -568,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_expanded_object() -> Result<(), Box<dyn Error>> {
+    fn test_lines_expanded() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "one": {
                 "a": 1,
@@ -577,7 +621,11 @@ mod tests {
             "two": {
                 "c": 3,
                 "d": 4
-            }
+            },
+            "three": [
+                5,
+                6
+            ]
         });
 
         let result =
@@ -593,7 +641,11 @@ mod tests {
                 Line::raw("\"two\": {"),
                 Line::raw("\"c\": 3,"),
                 Line::raw("\"d\": 4"),
-                Line::raw("}"),
+                Line::raw("},"),
+                Line::raw("\"three\": ["),
+                Line::raw("5,"),
+                Line::raw("6"),
+                Line::raw("]"),
                 Line::raw("}"),
             ],
             result,
@@ -603,15 +655,19 @@ mod tests {
     }
 
     #[test]
-    fn test_lines_expanded_deep_object() -> Result<(), Box<dyn Error>> {
+    fn test_lines_expanded_deep() -> Result<(), Box<dyn Error>> {
         let input = serde_json::json!({
             "one": {
                 "a": 1,
                 "b": 2,
                 "two": {
                     "c": 3,
-                    "d": 4
-                }
+                    "d": 4,
+                },
+                "three": [
+                    5,
+                    6
+                ]
             }
         });
 
@@ -627,7 +683,11 @@ mod tests {
                 Line::raw("\"two\": {"),
                 Line::raw("\"c\": 3,"),
                 Line::raw("\"d\": 4"),
-                Line::raw("}"),
+                Line::raw("},"),
+                Line::raw("\"three\": ["),
+                Line::raw("5,"),
+                Line::raw("6"),
+                Line::raw("]"),
                 Line::raw("}"),
                 Line::raw("}"),
             ],
