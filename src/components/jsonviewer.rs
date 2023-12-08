@@ -313,15 +313,15 @@ impl JSONViewer {
         f.render_widget(json, inner_layout[1]);
         f.render_widget(line_indicators_paragraph, inner_layout[0]);
 
-        let mut scrollbar_state =
-            ScrollbarState::new(number_of_lines).position(self.cursor_position);
         f.render_stateful_widget(
             Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight),
             outer_area.inner(&Margin {
                 vertical: 1,
                 horizontal: 0,
             }),
-            &mut scrollbar_state,
+            &mut ScrollbarState::default()
+                .content_length(number_of_lines)
+                .position(self.cursor_position),
         );
 
         Ok(())
