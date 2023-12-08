@@ -72,11 +72,28 @@ impl JSONViewer {
             }
             Action::NavigateLeft(Some(_)) => {
                 if self.is_active {
-                    self.expanded_idxs.retain(|&x| x != self.cursor_position)
+                    if self.is_expanded {
+                        let max_cursor_position = raw_lines(
+                            self.data.clone(),
+                            self.expanded_idxs.clone(),
+                            self.is_expanded,
+                        )?
+                        .len()
+                        .saturating_sub(1);
+                        self.expanded_idxs = (0..max_cursor_position).collect();
+                        self.expanded_idxs.retain(|&x| x != self.cursor_position);
+                        self.is_expanded = false
+                    } else {
+                        self.expanded_idxs.retain(|&x| x != self.cursor_position)
+                    }
                 }
             }
             Action::NavigateRight(Some(_)) => {
                 if self.is_active {
+                    if self.is_expanded {
+                        return Ok(None);
+                    }
+
                     let idx = self
                         .expanded_idxs
                         .partition_point(|&x| x < self.cursor_position);
@@ -118,7 +135,7 @@ impl JSONViewer {
                     if !self.is_expanded {
                         self.is_expanded = true;
                         self.expanded_idxs.clear();
-                        self.cursor_position = 0;
+                        // TODO(vandosant): shift cursor position to active value
                     }
                 }
             }
@@ -127,7 +144,7 @@ impl JSONViewer {
                     if self.is_expanded {
                         self.is_expanded = false;
                         self.expanded_idxs.clear();
-                        self.cursor_position = 0;
+                        // TODO(vandosant): shift cursor position to active value
                     }
                 }
             }
