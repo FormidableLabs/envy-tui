@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2]
+
+- Rewrite event loop to use `async`.
+- Rewrite communication between thread using message pattern.
+- Add filters.
+- Add sorting.
+- Bugfixes with wss server.
+
 ## [0.0.1]
 
 Initial release.

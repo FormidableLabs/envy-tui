@@ -19,6 +19,9 @@ X: StartWebSocketServer
 ?: Help
 p: ToggleDebug
 d: DeleteItem
+space: Select
+f: OpenFilter
+s: OpenSort
 "]": NextPane
 "[": PreviousPane
 e: ExpandAll

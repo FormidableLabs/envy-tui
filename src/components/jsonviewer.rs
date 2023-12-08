@@ -134,12 +134,12 @@ impl JSONViewer {
             Action::SelectTrace(maybe_trace) => {
                 if let Some(trace) = maybe_trace {
                     if ActiveBlock::RequestBody == self.active_block {
-                        self.data = trace.request_body;
+                        self.data = trace.http.clone().unwrap_or_default().request_body;
                         self.is_expanded = false;
                         self.expanded_idxs = vec![];
                     }
                     if ActiveBlock::ResponseBody == self.active_block {
-                        self.data = trace.response_body;
+                        self.data = trace.http.clone().unwrap_or_default().response_body;
                         self.is_expanded = false;
                         self.expanded_idxs = vec![];
                     }

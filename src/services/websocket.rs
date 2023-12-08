@@ -1,7 +1,6 @@
 use crate::app::Action;
 use crate::mock;
 use crate::parser::{parse_raw_trace, Payload};
-
 use crate::wss::WebSocket;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -16,8 +15,9 @@ pub struct Services {
     pub collector_server: Arc<Mutex<WebSocket>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub enum State {
+    #[default]
     Received,
     Sent,
     Aborted,
@@ -26,10 +26,8 @@ pub enum State {
     Error,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Trace {
-    pub id: String,
-    pub timestamp: u64,
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct HTTPTrace {
     #[serde(skip_serializing, skip_deserializing)]
     pub method: http::method::Method,
     pub state: State,
@@ -53,6 +51,14 @@ pub struct Trace {
     pub port: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Trace {
+    pub id: String,
+    pub timestamp: u64,
+    pub service_name: Option<String>,
+    pub http: Option<HTTPTrace>,
+}
+
 impl PartialEq<Trace> for Trace {
     fn eq(&self, other: &Trace) -> bool {
         self.id == *other.id
@@ -63,13 +69,13 @@ impl Eq for Trace {}
 
 impl PartialOrd for Trace {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.timestamp.cmp(&self.timestamp))
+        Some(other.id.cmp(&self.id))
     }
 }
 
 impl Ord for Trace {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.timestamp.cmp(&self.timestamp)
+        other.id.cmp(&self.id)
     }
 }
 
@@ -83,8 +89,8 @@ impl Display for Trace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "ID: {:?}, Request URL: {:?}, method used: {:?}, response status is {:?}, time took: {:?} milliseconds.",
-            self.id, self.uri, self.method, self.status, self.duration
+            "Time: {:?}",
+            chrono::DateTime::from_timestamp((self.timestamp / 1000).try_into().unwrap(), 0)
         )
     }
 }

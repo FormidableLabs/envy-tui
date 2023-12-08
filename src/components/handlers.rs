@@ -1,20 +1,24 @@
-use crate::app::{Action, ActiveBlock, RequestDetailsPane};
+use crate::app::{Action, ActiveBlock, FilterScreen, RequestDetailsPane};
 use crate::components::home::Home;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::parser::{generate_curl_command, pretty_parse_body};
+use crate::render::get_services_from_traces;
 use crate::services::websocket::Trace;
 use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
-    parse_query_params, set_content_length,
+    get_rendered_items, parse_query_params, set_content_length, Ordering, TraceSort,
 };
 use crossterm::event::{KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
+
+use super::home::{FilterSource, MethodFilter, StatusFilter};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct HandlerMetadata {
@@ -67,13 +71,19 @@ fn reset_request_and_response_body_ui_state(app: &mut Home) {
 }
 
 pub fn handle_debug(app: &mut Home) -> Option<Action> {
-    app.previous_block = Some(app.active_block);
+    let current_block = app.active_block;
+
+    app.previous_blocks.push(current_block);
+
     app.active_block = ActiveBlock::Debug;
     None
 }
 
 pub fn handle_help(app: &mut Home) -> Option<Action> {
-    app.previous_block = Some(app.active_block);
+    let current_block = app.active_block;
+
+    app.previous_blocks.push(current_block);
+
     app.active_block = ActiveBlock::Help;
     None
 }
@@ -92,6 +102,20 @@ pub fn handle_up(
             _ => None,
         },
         _ => match (app.active_block, app.request_details_block) {
+            (ActiveBlock::Filter(_), _) => match app.filter_index.checked_sub(1) {
+                Some(v) => {
+                    app.filter_index = v;
+                    None
+                }
+                _ => None,
+            },
+            (ActiveBlock::Sort, _) => match app.sort_index.checked_sub(1) {
+                Some(v) => {
+                    app.sort_index = v;
+                    None
+                }
+                _ => None,
+            },
             (ActiveBlock::TracesBlock, _) => {
                 if app.main.index > 0 {
                     app.main.index -= 1;
@@ -100,9 +124,7 @@ pub fn handle_up(
                         app.main.offset -= 1;
                     }
 
-                    return Some(Action::SelectTrace(
-                        get_currently_selected_trace(app).cloned(),
-                    ));
+                    return Some(Action::SelectTrace(get_currently_selected_trace(app)));
                 }
 
                 let number_of_lines: u16 = app.items.len().try_into().unwrap();
@@ -132,9 +154,7 @@ pub fn handle_up(
 
                 app.selected_params_index = 0;
 
-                return Some(Action::SelectTrace(
-                    get_currently_selected_trace(app).cloned(),
-                ));
+                return Some(Action::SelectTrace(get_currently_selected_trace(app)));
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
                 let next_index = if app.selected_params_index == 0 {
@@ -154,7 +174,14 @@ pub fn handle_up(
                     app.selected_request_header_index - 1
                 };
 
-                let item_length = app.selected_trace.as_ref().unwrap().request_headers.len();
+                let item_length = app
+                    .selected_trace
+                    .clone()
+                    .unwrap_or_default()
+                    .http
+                    .unwrap_or_default()
+                    .request_headers
+                    .len();
 
                 let usable_height = additinal_metadata
                     .request_body_rectangle_height
@@ -189,7 +216,14 @@ pub fn handle_up(
                     app.selected_response_header_index - 1
                 };
 
-                let item_length = app.selected_trace.as_ref().unwrap().response_headers.len();
+                let item_length = app
+                    .selected_trace
+                    .clone()
+                    .unwrap_or_default()
+                    .http
+                    .unwrap_or_default()
+                    .request_headers
+                    .len();
 
                 let usable_height = additinal_metadata.response_body_rectangle_height
                     - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
@@ -268,8 +302,39 @@ pub fn handle_down(
             _ => None,
         },
         _ => match (app.active_block, app.request_details_block) {
+            (ActiveBlock::Filter(FilterScreen::FilterMethod), _) => {
+                if app.filter_index + 1 < app.method_filters.len() {
+                    app.filter_index += 1;
+                }
+                None
+            }
+            (ActiveBlock::Filter(FilterScreen::FilterSource), _) => {
+                if app.filter_index + 1 < get_services_from_traces(app).len() + 1 {
+                    app.filter_index += 1;
+                }
+                None
+            }
+            (ActiveBlock::Filter(FilterScreen::FilterMain), _) => {
+                if app.filter_index + 1 < 3 {
+                    app.filter_index += 1;
+                }
+                None
+            }
+            (ActiveBlock::Filter(FilterScreen::FilterStatus), _) => {
+                if app.filter_index + 1 < app.status_filters.len() {
+                    app.filter_index += 1;
+                }
+                None
+            }
+            (ActiveBlock::Sort, _) => {
+                if app.sort_index + 1 < 12 {
+                    app.sort_index += 1;
+                }
+                None
+            }
             (ActiveBlock::TracesBlock, _) => {
-                let length = app.items.len();
+                let length = get_rendered_items(app).len();
+
                 let number_of_lines: u16 = length.try_into().unwrap();
 
                 let usable_height = additinal_metadata
@@ -313,16 +378,14 @@ pub fn handle_down(
 
                 app.selected_params_index = 0;
 
-                return Some(Action::SelectTrace(
-                    get_currently_selected_trace(app).cloned(),
-                ));
+                return Some(Action::SelectTrace(get_currently_selected_trace(app)));
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
                 let item = app.selected_trace.as_ref().unwrap();
 
-                let params = parse_query_params(item.uri.clone());
+                let params = parse_query_params(item.http.clone().unwrap_or_default().uri);
 
-                let next_index = if app.selected_params_index + 1 >= params.len() {
+                if app.selected_params_index + 1 >= params.len() {
                     params.len() - 1
                 } else {
                     app.selected_params_index + 1
@@ -333,7 +396,7 @@ pub fn handle_down(
             (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
                 let item = app.selected_trace.as_ref().unwrap();
 
-                let item_length = item.request_headers.len();
+                let item_length = item.http.clone().unwrap_or_default().request_headers.len();
 
                 let next_index = if app.selected_request_header_index + 1 >= item_length {
                     item_length - 1
@@ -378,8 +441,8 @@ pub fn handle_down(
             (ActiveBlock::ResponseDetails, _) => {
                 let item = app.selected_trace.as_ref().unwrap();
 
-                if item.duration.is_some() {
-                    let item_length = item.response_headers.len();
+                if item.http.clone().unwrap_or_default().duration.is_some() {
+                    let item_length = item.http.clone().unwrap_or_default().response_headers.len();
 
                     let next_index = if app.selected_response_header_index + 1 >= item_length {
                         item_length - 1
@@ -531,29 +594,14 @@ pub fn handle_pane_prev(app: &mut Home) -> Option<Action> {
 }
 
 pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) -> Option<Action> {
-    let trace = app.selected_trace.as_ref().unwrap();
+    if let Some(trace) = app.selected_trace.clone() {
+        match app.active_block {
+            ActiveBlock::TracesBlock => {
+                let cmd = generate_curl_command(&trace);
 
-    match app.active_block {
-        ActiveBlock::TracesBlock => {
-            let cmd = generate_curl_command(&trace);
-
-            match clippers::Clipboard::get().write_text(cmd) {
-                Ok(_) => {
-                    app.status_message = Some(String::from("Request copied as cURL command!"));
-                }
-                Err(_) => {
-                    app.status_message = Some(String::from(
-                        "Something went wrong while copying to the clipboard!",
-                    ));
-                }
-            }
-        }
-        ActiveBlock::ResponseBody => match &trace.response_body {
-            Some(body) => {
-                match clippers::Clipboard::get().write_text(pretty_parse_body(body).unwrap()) {
+                match clippers::Clipboard::get().write_text(cmd) {
                     Ok(_) => {
-                        app.status_message =
-                            Some(String::from("Response body copied to clipboard."));
+                        app.status_message = Some(String::from("Request copied as cURL command!"));
                     }
                     Err(_) => {
                         app.status_message = Some(String::from(
@@ -562,24 +610,39 @@ pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) -> O
                     }
                 }
             }
-            None => {}
-        },
-        _ => {}
-    };
+            ActiveBlock::ResponseBody => match trace.http.unwrap_or_default().response_body {
+                Some(body) => {
+                    match clippers::Clipboard::get().write_text(pretty_parse_body(&body).unwrap()) {
+                        Ok(_) => {
+                            app.status_message =
+                                Some(String::from("Response body copied to clipboard."));
+                        }
+                        Err(_) => {
+                            app.status_message = Some(String::from(
+                                "Something went wrong while copying to the clipboard!",
+                            ));
+                        }
+                    }
+                }
+                None => {}
+            },
+            _ => {}
+        };
 
-    app.abort_handlers.iter().for_each(|handler| {
-        handler.abort();
-    });
-
-    app.abort_handlers.clear();
-
-    if let Some(s) = sender {
-        let thread_handler = tokio::spawn(async move {
-            sleep(Duration::from_millis(5000)).await;
-
-            s.send(Action::ClearStatusMessage)
+        app.abort_handlers.iter().for_each(|handler| {
+            handler.abort();
         });
-        app.abort_handlers.push(thread_handler.abort_handle());
+
+        app.abort_handlers.clear();
+
+        if let Some(s) = sender {
+            let thread_handler = tokio::spawn(async move {
+                sleep(Duration::from_millis(5000)).await;
+
+                s.send(Action::ClearStatusMessage)
+            });
+            app.abort_handlers.push(thread_handler.abort_handle());
+        }
     }
 
     None
@@ -611,9 +674,7 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                 reset_request_and_response_body_ui_state(app);
             }
 
-            return Some(Action::SelectTrace(
-                get_currently_selected_trace(app).cloned(),
-            ));
+            return Some(Action::SelectTrace(get_currently_selected_trace(app)));
         }
         ActiveBlock::RequestBody => {
             let content = get_content_length(app);
@@ -669,82 +730,90 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
             }
         }
         ActiveBlock::RequestDetails => {
-            let item = app.selected_trace.as_ref().unwrap();
-
             let content = get_content_length(app);
 
-            if item.duration.is_some() {
-                let item_length = item.request_headers.len();
+            if let Some(item) = app.selected_trace.clone() {
+                if item.http.clone().unwrap_or_default().duration.is_some() {
+                    let item_length = item.http.unwrap_or_default().request_headers.len();
 
-                let usable_height = additional_metadata
-                    .request_body_rectangle_height
-                    .checked_sub(REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
-                    .unwrap_or_default();
+                    let usable_height = additional_metadata
+                        .request_body_rectangle_height
+                        .checked_sub(REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                        .unwrap_or_default();
 
-                let requires_scrollbar = item_length as u16 >= usable_height;
+                    let requires_scrollbar = item_length as u16 >= usable_height;
 
-                app.selected_request_header_index = content.request_headers.vertical as usize - 1;
+                    app.selected_request_header_index =
+                        content.request_headers.vertical as usize - 1;
 
-                if requires_scrollbar {
-                    let current_index_hit_viewport_end =
-                        app.selected_request_header_index >= { usable_height as usize };
+                    if requires_scrollbar {
+                        let current_index_hit_viewport_end =
+                            app.selected_request_header_index >= { usable_height as usize };
 
-                    let offset_does_not_intersects_bottom_of_rect =
-                        (app.request_details.offset as u16 + usable_height) < item_length as u16;
+                        let offset_does_not_intersects_bottom_of_rect =
+                            (app.request_details.offset as u16 + usable_height)
+                                < item_length as u16;
 
-                    if current_index_hit_viewport_end && offset_does_not_intersects_bottom_of_rect {
-                        app.request_details.offset = item_length - usable_height as usize;
+                        if current_index_hit_viewport_end
+                            && offset_does_not_intersects_bottom_of_rect
+                        {
+                            app.request_details.offset = item_length - usable_height as usize;
+                        }
+
+                        let next_position = calculate_scrollbar_position(
+                            item_length as u16,
+                            app.request_details.offset,
+                            item_length as u16 - (usable_height),
+                        );
+
+                        app.request_details.scroll_state = app
+                            .request_details
+                            .scroll_state
+                            .position(next_position.into());
                     }
-
-                    let next_position = calculate_scrollbar_position(
-                        item_length as u16,
-                        app.request_details.offset,
-                        item_length as u16 - (usable_height),
-                    );
-
-                    app.request_details.scroll_state = app
-                        .request_details
-                        .scroll_state
-                        .position(next_position.into());
                 }
             }
         }
         ActiveBlock::ResponseDetails => {
-            let item = app.selected_trace.as_ref().unwrap();
             let content = get_content_length(app);
 
-            if item.duration.is_some() {
-                let item_length = item.response_headers.len();
+            if let Some(item) = &app.selected_trace {
+                if item.http.clone().unwrap_or_default().duration.is_some() {
+                    let item_length = item.http.clone().unwrap_or_default().response_headers.len();
 
-                let usable_height = additional_metadata.response_body_rectangle_height
-                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                    let usable_height = additional_metadata.response_body_rectangle_height
+                        - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
 
-                let requires_scrollbar = item_length as u16 >= usable_height;
+                    let requires_scrollbar = item_length as u16 >= usable_height;
 
-                app.selected_response_header_index =
-                    content.response_headers.unwrap().vertical as usize - 1;
+                    app.selected_response_header_index =
+                        content.response_headers.unwrap().vertical as usize - 1;
 
-                if requires_scrollbar {
-                    let current_index_hit_viewport_end =
-                        app.selected_response_header_index >= { usable_height as usize };
+                    if requires_scrollbar {
+                        let current_index_hit_viewport_end =
+                            app.selected_response_header_index >= { usable_height as usize };
 
-                    let offset_does_not_intersects_bottom_of_rect =
-                        (app.response_details.offset as u16 + usable_height) < item_length as u16;
+                        let offset_does_not_intersects_bottom_of_rect =
+                            (app.response_details.offset as u16 + usable_height)
+                                < item_length as u16;
 
-                    if current_index_hit_viewport_end && offset_does_not_intersects_bottom_of_rect {
-                        app.response_details.offset = item_length - usable_height as usize;
+                        if current_index_hit_viewport_end
+                            && offset_does_not_intersects_bottom_of_rect
+                        {
+                            app.response_details.offset = item_length - usable_height as usize;
+                        }
+
+                        let next_position = calculate_scrollbar_position(
+                            item_length as u16,
+                            app.response_details.offset,
+                            item_length as u16 - (usable_height),
+                        );
+
+                        app.response_details.scroll_state = app
+                            .response_details
+                            .scroll_state
+                            .position(next_position.into());
                     }
-
-                    let next_position = calculate_scrollbar_position(
-                        item_length as u16,
-                        app.response_details.offset,
-                        item_length as u16 - (usable_height),
-                    );
-
-                    app.response_details.scroll_state = app
-                        .response_details
-                        .scroll_state
-                        .position(next_position.into());
                 }
             }
         }
@@ -764,9 +833,7 @@ pub fn handle_go_to_start(app: &mut Home) -> Option<Action> {
 
             reset_request_and_response_body_ui_state(app);
 
-            return Some(Action::SelectTrace(
-                get_currently_selected_trace(app).cloned(),
-            ));
+            return Some(Action::SelectTrace(get_currently_selected_trace(app)));
         }
         ActiveBlock::ResponseBody => {
             let content = get_content_length(app);
@@ -825,5 +892,214 @@ pub fn handle_delete_item(app: &mut Home) -> Option<Action> {
 
 pub fn handle_general_status(app: &mut Home, s: String) -> Option<Action> {
     app.status_message = Some(s);
+    None
+}
+
+pub fn handle_select(app: &mut Home) -> Option<Action> {
+    match app.active_block {
+        ActiveBlock::Sort => {
+            let filter_items = vec![
+                ("Method", "Asc"),
+                ("Method", "Desc"),
+                ("Source", "Asc"),
+                ("Source", "Desc"),
+                ("Status", "Asc"),
+                ("Status", "Desc"),
+                ("Timestamp", "Asc"),
+                ("Timestamp", "Desc"),
+                ("Duration", "Asc"),
+                ("Duration", "Desc"),
+                ("Url", "Asc"),
+                ("Url", "Desc"),
+            ];
+
+            let selected_filter = filter_items.iter().nth(app.sort_index).cloned();
+
+            if let Some(selected_filter) = selected_filter {
+                match selected_filter {
+                    ("Method", "Asc") => app.order = TraceSort::Method(Ordering::Ascending),
+                    ("Method", "Desc") => app.order = TraceSort::Method(Ordering::Descending),
+                    ("Status", "Asc") => app.order = TraceSort::Status(Ordering::Ascending),
+                    ("Status", "Desc") => app.order = TraceSort::Status(Ordering::Descending),
+                    ("Timestamp", "Asc") => app.order = TraceSort::Timestamp(Ordering::Ascending),
+                    ("Timestamp", "Desc") => app.order = TraceSort::Timestamp(Ordering::Descending),
+                    ("Url", "Asc") => app.order = TraceSort::Url(Ordering::Ascending),
+                    ("Url", "Desc") => app.order = TraceSort::Url(Ordering::Descending),
+                    ("Duration", "Asc") => app.order = TraceSort::Duration(Ordering::Ascending),
+                    ("Duration", "Desc") => app.order = TraceSort::Duration(Ordering::Descending),
+                    ("Source", "Asc") => app.order = TraceSort::Source(Ordering::Ascending),
+                    ("Source", "Desc") => app.order = TraceSort::Source(Ordering::Descending),
+                    (_, _) => {}
+                }
+            }
+        }
+        ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
+            let blocks = vec!["method", "source", "status"];
+
+            let selected_filter = blocks.iter().nth(app.filter_index).cloned();
+
+            if selected_filter.is_none() {
+                return None;
+            }
+
+            match selected_filter.unwrap() {
+                "method" => {
+                    app.previous_blocks
+                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+
+                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod)
+                }
+                "source" => {
+                    app.previous_blocks
+                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+
+                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterSource)
+                }
+                "status" => {
+                    app.previous_blocks
+                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+
+                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus)
+                }
+                _ => {}
+            };
+
+            app.filter_index = 0;
+        }
+
+        ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
+            let current_service = app
+                .status_filters
+                .iter()
+                .map(|(key, _item)| key)
+                .nth(app.filter_index);
+
+            if current_service.is_none() {
+                return None;
+            }
+
+            if let Some(filter) = current_service {
+                if let Some(status_filter) = app.status_filters.get(filter) {
+                    let d = status_filter.clone();
+
+                    app.status_filters.insert(
+                        filter.clone(),
+                        StatusFilter {
+                            name: d.name.clone(),
+                            status: d.status.clone(),
+                            selected: !d.selected,
+                        },
+                    );
+                }
+            };
+
+            reset_request_and_response_body_ui_state(app);
+
+            app.main.index = 0;
+
+            app.main.offset = 0;
+
+            app.main.scroll_state = app.main.scroll_state.position(0);
+        }
+        ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
+            let current_service = app
+                .method_filters
+                .iter()
+                .map(|(a, _item)| a)
+                .nth(app.filter_index);
+
+            if current_service.is_none() {
+                return None;
+            }
+
+            if let Some(filter) = current_service {
+                if let Some(d) = app.method_filters.get(filter) {
+                    let d = d.clone();
+
+                    app.method_filters.insert(
+                        filter.clone(),
+                        MethodFilter {
+                            name: d.name.clone(),
+                            method: d.method.clone(),
+                            selected: !d.selected,
+                        },
+                    );
+                }
+            };
+
+            reset_request_and_response_body_ui_state(app);
+
+            app.main.index = 0;
+
+            app.main.offset = 0;
+
+            app.main.scroll_state = app.main.scroll_state.position(0);
+        }
+        ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
+            let mut services = get_services_from_traces(app);
+
+            let mut a: Vec<String> = vec!["All".to_string()];
+
+            a.append(&mut services);
+
+            services = a;
+
+            let selected_filter = services.iter().nth(app.filter_index).cloned();
+
+            if selected_filter.is_none() {
+                return None;
+            }
+
+            if let Some(filter) = selected_filter {
+                match filter.as_str() {
+                    "All" => app.set_filter_source(FilterSource::All),
+                    source => match app.get_filter_source() {
+                        FilterSource::All => {
+                            let mut set = HashSet::new();
+
+                            set.insert(source.to_string());
+
+                            app.set_filter_source(FilterSource::Applied(set))
+                        }
+                        FilterSource::Applied(applied_sources) => {
+                            if applied_sources.contains(&source.to_string()) {
+                                let mut set = applied_sources.clone();
+
+                                set.remove(source);
+
+                                app.set_filter_source(FilterSource::Applied(set))
+                            } else {
+                                let mut set = applied_sources.clone();
+
+                                set.insert(source.to_string());
+
+                                if set.len() == get_services_from_traces(app).len() {
+                                    app.set_filter_source(FilterSource::All)
+                                } else {
+                                    app.set_filter_source(FilterSource::Applied(set))
+                                }
+                            }
+                        }
+                    },
+                }
+            };
+
+            reset_request_and_response_body_ui_state(app);
+
+            app.main.index = 0;
+
+            app.main.offset = 0;
+
+            let items = get_rendered_items(app);
+
+            let length = items.len();
+
+            set_content_length(app);
+
+            app.main.scroll_state = app.main.scroll_state.content_length(length.into());
+        }
+        _ => {}
+    }
+
     None
 }

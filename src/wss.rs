@@ -164,7 +164,15 @@ pub async fn client(
                         match parse_raw_trace(&s) {
                             Ok(request) => match request {
                                 crate::parser::Payload::Trace(trace) => {
-                                    let port = trace.port.clone().unwrap_or("0".to_string());
+                                    let mut should_persist = true;
+
+                                    let http_trace = trace.http.as_ref().unwrap();
+
+                                    if let Some(port) = &http_trace.port {
+                                        if port == "9999" {
+                                            should_persist = false;
+                                        }
+                                    }
 
                                     if let Some(s) = tx.clone() {
                                         let id = trace.id.clone();
@@ -174,7 +182,7 @@ pub async fn client(
                                             s1.send(Action::MarkTraceAsTimedOut(id)).unwrap();
                                         });
 
-                                        if port != "9999" {
+                                        if should_persist {
                                             let s2 = s.clone();
                                             s2.send(Action::AddTrace(trace)).unwrap();
                                         }

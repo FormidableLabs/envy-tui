@@ -1,10 +1,12 @@
-use std::collections::{BTreeSet, HashMap};
-use std::error::Error;
-
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
-    layout::{Layout, Rect},
-    prelude::{Constraint, Direction},
+    layout::Layout,
+    prelude::{Constraint, Direction, Rect},
+};
+use std::error::Error;
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    str::FromStr,
 };
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
@@ -17,6 +19,7 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
+    utils::TraceSort,
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -27,11 +30,34 @@ pub enum WebSockerInternalState {
     Closed,
 }
 
+#[derive(Clone, PartialEq, Debug, Eq, Default)]
+pub enum FilterSource {
+    #[default]
+    All,
+    Applied(HashSet<String>), // Source(String),
+                              // Method(http::method::Method),
+                              // Status(String),
+}
+
+#[derive(Default)]
+pub struct MethodFilter {
+    pub method: http::method::Method,
+    pub name: String,
+    pub selected: bool,
+}
+
+#[derive(Default)]
+pub struct StatusFilter {
+    pub status: String,
+    pub name: String,
+    pub selected: bool,
+}
+
 #[derive(Default)]
 pub struct Home {
     pub action_tx: Option<UnboundedSender<Action>>,
     pub active_block: ActiveBlock,
-    pub previous_block: Option<ActiveBlock>,
+    pub previous_blocks: Vec<ActiveBlock>,
     pub request_details_block: RequestDetailsPane,
     pub response_details_block: ResponseDetailsPane,
     pub items: BTreeSet<Trace>,
@@ -57,13 +83,19 @@ pub struct Home {
     pub request_json_viewer: jsonviewer::JSONViewer,
     pub response_json_viewer: jsonviewer::JSONViewer,
     pub selected_trace: Option<Trace>,
+    pub filter_index: usize,
+    pub sort_index: usize,
     metadata: Option<handlers::HandlerMetadata>,
+    filter_source: FilterSource,
+    pub method_filters: HashMap<http::method::Method, MethodFilter>,
+    pub status_filters: HashMap<String, StatusFilter>,
+    pub order: TraceSort,
 }
 
 impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
         let config = crate::config::Config::new()?;
-        let home = Home {
+        let mut home = Home {
             key_map: config.mapping.0,
             request_json_viewer: jsonviewer::JSONViewer::new(
                 ActiveBlock::RequestBody,
@@ -78,22 +110,58 @@ impl Home {
             ..Self::default()
         };
 
+        let methods = vec!["POST", "GET", "DELETE", "PUT", "PATCH", "OPTION"];
+
+        let statuses = vec!["1xx", "2xx", "3xx", "4xx", "5xx"];
+
+        statuses.iter().for_each(|status| {
+            home.status_filters.insert(
+                status.clone().to_string(),
+                StatusFilter {
+                    status: status.to_string(),
+                    selected: false,
+                    name: status.to_string(),
+                },
+            );
+        });
+
+        methods.iter().for_each(|method| {
+            if let Ok(method) = http::method::Method::from_str(method) {
+                home.method_filters.insert(
+                    method.clone(),
+                    MethodFilter {
+                        method: method.clone(),
+                        selected: false,
+                        name: method.to_string(),
+                    },
+                );
+            }
+        });
+
         Ok(home)
+    }
+
+    pub fn get_filter_source(&self) -> &FilterSource {
+        &self.filter_source
+    }
+
+    pub fn set_filter_source(&mut self, f: FilterSource) {
+        self.filter_source = f
     }
 
     fn mark_trace_as_timed_out(&mut self, id: String) {
         let selected_trace = self.items.iter().find(|trace| trace.id == id);
 
         if selected_trace.is_some() {
-            let mut selected_trace = selected_trace.unwrap().clone();
+            let selected_trace = selected_trace.unwrap().clone();
 
-            if selected_trace.state == State::Sent {
-                selected_trace.state = State::Timeout;
-                selected_trace.status = None;
-                selected_trace.response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
-                selected_trace.pretty_response_body =
-                    Some("TIMEOUT WAITING FOR RESPONSE".to_string());
+            let mut http_trace = selected_trace.http.as_ref().unwrap().clone();
 
+            if http_trace.state == State::Sent {
+                http_trace.state = State::Timeout;
+                http_trace.status = None;
+                http_trace.response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
+                http_trace.pretty_response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
                 self.items.replace(selected_trace);
             };
         }
@@ -154,74 +222,95 @@ impl Component for Home {
             })
             .clone();
 
-        let other_action = match action {
-            Action::Quit => match self.active_block {
-                ActiveBlock::Help | ActiveBlock::Debug => {
-                    self.active_block = self.previous_block.unwrap_or(ActiveBlock::TracesBlock);
+        match action {
+            Action::Quit => {
+                let last_block = self.previous_blocks.pop();
 
-                    self.previous_block = None;
-
-                    return Ok(None);
+                if last_block.is_none() {
+                    return Ok(Some(Action::QuitApplication));
                 }
-                _ => return Ok(Some(Action::QuitApplication)),
-            },
-            Action::NextSection => return Ok(handlers::handle_tab(self)),
-            Action::OnMount => handlers::handle_adjust_scroll_bar(self, metadata),
-            Action::Help => handlers::handle_help(self),
-            Action::ToggleDebug => handlers::handle_debug(self),
-            Action::DeleteItem => handlers::handle_delete_item(self),
-            Action::CopyToClipBoard => handlers::handle_yank(self, self.action_tx.clone()),
-            Action::GoToEnd => handlers::handle_go_to_end(self, metadata),
-            Action::GoToStart => handlers::handle_go_to_start(self),
-            Action::PreviousSection => handlers::handle_back_tab(self),
-            Action::NextPane => handlers::handle_pane_next(self),
-            Action::PreviousPane => handlers::handle_pane_prev(self),
-            Action::NewSearch => handlers::handle_new_search(self),
-            Action::UpdateSearchQuery(c) => handlers::handle_search_push(self, c),
-            Action::DeleteSearchQuery => handlers::handle_search_pop(self),
-            Action::ExitSearch => handlers::handle_search_exit(self),
-            Action::ShowTraceDetails => handlers::handle_enter(self),
-            Action::FocusOnTraces => handlers::handle_esc(self),
+
+                self.filter_index = 0;
+
+                self.active_block = last_block.unwrap();
+
+                Ok(None)
+            }
+            Action::NextSection => Ok(handlers::handle_tab(self)),
+            Action::OnMount => Ok(handlers::handle_adjust_scroll_bar(self, metadata)),
+            Action::Help => Ok(handlers::handle_help(self)),
+            Action::ToggleDebug => Ok(handlers::handle_debug(self)),
+            Action::Select => Ok(handlers::handle_select(self)),
+            Action::HandleFilter(l) => Ok(handlers::handle_general_status(self, l.to_string())),
+            Action::OpenFilter => {
+                let current_block = self.active_block;
+
+                self.previous_blocks.push(current_block);
+
+                self.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMain);
+
+                Ok(None)
+            }
+            Action::OpenSort => {
+                let current_block = self.active_block;
+
+                self.previous_blocks.push(current_block);
+
+                self.active_block = ActiveBlock::Sort;
+
+                Ok(None)
+            }
+            Action::DeleteItem => Ok(handlers::handle_delete_item(self)),
+            Action::CopyToClipBoard => Ok(handlers::handle_yank(self, self.action_tx.clone())),
+            Action::GoToEnd => Ok(handlers::handle_go_to_end(self, metadata)),
+            Action::GoToStart => Ok(handlers::handle_go_to_start(self)),
+            Action::PreviousSection => Ok(handlers::handle_back_tab(self)),
+            Action::NextPane => Ok(handlers::handle_pane_next(self)),
+            Action::PreviousPane => Ok(handlers::handle_pane_prev(self)),
+            Action::NewSearch => Ok(handlers::handle_new_search(self)),
+            Action::UpdateSearchQuery(c) => Ok(handlers::handle_search_push(self, c)),
+            Action::DeleteSearchQuery => Ok(handlers::handle_search_pop(self)),
+            Action::ExitSearch => Ok(handlers::handle_search_exit(self)),
+            Action::ShowTraceDetails => Ok(handlers::handle_enter(self)),
+            Action::FocusOnTraces => Ok(handlers::handle_esc(self)),
             Action::StopWebSocketServer => {
                 self.wss_connected = false;
-                None
+                Ok(None)
             }
             Action::StartWebSocketServer => {
                 self.wss_connected = true;
-                None
+                Ok(None)
             }
-            Action::SetGeneralStatus(s) => handlers::handle_general_status(self, s),
+            Action::SetGeneralStatus(s) => Ok(handlers::handle_general_status(self, s)),
             Action::SetWebsocketStatus(s) => {
                 self.wss_state = s;
-                None
+                Ok(None)
             }
-            Action::NavigateUp(Some(key)) => handlers::handle_up(self, key, metadata),
-            Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
+            Action::NavigateUp(Some(key)) => Ok(handlers::handle_up(self, key, metadata)),
+            Action::NavigateDown(Some(key)) => Ok(handlers::handle_down(self, key, metadata)),
             Action::UpdateMeta(metadata) => {
                 self.metadata = Some(metadata);
-                None
+                Ok(None)
             }
             Action::ClearStatusMessage => {
                 self.status_message = None;
-                None
+                Ok(None)
             }
             Action::AddTrace(trace) => {
                 self.items.replace(trace);
                 handlers::handle_adjust_scroll_bar(self, metadata);
-                None
+                Ok(None)
             }
             Action::MarkTraceAsTimedOut(id) => {
                 self.mark_trace_as_timed_out(id);
-                Some(Action::SelectTrace(self.selected_trace.clone()))
+                Ok(Some(Action::SelectTrace(self.selected_trace.clone())))
             }
             Action::SelectTrace(trace) => {
                 self.selected_trace = trace;
-                None
+                Ok(None)
             }
-            _ => None,
-        };
-
-        Ok(other_action)
+            _ => Ok(None),
+        }
     }
 
     fn render(&self, frame: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
@@ -234,6 +323,51 @@ impl Component for Home {
                     .split(rect);
 
                 render::render_help(self, frame, main_layout[0]);
+            }
+            ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_filters(self, frame, main_layout[0]);
+            }
+            ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_filters_source(self, frame, main_layout[0]);
+            }
+            ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_filters_status(self, frame, main_layout[0]);
+            }
+            ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_filters_method(self, frame, main_layout[0]);
+            }
+            ActiveBlock::Sort => {
+                let main_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Percentage(100)].as_ref())
+                    .split(frame.size());
+
+                render::render_sort(self, frame, main_layout[0]);
             }
             ActiveBlock::Debug => {
                 let main_layout = Layout::default()

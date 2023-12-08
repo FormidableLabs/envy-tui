@@ -1,11 +1,10 @@
+use core::str::FromStr;
 use http::Uri;
+use regex::Regex;
+use std::fmt::Display;
 
-use crate::components::home::Home;
+use crate::components::home::{FilterSource, Home};
 use crate::services::websocket::Trace;
-
-pub enum UIDispatchEvent {
-    ClearStatusMessage,
-}
 
 // NOTE: [stackoverflow](https://stackoverflow.com/questions/38461429/how-can-i-truncate-a-string-to-have-at-most-n-characters)
 pub fn truncate(s: &str, max_chars: usize) -> String {
@@ -43,10 +42,229 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
     }
 }
 
-pub fn get_currently_selected_trace(app: &Home) -> Option<&Trace> {
-    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
+fn fuzzy_regex(query: String) -> Regex {
+    if query.is_empty() {
+        return Regex::new(r".*").unwrap();
+    }
 
-    items_as_vector.get(app.main.index).copied()
+    let mut fuzzy_query = String::new();
+
+    for c in query.chars() {
+        fuzzy_query.extend([c, '.', '*']);
+    }
+
+    return Regex::from_str(&fuzzy_query).unwrap();
+}
+
+#[derive(Default, PartialEq, Eq, Debug, Clone)]
+pub enum Ordering {
+    #[default]
+    Ascending,
+    Descending,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub enum TraceSort {
+    Method(Ordering),
+    Status(Ordering),
+    Source(Ordering),
+    Url(Ordering),
+    Duration(Ordering),
+    Timestamp(Ordering),
+}
+
+impl Default for TraceSort {
+    fn default() -> Self {
+        Self::Timestamp(Ordering::Descending)
+    }
+}
+
+impl Display for TraceSort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Timestamp(Ordering::Ascending) => write!(f, "Timestamp ↑"),
+            Self::Timestamp(Ordering::Descending) => write!(f, "Timestamp ↓"),
+            Self::Method(Ordering::Ascending) => write!(f, "Method ↑"),
+            Self::Method(Ordering::Descending) => write!(f, "Method ↓"),
+            Self::Status(Ordering::Ascending) => write!(f, "Status ↑"),
+            Self::Status(Ordering::Descending) => write!(f, "Status ↓"),
+            Self::Duration(Ordering::Ascending) => write!(f, "Duration ↑"),
+            Self::Duration(Ordering::Descending) => write!(f, "Duration ↓"),
+            Self::Source(Ordering::Ascending) => write!(f, "Source ↑"),
+            Self::Source(Ordering::Descending) => write!(f, "Source ↓"),
+            Self::Url(Ordering::Ascending) => write!(f, "Url ↑"),
+            Self::Url(Ordering::Descending) => write!(f, "Url ↓"),
+        }
+    }
+}
+
+pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
+    let re = fuzzy_regex(app.search_query.clone());
+
+    let no_applied_method_filter = app
+        .method_filters
+        .iter()
+        .filter(|(_key, method_filter)| method_filter.selected == true)
+        .collect::<Vec<_>>()
+        .is_empty();
+
+    let no_applied_statud_filter = app
+        .status_filters
+        .iter()
+        .filter(|(_key, method_filter)| method_filter.selected == true)
+        .collect::<Vec<_>>()
+        .is_empty();
+
+    let mut items_as_vector = app
+        .items
+        .iter()
+        .filter(|trace| re.is_match(&trace.http.as_ref().unwrap().uri))
+        .filter(
+            |trace| match (app.get_filter_source(), trace.service_name.as_ref()) {
+                (FilterSource::All, _) => true,
+                (FilterSource::Applied(sources), Some(trace_source)) => {
+                    sources.contains(trace_source)
+                }
+                _ => false,
+            },
+        )
+        .filter(|trace| {
+            let method = &trace.http.as_ref().unwrap().status;
+
+            if method.is_none() {
+                return true;
+            }
+
+            let method_as_string = method.as_ref().unwrap().clone().as_u16().to_string();
+
+            let first_char = method_as_string.chars().nth(0).unwrap();
+
+            let matcher = match first_char {
+                '1' => "1xx",
+                '2' => "2xx",
+                '3' => "3xx",
+                '4' => "4xx",
+                '5' => "5xx",
+                _ => "",
+            };
+
+            match (no_applied_statud_filter, app.status_filters.get(matcher)) {
+                (true, _) => true,
+                (_, Some(status_filter)) => status_filter.selected.clone(),
+                (_, _) => false,
+            }
+        })
+        .filter(|trace| {
+            match (
+                no_applied_method_filter,
+                app.method_filters.get(&trace.http.as_ref().unwrap().method),
+            ) {
+                (true, _) => true,
+                (_, Some(method_filter)) => method_filter.selected.clone(),
+                (_, _) => false,
+            }
+        })
+        .collect::<Vec<&Trace>>();
+
+    items_as_vector.sort_by(|a, b| match &app.order {
+        TraceSort::Duration(Ordering::Ascending) => a
+            .http
+            .as_ref()
+            .unwrap()
+            .duration
+            .unwrap_or(0)
+            .cmp(&b.http.as_ref().unwrap().duration.unwrap_or(0)),
+        TraceSort::Duration(Ordering::Descending) => b
+            .http
+            .as_ref()
+            .unwrap()
+            .duration
+            .unwrap_or(0)
+            .cmp(&a.http.as_ref().unwrap().duration.unwrap_or(0)),
+        TraceSort::Timestamp(Ordering::Ascending) => a.timestamp.cmp(&b.timestamp),
+        TraceSort::Timestamp(Ordering::Descending) => b.timestamp.cmp(&a.timestamp),
+        TraceSort::Status(Ordering::Descending) => {
+            let a_has = a.http.as_ref().unwrap().status.is_some();
+            let b_has = b.http.as_ref().unwrap().status.is_some();
+
+            if a_has && b_has {
+                b.http
+                    .as_ref()
+                    .unwrap()
+                    .status
+                    .unwrap()
+                    .as_u16()
+                    .cmp(&a.http.as_ref().unwrap().status.unwrap().as_u16())
+            } else if a_has {
+                std::cmp::Ordering::Less
+            } else if b_has {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }
+        TraceSort::Status(Ordering::Ascending) => {
+            let a_has = a.http.as_ref().unwrap().status.is_some();
+            let b_has = b.http.as_ref().unwrap().status.is_some();
+
+            if a_has && b_has {
+                a.http
+                    .as_ref()
+                    .unwrap()
+                    .status
+                    .unwrap()
+                    .as_u16()
+                    .cmp(&b.http.as_ref().unwrap().status.unwrap().as_u16())
+            } else if a_has {
+                std::cmp::Ordering::Less
+            } else if b_has {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }
+        TraceSort::Url(Ordering::Descending) => {
+            let url = &a.http.as_ref().unwrap().uri;
+            let urlb = &b.http.as_ref().unwrap().uri;
+
+            url.cmp(&urlb)
+        }
+        TraceSort::Url(Ordering::Ascending) => a.timestamp.cmp(&b.timestamp),
+        TraceSort::Method(Ordering::Ascending) => {
+            let a_has = a.http.as_ref().unwrap().method.to_string();
+            let b_has = b.http.as_ref().unwrap().method.to_string();
+
+            a_has.cmp(&b_has)
+        }
+        TraceSort::Method(Ordering::Descending) => {
+            let a_has = a.http.as_ref().unwrap().method.to_string();
+            let b_has = b.http.as_ref().unwrap().method.to_string();
+
+            b_has.cmp(&a_has)
+        }
+        TraceSort::Source(Ordering::Ascending) => {
+            let a_has = &a.service_name;
+            let b_has = &b.service_name;
+
+            a_has.cmp(&b_has)
+        }
+        TraceSort::Source(Ordering::Descending) => {
+            let a_has = &a.service_name;
+            let b_has = &b.service_name;
+
+            b_has.cmp(&a_has)
+        }
+    });
+
+    items_as_vector
+}
+
+pub fn get_currently_selected_trace(app: &Home) -> Option<Trace> {
+    let items_as_vector = get_rendered_items(app);
+
+    let trace = items_as_vector.get(app.main.index).copied();
+
+    trace.map(|x| x.clone())
 }
 
 pub fn calculate_scrollbar_position(
@@ -74,8 +292,6 @@ pub struct ContentLengthElements {
 }
 
 pub fn get_content_length(app: &Home) -> ContentLengthElements {
-    let trace = app.selected_trace.as_ref();
-
     let mut content_length = ContentLengthElements {
         request_body: None,
         response_body: None,
@@ -86,11 +302,17 @@ pub fn get_content_length(app: &Home) -> ContentLengthElements {
         },
     };
 
-    if trace.is_none() {
+    if app.selected_trace.is_none() {
         return content_length;
     }
 
-    let item = trace.unwrap();
+    let http_trace = app.selected_trace.clone().unwrap_or_default().http;
+
+    if http_trace.is_none() {
+        return content_length;
+    }
+
+    let item = http_trace.unwrap();
 
     if !item.response_headers.is_empty() {
         content_length.response_headers = Some(ContentLength {
