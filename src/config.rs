@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fs;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::prelude::Color;
 use serde::{de::Deserializer, Deserialize};
 
 use crate::app::Action;
@@ -32,14 +33,35 @@ impl<'de> Deserialize<'de> for Mapping {
 pub struct Config {
     #[serde(default)]
     pub mapping: Mapping,
+    #[serde(default)]
+    pub colors: Colors,
 }
 
-pub fn parse(contents: &str) -> Result<Mapping, Box<dyn Error>> {
-    let mapping = serde_yaml::from_str::<Mapping>(contents)?;
-    Ok(mapping)
+#[derive(Clone, Debug, Default)]
+pub struct Colors(pub HashMap<String, Color>);
+
+impl<'de> Deserialize<'de> for Colors {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let parsed_map = HashMap::<String, String>::deserialize(deserializer)?;
+
+        let colors = parsed_map
+            .into_iter()
+            .map(|(str, color_str)| (str, parse_color(&color_str).unwrap()))
+            .collect();
+
+        Ok(Colors(colors))
+    }
 }
 
-pub fn load(path: &str) -> Result<Mapping, Box<dyn Error>> {
+pub fn parse(contents: &str) -> Result<Config, Box<dyn Error>> {
+    let config = serde_yaml::from_str::<Config>(contents)?;
+    Ok(config)
+}
+
+pub fn load(path: &str) -> Result<Config, Box<dyn Error>> {
     let abs_path = fs::canonicalize(path)?;
     let contents = fs::read_to_string(abs_path)?;
     parse(&contents)
@@ -49,11 +71,14 @@ impl Config {
     pub fn new() -> Result<Config, Box<dyn Error>> {
         let default = parse(CONFIG)?;
 
-        let mut cfg = Config { mapping: default };
+        let mut cfg = default;
 
         for file in &["config.yaml", "config.yml"] {
             match load(file) {
-                Ok(right) => cfg.mapping.0.extend(right.0.into_iter()),
+                Ok(right) => {
+                    cfg.mapping.0.extend(right.mapping.0.into_iter());
+                    cfg.colors.0.extend(right.colors.0.into_iter())
+                }
                 Err(e) => println!("failed to load file: {}, err: {}", file, e),
             }
         }
@@ -117,15 +142,104 @@ fn parse_key_code_with_modifiers(
     Ok(KeyEvent::new(c, modifiers))
 }
 
+fn parse_color(s: &str) -> Option<Color> {
+    let s = s.trim_start();
+    let s = s.trim_end();
+    if s.contains("bright color") {
+        let s = s.trim_start_matches("bright ");
+        let c = s
+            .trim_start_matches("color")
+            .parse::<u8>()
+            .unwrap_or_default();
+        Some(Color::Indexed(c.wrapping_shl(8)))
+    } else if s.contains("color") {
+        let c = s
+            .trim_start_matches("color")
+            .parse::<u8>()
+            .unwrap_or_default();
+        Some(Color::Indexed(c))
+    } else if s.contains("gray") {
+        let c = 232
+            + s.trim_start_matches("gray")
+                .parse::<u8>()
+                .unwrap_or_default();
+        Some(Color::Indexed(c))
+    } else if s.contains("rgb(") {
+        let suffix = s.strip_prefix("rgb(").unwrap_or_default();
+        let rgb_string = suffix.strip_suffix(")").unwrap_or_default();
+        let rgb_values = rgb_string.split(",");
+
+        let converted: Vec<u8> = rgb_values
+            .map(|v| (v.as_bytes()[0] as char).to_digit(10).unwrap_or_default() as u8)
+            .collect();
+
+        if let [red, green, blue] = converted[..] {
+            let c = 16 + red * 36 + green * 6 + blue;
+            Some(Color::Indexed(c))
+        } else {
+            None
+        }
+    } else if s == "bold black" {
+        Some(Color::Indexed(8))
+    } else if s == "bold red" {
+        Some(Color::Indexed(9))
+    } else if s == "bold green" {
+        Some(Color::Indexed(10))
+    } else if s == "bold yellow" {
+        Some(Color::Indexed(11))
+    } else if s == "bold blue" {
+        Some(Color::Indexed(12))
+    } else if s == "bold magenta" {
+        Some(Color::Indexed(13))
+    } else if s == "bold cyan" {
+        Some(Color::Indexed(14))
+    } else if s == "bold white" {
+        Some(Color::Indexed(15))
+    } else if s == "black" {
+        Some(Color::Indexed(0))
+    } else if s == "red" {
+        Some(Color::Indexed(1))
+    } else if s == "green" {
+        Some(Color::Indexed(2))
+    } else if s == "yellow" {
+        Some(Color::Indexed(3))
+    } else if s == "blue" {
+        Some(Color::Indexed(4))
+    } else if s == "magenta" {
+        Some(Color::Indexed(5))
+    } else if s == "cyan" {
+        Some(Color::Indexed(6))
+    } else if s == "white" {
+        Some(Color::Indexed(7))
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_config() {
+    fn test_config() -> Result<(), Box<dyn Error>> {
         let c = Config::new();
-        let k = &parse_key_event("q").unwrap();
+        let k = &parse_key_event("q")?;
 
-        assert_eq!(c.mapping.get(k).unwrap(), &Action::Quit);
+        assert_eq!(c?.mapping.0.get(k).unwrap(), &Action::Quit);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_color_rgb() {
+        let color = parse_color("rgb(1,2,3)");
+        let expected = 16 + 1 * 36 + 2 * 6 + 3;
+        assert_eq!(color, Some(Color::Indexed(expected)));
+    }
+
+    #[test]
+    fn test_parse_color_unknown() {
+        let color = parse_color("unknown");
+        assert_eq!(color, None);
     }
 }

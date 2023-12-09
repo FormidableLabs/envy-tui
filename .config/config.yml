@@ -1,27 +1,30 @@
-q: Quit
-">": GoToEnd
-<: GoToStart
-q: Quit
-tab: NextSection
-backtab: PreviousSection
-y: CopyToClipBoard
-/: NewSearch
-esc: FocusOnTraces
-down: !NavigateDown
-up: !NavigateUp
-h: !NavigateLeft
-j: !NavigateDown
-L: !GoToRight
-H: !GoToLeft
-k: !NavigateUp
-l: !NavigateRight
-x: StopWebSocketServer
-X: StartWebSocketServer
-?: Help
-p: ToggleDebug
-d: DeleteItem
-space: Select
-f: OpenFilter
-s: OpenSort
-"]": NextPane
-"[": PreviousPane
+mapping:
+  - q: Quit
+  - ">": GoToEnd
+  - <: GoToStart
+  - q: Quit
+  - tab: NextSection
+  - backtab: PreviousSection
+  - y: CopyToClipBoard
+  - /: NewSearch
+  - esc: FocusOnTraces
+  - down: !NavigateDown
+  - up: !NavigateUp
+  - h: !NavigateLeft
+  - j: !NavigateDown
+  - L: !GoToRight
+  - H: !GoToLeft
+  - k: !NavigateUp
+  - l: !NavigateRight
+  - x: StopWebSocketServer
+  - X: StartWebSocketServer
+  - ?: Help
+  - p: ToggleDebug
+  - d: DeleteItem
+  - space: Select
+  - f: OpenFilter
+  - s: OpenSort
+  - "]": NextPane
+  - "[": PreviousPane
+colors:
+  - Surface-BG: rgb(100,200,300)
