@@ -165,10 +165,11 @@ pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                     .style(
                         Style::default()
                             .fg(if app.active_block == ActiveBlock::ResponseBody {
-                                Color::White
+                                app.colors.get("surface-selected").unwrap().clone()
                             } else {
-                                Color::DarkGray
+                                app.colors.get("surface-unselected").unwrap().clone()
                             })
+                            .bg(app.colors.get("surface-bg").unwrap().clone())
                             .add_modifier(Modifier::BOLD),
                     )
                     .block(
@@ -176,9 +177,9 @@ pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                             .borders(Borders::ALL)
                             .style(Style::default().fg(
                                 if app.active_block == ActiveBlock::ResponseBody {
-                                    Color::White
+                                    app.colors.get("surface-selected").unwrap().clone()
                                 } else {
-                                    Color::DarkGray
+                                    app.colors.get("surface-unselected").unwrap().clone()
                                 },
                             ))
                             .title("Request body")
@@ -399,7 +400,7 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                             if active_block == ActiveBlock::RequestDetails {
                                 Color::White
                             } else {
-                                Color::DarkGray
+                                app.colors.get("surface-unselected").unwrap().clone()
                             },
                         ))
                         .border_type(BorderType::Plain),
@@ -431,7 +432,7 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                     Style::default().fg(if active_block == ActiveBlock::RequestDetails {
                         Color::White
                     } else {
-                        Color::DarkGray
+                        app.colors.get("surface-unselected").unwrap().clone()
                     }),
                 )
                 .border_type(BorderType::Plain)
@@ -494,7 +495,7 @@ pub fn render_request_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout
                             .fg(if app.active_block == ActiveBlock::RequestBody {
                                 Color::White
                             } else {
-                                Color::DarkGray
+                                app.colors.get("surface-unselected").unwrap().clone()
                             })
                             .add_modifier(Modifier::BOLD),
                     )
@@ -505,7 +506,7 @@ pub fn render_request_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout
                                 if app.active_block == ActiveBlock::RequestBody {
                                     Color::White
                                 } else {
-                                    Color::DarkGray
+                                    app.colors.get("surface-unselected").unwrap().clone()
                                 },
                             ))
                             .title("Request body")
@@ -533,7 +534,7 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
 
     if is_progress {
         let status_bar = Paragraph::new("Loading...")
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(app.colors.get("surface-unselected").unwrap().clone()))
             .alignment(Alignment::Center)
             .block(
                 Block::default()
@@ -580,7 +581,7 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
                 Style::default().fg(if app.active_block == ActiveBlock::ResponseDetails {
                     Color::White
                 } else {
-                    Color::DarkGray
+                    app.colors.get("surface-unselected").unwrap().clone()
                 }),
             )
             .border_type(BorderType::Plain)
@@ -784,7 +785,7 @@ pub fn render_search(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let widget = Paragraph::new(format!("/{}", &app.search_query))
             .style(
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(app.colors.get("surface-unselected").unwrap().clone())
                     .add_modifier(Modifier::BOLD),
             )
             .alignment(Alignment::Left);
@@ -803,14 +804,14 @@ pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>
     let help_text = Paragraph::new("For help, press ?")
         .style(
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(app.colors.get("surface-unselected").unwrap().clone())
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Left)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(app.colors.get("surface-unselected").unwrap().clone()))
                 .title("Status Bar")
                 .padding(Padding::new(1, 0, 0, 0))
                 .border_type(BorderType::Plain),

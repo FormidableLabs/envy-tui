@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::Layout,
     prelude::{Constraint, Direction},
+    style::Color,
 };
 use std::error::Error;
 use std::{
@@ -18,7 +19,7 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::{Ordering, TraceSort},
+    utils::TraceSort,
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -74,6 +75,7 @@ pub struct Home {
     pub logs: Vec<String>,
     pub mode: Mode,
     pub key_map: HashMap<KeyEvent, Action>,
+    pub colors: HashMap<String, Color>,
     pub status_message: Option<String>,
     pub ws_status: String,
     pub wss_connected: bool,
@@ -93,6 +95,7 @@ impl Home {
         let config = crate::config::Config::new()?;
         let mut home = Home {
             key_map: config.mapping.0,
+            colors: config.colors.0,
 
             ..Self::default()
         };

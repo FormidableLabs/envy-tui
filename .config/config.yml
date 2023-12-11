@@ -29,3 +29,4 @@ mapping:
 colors:
   surface-bg: rgb(32,32,32)
   surface-selected: rgb(92,201,157)
+  surface-unselected: rgb(128,128,128)
