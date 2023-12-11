@@ -773,6 +773,7 @@ dependencies = [
  "indoc",
  "itertools",
  "paste",
+ "serde",
  "strum",
  "time",
  "unicode-segmentation",

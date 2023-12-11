@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 crossterm = { version = "0.27.0", features = ["event-stream", "serde"] }
 http = "0.2.9"
-ratatui = { version = "0.23.0", features = ["all-widgets"] }
+ratatui = { version = "0.23.0", features = ["all-widgets", "serde"] }
 serde = { version = "1.0.188" , features = ["derive"] }
 serde_json = "1.0.107"
 futures-util = "0.3.28"

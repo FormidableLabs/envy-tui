@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
+use std::str::FromStr;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::prelude::Color;
@@ -22,7 +23,7 @@ impl<'de> Deserialize<'de> for Mapping {
 
         let keybindings = parsed_map
             .into_iter()
-            .map(|(key_str, cmd)| (parse_key_event(&key_str).unwrap(), cmd))
+            .map(|(key, cmd)| (parse_key_event(&key).unwrap(), cmd))
             .collect();
 
         Ok(Mapping(keybindings))
@@ -49,7 +50,7 @@ impl<'de> Deserialize<'de> for Colors {
 
         let colors = parsed_map
             .into_iter()
-            .map(|(str, color_str)| (str, parse_color(&color_str).unwrap()))
+            .map(|(str, color)| (str, parse_color(&color).unwrap()))
             .collect();
 
         Ok(Colors(colors))
@@ -143,6 +144,7 @@ fn parse_key_code_with_modifiers(
 }
 
 fn parse_color(s: &str) -> Option<Color> {
+    let s = s.to_lowercase();
     let s = s.trim_start();
     let s = s.trim_end();
     if s.contains("bright color") {
@@ -167,15 +169,13 @@ fn parse_color(s: &str) -> Option<Color> {
     } else if s.contains("rgb(") {
         let suffix = s.strip_prefix("rgb(").unwrap_or_default();
         let rgb_string = suffix.strip_suffix(")").unwrap_or_default();
-        let rgb_values = rgb_string.split(",");
-
-        let converted: Vec<u8> = rgb_values
-            .map(|v| (v.as_bytes()[0] as char).to_digit(10).unwrap_or_default() as u8)
+        let rgb_values: Vec<u8> = rgb_string
+            .split(",")
+            .map(|v| u8::from_str(v).unwrap_or(0))
             .collect();
 
-        if let [red, green, blue] = converted[..] {
-            let c = 16 + red * 36 + green * 6 + blue;
-            Some(Color::Indexed(c))
+        if let [red, green, blue] = rgb_values[..] {
+            Some(Color::Rgb(red, green, blue))
         } else {
             None
         }
@@ -232,9 +232,14 @@ mod tests {
 
     #[test]
     fn test_parse_color_rgb() {
-        let color = parse_color("rgb(1,2,3)");
-        let expected = 16 + 1 * 36 + 2 * 6 + 3;
-        assert_eq!(color, Some(Color::Indexed(expected)));
+        let color = parse_color("rgb(255,255,255)");
+        assert_eq!(color, Some(Color::Rgb(255, 255, 255)));
+    }
+
+    #[test]
+    fn test_parse_color_named() {
+        let color = parse_color("black");
+        assert_eq!(color, Some(Color::Indexed(0)));
     }
 
     #[test]
