@@ -21,3 +21,6 @@ clippers = "0.1.2"
 regex = "1.9.5"
 serde_yaml = "0.9.25"
 chrono = "0.4.31"
+
+[profile.release]
+debug = true
