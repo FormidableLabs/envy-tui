@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::str::FromStr;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::prelude::Color;
+use ratatui::style::Color;
 use serde::{de::Deserializer, Deserialize};
 
 use crate::app::Action;
@@ -38,23 +37,30 @@ pub struct Config {
     pub colors: Colors,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Colors(pub HashMap<String, Color>);
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Colors {
+    pub surface: SurfaceColors,
+    pub text: TextColors,
+}
 
-impl<'de> Deserialize<'de> for Colors {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let parsed_map = HashMap::<String, String>::deserialize(deserializer)?;
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct SurfaceColors {
+    pub bg: Color,
+    pub selected: Color,
+    pub unselected: Color,
+    pub success: Color,
+    pub error: Color,
+    pub warning: Color,
+    pub null: Color,
+}
 
-        let colors = parsed_map
-            .into_iter()
-            .map(|(str, color)| (str, parse_color(&color).unwrap()))
-            .collect();
-
-        Ok(Colors(colors))
-    }
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct TextColors {
+    pub selected: Color,
+    pub unselected: Color,
+    pub default: Color,
+    pub accent_1: Color,
+    pub accent_2: Color,
 }
 
 pub fn parse(contents: &str) -> Result<Config, Box<dyn Error>> {
@@ -78,7 +84,7 @@ impl Config {
             match load(file) {
                 Ok(right) => {
                     cfg.mapping.0.extend(right.mapping.0.into_iter());
-                    cfg.colors.0.extend(right.colors.0.into_iter())
+                    // cfg.colors.extend(right.colors.0.into_iter())
                 }
                 Err(e) => println!("failed to load file: {}, err: {}", file, e),
             }
@@ -141,79 +147,6 @@ fn parse_key_code_with_modifiers(
         _ => return Err(format!("Unable to parse {raw}")),
     };
     Ok(KeyEvent::new(c, modifiers))
-}
-
-fn parse_color(s: &str) -> Option<Color> {
-    let s = s.to_lowercase();
-    let s = s.trim_start();
-    let s = s.trim_end();
-    if s.contains("bright color") {
-        let s = s.trim_start_matches("bright ");
-        let c = s
-            .trim_start_matches("color")
-            .parse::<u8>()
-            .unwrap_or_default();
-        Some(Color::Indexed(c.wrapping_shl(8)))
-    } else if s.contains("color") {
-        let c = s
-            .trim_start_matches("color")
-            .parse::<u8>()
-            .unwrap_or_default();
-        Some(Color::Indexed(c))
-    } else if s.contains("gray") {
-        let c = 232
-            + s.trim_start_matches("gray")
-                .parse::<u8>()
-                .unwrap_or_default();
-        Some(Color::Indexed(c))
-    } else if s.contains("rgb(") {
-        let suffix = s.strip_prefix("rgb(").unwrap_or_default();
-        let rgb_string = suffix.strip_suffix(")").unwrap_or_default();
-        let rgb_values: Vec<u8> = rgb_string
-            .split(",")
-            .map(|v| u8::from_str(v).unwrap_or(0))
-            .collect();
-
-        if let [red, green, blue] = rgb_values[..] {
-            Some(Color::Rgb(red, green, blue))
-        } else {
-            None
-        }
-    } else if s == "bold black" {
-        Some(Color::Indexed(8))
-    } else if s == "bold red" {
-        Some(Color::Indexed(9))
-    } else if s == "bold green" {
-        Some(Color::Indexed(10))
-    } else if s == "bold yellow" {
-        Some(Color::Indexed(11))
-    } else if s == "bold blue" {
-        Some(Color::Indexed(12))
-    } else if s == "bold magenta" {
-        Some(Color::Indexed(13))
-    } else if s == "bold cyan" {
-        Some(Color::Indexed(14))
-    } else if s == "bold white" {
-        Some(Color::Indexed(15))
-    } else if s == "black" {
-        Some(Color::Indexed(0))
-    } else if s == "red" {
-        Some(Color::Indexed(1))
-    } else if s == "green" {
-        Some(Color::Indexed(2))
-    } else if s == "yellow" {
-        Some(Color::Indexed(3))
-    } else if s == "blue" {
-        Some(Color::Indexed(4))
-    } else if s == "magenta" {
-        Some(Color::Indexed(5))
-    } else if s == "cyan" {
-        Some(Color::Indexed(6))
-    } else if s == "white" {
-        Some(Color::Indexed(7))
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]

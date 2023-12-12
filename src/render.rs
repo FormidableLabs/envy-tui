@@ -17,6 +17,7 @@ use ratatui::Frame;
 
 use crate::app::{Action, ActiveBlock, RequestDetailsPane, UIState};
 use crate::components::home::{FilterSource, Home};
+use crate::config::Colors;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -165,11 +166,11 @@ pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                     .style(
                         Style::default()
                             .fg(if app.active_block == ActiveBlock::ResponseBody {
-                                app.colors.get("surface-selected").unwrap().clone()
+                                app.colors.surface.selected
                             } else {
-                                app.colors.get("surface-unselected").unwrap().clone()
+                                app.colors.surface.unselected
                             })
-                            .bg(app.colors.get("surface-bg").unwrap().clone())
+                            .bg(app.colors.surface.bg)
                             .add_modifier(Modifier::BOLD),
                     )
                     .block(
@@ -177,9 +178,9 @@ pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                             .borders(Borders::ALL)
                             .style(Style::default().fg(
                                 if app.active_block == ActiveBlock::ResponseBody {
-                                    app.colors.get("surface-selected").unwrap().clone()
+                                    app.colors.surface.selected
                                 } else {
-                                    app.colors.get("surface-unselected").unwrap().clone()
+                                    app.colors.surface.unselected
                                 },
                             ))
                             .title("Request body")
@@ -206,11 +207,11 @@ fn get_row_style(row_style: RowStyle) -> Style {
     }
 }
 
-fn get_border_style(active: bool) -> Style {
+fn get_border_style(active: bool, colors: Colors) -> Style {
     if active {
-        Style::default().fg(Color::White)
+        Style::default().fg(colors.surface.selected)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(colors.surface.unselected)
     }
 }
 
@@ -398,9 +399,9 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                         .borders(Borders::BOTTOM)
                         .style(Style::default().fg(
                             if active_block == ActiveBlock::RequestDetails {
-                                Color::White
+                                app.colors.surface.selected
                             } else {
-                                app.colors.get("surface-unselected").unwrap().clone()
+                                app.colors.surface.unselected
                             },
                         ))
                         .border_type(BorderType::Plain),
@@ -430,9 +431,9 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                 )
                 .style(
                     Style::default().fg(if active_block == ActiveBlock::RequestDetails {
-                        Color::White
+                        app.colors.text.selected
                     } else {
-                        app.colors.get("surface-unselected").unwrap().clone()
+                        app.colors.text.unselected
                     }),
                 )
                 .border_type(BorderType::Plain)
@@ -493,9 +494,9 @@ pub fn render_request_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout
                     .style(
                         Style::default()
                             .fg(if app.active_block == ActiveBlock::RequestBody {
-                                Color::White
+                                app.colors.text.selected
                             } else {
-                                app.colors.get("surface-unselected").unwrap().clone()
+                                app.colors.text.unselected
                             })
                             .add_modifier(Modifier::BOLD),
                     )
@@ -504,9 +505,9 @@ pub fn render_request_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout
                             .borders(Borders::ALL)
                             .style(Style::default().fg(
                                 if app.active_block == ActiveBlock::RequestBody {
-                                    Color::White
+                                    app.colors.surface.selected
                                 } else {
-                                    app.colors.get("surface-unselected").unwrap().clone()
+                                    app.colors.surface.unselected
                                 },
                             ))
                             .title("Request body")
@@ -534,13 +535,14 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
 
     if is_progress {
         let status_bar = Paragraph::new("Loading...")
-            .style(Style::default().fg(app.colors.get("surface-unselected").unwrap().clone()))
+            .style(Style::default().fg(app.colors.text.selected))
             .alignment(Alignment::Center)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .style(get_border_style(
                         app.active_block == ActiveBlock::ResponseDetails,
+                        app.colors.clone(),
                     ))
                     .title("Response details")
                     .border_type(BorderType::Plain),
@@ -579,9 +581,9 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
             )
             .style(
                 Style::default().fg(if app.active_block == ActiveBlock::ResponseDetails {
-                    Color::White
+                    app.colors.text.selected
                 } else {
-                    app.colors.get("surface-unselected").unwrap().clone()
+                    app.colors.text.unselected
                 }),
             )
             .border_type(BorderType::Plain)
@@ -745,6 +747,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, ar
                 .borders(Borders::ALL)
                 .style(get_border_style(
                     app.active_block == ActiveBlock::TracesBlock,
+                    app.colors.clone(),
                 ))
                 .title(title)
                 .title(
@@ -785,7 +788,7 @@ pub fn render_search(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>) {
         let widget = Paragraph::new(format!("/{}", &app.search_query))
             .style(
                 Style::default()
-                    .fg(app.colors.get("surface-unselected").unwrap().clone())
+                    .fg(app.colors.text.selected)
                     .add_modifier(Modifier::BOLD),
             )
             .alignment(Alignment::Left);
@@ -804,14 +807,14 @@ pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>
     let help_text = Paragraph::new("For help, press ?")
         .style(
             Style::default()
-                .fg(app.colors.get("surface-unselected").unwrap().clone())
+                .fg(app.colors.text.selected)
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Left)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(app.colors.get("surface-unselected").unwrap().clone()))
+                .style(Style::default().fg(app.colors.surface.selected))
                 .title("Status Bar")
                 .padding(Padding::new(1, 0, 0, 0))
                 .border_type(BorderType::Plain),
@@ -868,6 +871,7 @@ pub fn render_request_summary(app: &Home, frame: &mut Frame<CrosstermBackend<Std
                 .borders(Borders::ALL)
                 .style(get_border_style(
                     app.active_block == ActiveBlock::RequestSummary,
+                    app.colors.clone(),
                 ))
                 .title("Request Summary")
                 .border_type(BorderType::Plain),
@@ -971,7 +975,7 @@ pub fn render_help(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .style(get_border_style(true, app.colors.clone()))
                 .title("Key Mappings")
                 .border_type(BorderType::Plain),
         )
@@ -992,7 +996,7 @@ pub fn render_debug(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, are
     let list = List::new(debug_lines).style(get_text_style(true)).block(
         Block::default()
             .borders(Borders::ALL)
-            .style(get_border_style(true))
+            .style(get_border_style(true, app.colors.clone()))
             .title("Debug logs")
             .border_type(BorderType::Plain),
     );
@@ -1111,7 +1115,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Sources]")
                 .border_type(BorderType::Plain),
         )
@@ -1173,7 +1177,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Status]")
                 .border_type(BorderType::Plain),
         )
@@ -1238,7 +1242,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Method]")
                 .border_type(BorderType::Plain),
         )
@@ -1293,7 +1297,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, a
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .style(get_border_style(true, app.colors.clone()))
                 .title("[Filters]")
                 .border_type(BorderType::Plain),
         )
@@ -1430,7 +1434,7 @@ pub fn render_sort(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .style(get_border_style(true, app.colors.clone()))
                 .title("[Sort traces by]")
                 .border_type(BorderType::Plain),
         )
