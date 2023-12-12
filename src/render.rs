@@ -410,7 +410,7 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                     RequestDetailsPane::Headers => 0,
                     RequestDetailsPane::Query => 1,
                 })
-                .highlight_style(Style::default().fg(Color::LightMagenta));
+                .highlight_style(Style::default().fg(app.colors.surface.selected));
 
             let inner_layout = Layout::default()
                 .direction(Direction::Vertical)
@@ -597,7 +597,7 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
                     .border_type(BorderType::Plain),
             )
             .select(0)
-            .highlight_style(Style::default().fg(Color::LightMagenta));
+            .highlight_style(Style::default().fg(app.colors.surface.selected));
 
         frame.render_widget(main, area);
         frame.render_widget(tabs, inner_layout[0]);
@@ -735,7 +735,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, ar
 
     let requests = Table::new(styled_rows)
         // You can set the style of the entire Table.
-        .style(Style::default().fg(Color::White))
+        .style(Style::default().fg(app.colors.surface.selected))
         // It has an optional header, which is simply a Row always visible at the top.
         .header(
             Row::new(vec!["Method", "Status", "Request", "Duration"])
@@ -835,14 +835,14 @@ pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>
     let status_bar = Paragraph::new(format!("{} {}", general_status, wss_status_message))
         .style(
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(app.colors.text.selected)
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Right)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(app.colors.surface.unselected))
                 .title("Status Bar")
                 .padding(Padding::new(0, 1, 0, 0))
                 .border_type(BorderType::Plain),
@@ -969,7 +969,7 @@ pub fn render_help(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area
         .style(get_text_style(true))
         .header(
             Row::new(vec!["Action", "Map"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
@@ -1109,7 +1109,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
         .style(get_text_style(true))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
@@ -1171,7 +1171,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
         .style(get_text_style(true))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
@@ -1236,7 +1236,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
         .style(get_text_style(true))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
@@ -1291,7 +1291,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, a
         .style(get_text_style(true))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
@@ -1428,7 +1428,7 @@ pub fn render_sort(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area
         .style(get_text_style(true))
         .header(
             Row::new(vec!["Selected", "Type", "Value", "Order"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
