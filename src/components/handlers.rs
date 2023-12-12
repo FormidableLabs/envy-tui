@@ -76,6 +76,7 @@ pub fn handle_debug(app: &mut Home) -> Option<Action> {
     app.previous_blocks.push(current_block);
 
     app.active_block = ActiveBlock::Debug;
+
     None
 }
 
@@ -85,6 +86,7 @@ pub fn handle_help(app: &mut Home) -> Option<Action> {
     app.previous_blocks.push(current_block);
 
     app.active_block = ActiveBlock::Help;
+
     None
 }
 
@@ -97,6 +99,7 @@ pub fn handle_up(
         KeyModifiers::CONTROL => match app.active_block {
             ActiveBlock::ResponseDetails => {
                 app.active_block = ActiveBlock::RequestDetails;
+
                 None
             }
             _ => None,
@@ -105,6 +108,7 @@ pub fn handle_up(
             (ActiveBlock::Filter(_), _) => match app.filter_index.checked_sub(1) {
                 Some(v) => {
                     app.filter_index = v;
+
                     None
                 }
                 _ => None,
@@ -112,6 +116,7 @@ pub fn handle_up(
             (ActiveBlock::Sort, _) => match app.sort_index.checked_sub(1) {
                 Some(v) => {
                     app.sort_index = v;
+
                     None
                 }
                 _ => None,
@@ -124,37 +129,37 @@ pub fn handle_up(
                         app.main.offset -= 1;
                     }
 
-                    return Some(Action::SelectTrace(get_currently_selected_trace(app)));
+                    Some(Action::SelectTrace(get_currently_selected_trace(app)))
+                } else {
+                    let number_of_lines: u16 = app.items.len().try_into().unwrap();
+
+                    let usable_height = additinal_metadata
+                        .main_height
+                        .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
+
+                    if usable_height < number_of_lines {
+                        let overflown_number_count: u16 = number_of_lines
+                            - (additinal_metadata
+                                .main_height
+                                .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16));
+
+                        let position = calculate_scrollbar_position(
+                            number_of_lines,
+                            app.main.offset,
+                            overflown_number_count,
+                        );
+
+                        app.main.scroll_state = app.main.scroll_state.position(position.into());
+                    }
+
+                    reset_request_and_response_body_ui_state(app);
+
+                    set_content_length(app);
+
+                    app.selected_params_index = 0;
+
+                    Some(Action::SelectTrace(get_currently_selected_trace(app)))
                 }
-
-                let number_of_lines: u16 = app.items.len().try_into().unwrap();
-
-                let usable_height = additinal_metadata
-                    .main_height
-                    .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
-
-                if usable_height < number_of_lines {
-                    let overflown_number_count: u16 = number_of_lines
-                        - (additinal_metadata
-                            .main_height
-                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16));
-
-                    let position = calculate_scrollbar_position(
-                        number_of_lines,
-                        app.main.offset,
-                        overflown_number_count,
-                    );
-
-                    app.main.scroll_state = app.main.scroll_state.position(position.into());
-                }
-
-                reset_request_and_response_body_ui_state(app);
-
-                set_content_length(app);
-
-                app.selected_params_index = 0;
-
-                return Some(Action::SelectTrace(get_currently_selected_trace(app)));
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
                 let next_index = if app.selected_params_index == 0 {
@@ -246,6 +251,7 @@ pub fn handle_up(
                 }
 
                 app.selected_response_header_index = next_index;
+
                 None
             }
             _ => None,
@@ -297,6 +303,7 @@ pub fn handle_down(
         KeyModifiers::CONTROL => match app.active_block {
             ActiveBlock::RequestDetails => {
                 app.active_block = ActiveBlock::ResponseDetails;
+
                 None
             }
             _ => None,
@@ -306,30 +313,35 @@ pub fn handle_down(
                 if app.filter_index + 1 < app.method_filters.len() {
                     app.filter_index += 1;
                 }
+
                 None
             }
             (ActiveBlock::Filter(FilterScreen::FilterSource), _) => {
                 if app.filter_index + 1 < get_services_from_traces(app).len() + 1 {
                     app.filter_index += 1;
                 }
+
                 None
             }
             (ActiveBlock::Filter(FilterScreen::FilterMain), _) => {
                 if app.filter_index + 1 < 3 {
                     app.filter_index += 1;
                 }
+
                 None
             }
             (ActiveBlock::Filter(FilterScreen::FilterStatus), _) => {
                 if app.filter_index + 1 < app.status_filters.len() {
                     app.filter_index += 1;
                 }
+
                 None
             }
             (ActiveBlock::Sort, _) => {
                 if app.sort_index + 1 < 12 {
                     app.sort_index += 1;
                 }
+
                 None
             }
             (ActiveBlock::TracesBlock, _) => {
@@ -378,7 +390,7 @@ pub fn handle_down(
 
                 app.selected_params_index = 0;
 
-                return Some(Action::SelectTrace(get_currently_selected_trace(app)));
+                Some(Action::SelectTrace(get_currently_selected_trace(app)))
             }
             (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
                 let item = app.selected_trace.as_ref().unwrap();
@@ -497,22 +509,26 @@ pub fn handle_enter(app: &mut Home) -> Option<Action> {
     if app.active_block == ActiveBlock::TracesBlock {
         app.active_block = ActiveBlock::RequestDetails
     }
+
     None
 }
 
 pub fn handle_esc(app: &mut Home) -> Option<Action> {
     app.active_block = ActiveBlock::TracesBlock;
+
     None
 }
 
 pub fn handle_new_search(app: &mut Home) -> Option<Action> {
     app.search_query.clear();
     app.active_block = ActiveBlock::SearchQuery;
+
     None
 }
 
 pub fn handle_search_push(app: &mut Home, c: char) -> Option<Action> {
     app.search_query.push(c);
+
     None
 }
 
@@ -521,11 +537,13 @@ pub fn handle_search_pop(app: &mut Home) -> Option<Action> {
     if app.search_query.is_empty() {
         handle_search_exit(app);
     }
+
     None
 }
 
 pub fn handle_search_exit(app: &mut Home) -> Option<Action> {
     app.active_block = ActiveBlock::TracesBlock;
+
     None
 }
 
@@ -542,6 +560,7 @@ pub fn handle_tab(app: &mut Home) -> Option<Action> {
 
     if next_block != app.active_block {
         app.active_block = next_block;
+
         Some(Action::ActivateBlock(next_block))
     } else {
         None
@@ -561,6 +580,7 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
 
     if next_block != app.active_block {
         app.active_block = next_block;
+
         Some(Action::ActivateBlock(next_block))
     } else {
         None
@@ -577,6 +597,7 @@ pub fn handle_pane_next(app: &mut Home) -> Option<Action> {
         }
         (_, _) => {}
     }
+
     None
 }
 
@@ -590,6 +611,7 @@ pub fn handle_pane_prev(app: &mut Home) -> Option<Action> {
         }
         (_, _) => {}
     }
+
     None
 }
 
@@ -674,7 +696,7 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                 reset_request_and_response_body_ui_state(app);
             }
 
-            return Some(Action::SelectTrace(get_currently_selected_trace(app)));
+            Some(Action::SelectTrace(get_currently_selected_trace(app)))
         }
         ActiveBlock::RequestBody => {
             let content = get_content_length(app);
@@ -701,6 +723,8 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                     );
                 }
             }
+
+            None
         }
         ActiveBlock::ResponseBody => {
             let content = get_content_length(app);
@@ -728,6 +752,8 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                     )
                 }
             }
+
+            None
         }
         ActiveBlock::RequestDetails => {
             let content = get_content_length(app);
@@ -773,6 +799,8 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                     }
                 }
             }
+
+            None
         }
         ActiveBlock::ResponseDetails => {
             let content = get_content_length(app);
@@ -816,10 +844,11 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                     }
                 }
             }
+
+            None
         }
-        _ => {}
+        _ => None,
     }
-    None
 }
 
 pub fn handle_go_to_start(app: &mut Home) -> Option<Action> {
@@ -892,6 +921,7 @@ pub fn handle_delete_item(app: &mut Home) -> Option<Action> {
 
 pub fn handle_general_status(app: &mut Home, s: String) -> Option<Action> {
     app.status_message = Some(s);
+
     None
 }
 
@@ -932,39 +962,44 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
                     (_, _) => {}
                 }
             }
+
+            None
         }
         ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
             let blocks = vec!["method", "source", "status"];
 
-            let selected_filter = blocks.iter().nth(app.filter_index).cloned();
+            let maybe_selected_filter = blocks.iter().nth(app.filter_index).cloned();
 
-            if selected_filter.is_none() {
-                return None;
-            }
+            if let Some(selected_filter) = maybe_selected_filter {
+                match selected_filter {
+                    "method" => {
+                        app.previous_blocks
+                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
 
-            match selected_filter.unwrap() {
-                "method" => {
-                    app.previous_blocks
-                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+                        app.active_block =
+                            ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod)
+                    }
+                    "source" => {
+                        app.previous_blocks
+                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
 
-                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod)
+                        app.active_block =
+                            ActiveBlock::Filter(crate::app::FilterScreen::FilterSource)
+                    }
+                    "status" => {
+                        app.previous_blocks
+                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+
+                        app.active_block =
+                            ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus)
+                    }
+                    _ => {}
                 }
-                "source" => {
-                    app.previous_blocks
-                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
-
-                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterSource)
-                }
-                "status" => {
-                    app.previous_blocks
-                        .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
-
-                    app.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus)
-                }
-                _ => {}
             };
 
             app.filter_index = 0;
+
+            None
         }
 
         ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
@@ -1000,6 +1035,8 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             app.main.offset = 0;
 
             app.main.scroll_state = app.main.scroll_state.position(0);
+
+            None
         }
         ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
             let current_service = app
@@ -1034,6 +1071,8 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             app.main.offset = 0;
 
             app.main.scroll_state = app.main.scroll_state.position(0);
+
+            None
         }
         ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
             let mut services = get_services_from_traces(app);
@@ -1097,9 +1136,9 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             set_content_length(app);
 
             app.main.scroll_state = app.main.scroll_state.content_length(length.into());
-        }
-        _ => {}
-    }
 
-    None
+            None
+        }
+        _ => None,
+    }
 }
