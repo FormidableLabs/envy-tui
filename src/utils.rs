@@ -43,10 +43,6 @@ pub fn parse_query_params(url: String) -> Vec<(String, String)> {
 }
 
 fn fuzzy_regex(query: String) -> Regex {
-    if query.is_empty() {
-        return Regex::new(r".*").unwrap();
-    }
-
     let mut fuzzy_query = String::new();
 
     for c in query.chars() {
@@ -99,7 +95,10 @@ impl Display for TraceSort {
 }
 
 pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
-    let re = fuzzy_regex(app.search_query.clone());
+    let mut maybe_re: Option<Regex> = None;
+    if !app.search_query.is_empty() {
+        maybe_re = Some(fuzzy_regex(app.search_query.clone()));
+    }
 
     let no_applied_method_filter = app
         .method_filters
@@ -118,7 +117,13 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
     let mut items_as_vector = app
         .items
         .iter()
-        .filter(|trace| re.is_match(&trace.http.as_ref().unwrap().uri))
+        .filter(|trace| {
+            if let Some(re) = &maybe_re {
+                re.is_match(&trace.http.as_ref().unwrap().uri)
+            } else {
+                true
+            }
+        })
         .filter(
             |trace| match (app.get_filter_source(), trace.service_name.as_ref()) {
                 (FilterSource::All, _) => true,
@@ -264,7 +269,7 @@ pub fn get_currently_selected_trace(app: &Home) -> Option<Trace> {
 
     let trace = items_as_vector.get(app.main.index).copied();
 
-    trace.map(|x| x.clone())
+    trace.cloned()
 }
 
 pub fn calculate_scrollbar_position(
