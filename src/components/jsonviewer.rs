@@ -441,10 +441,11 @@ fn obj_lines(
     idx += 1;
 
     for (obj_idx, (k, v)) in v.into_iter().enumerate() {
-        match v.clone() {
+        match &v {
             serde_json::Value::Object(o) => {
                 if expand_all_objects || expanded_idxs.contains(&idx) {
-                    let lines = obj_lines(o, expanded_idxs, expand_all_objects, Some(k), idx)?;
+                    let lines =
+                        obj_lines(o.clone(), expanded_idxs, expand_all_objects, Some(k), idx)?;
                     let mut lineiter = lines.iter().peekable();
                     while let Some(lineref) = lineiter.next() {
                         let mut line = lineref.clone();
@@ -505,7 +506,7 @@ fn obj_lines(
             }
             serde_json::Value::Array(a) => {
                 if expand_all_objects || expanded_idxs.contains(&idx) {
-                    let lines = array_lines(a, Some(k))?;
+                    let lines = array_lines(a.to_vec(), Some(k))?;
                     let mut lineiter = lines.iter().peekable();
                     while let Some(lineref) = lineiter.next() {
                         let mut line = lineref.clone();
