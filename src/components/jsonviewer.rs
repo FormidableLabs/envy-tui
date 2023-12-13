@@ -466,9 +466,7 @@ fn obj_lines(
                                                     && !next_span.content.ends_with("]")
                                                     && !next_span.content.ends_with("],"))
                                             {
-                                                *span = Span::raw(String::from(
-                                                    span.content.clone() + ",",
-                                                ));
+                                                *span = Span::raw(format!("{},", span.content));
                                             }
                                         }
                                     }
@@ -477,8 +475,7 @@ fn obj_lines(
                                     // append a comma
                                     None => {
                                         if obj_idx < len.saturating_sub(1) {
-                                            *span =
-                                                Span::raw(String::from(span.content.clone() + ","));
+                                            *span = Span::raw(format!("{},", span.content));
                                         }
                                     }
                                 }
@@ -527,9 +524,7 @@ fn obj_lines(
                                                     && !next_span.content.ends_with("]")
                                                     && !next_span.content.ends_with("],"))
                                             {
-                                                *span = Span::raw(String::from(
-                                                    span.content.clone() + ",",
-                                                ));
+                                                *span = Span::raw(format!("{},", span.content));
                                             }
                                         }
                                     }
@@ -538,8 +533,7 @@ fn obj_lines(
                                     // append a comma
                                     None => {
                                         if obj_idx < len.saturating_sub(1) {
-                                            *span =
-                                                Span::raw(String::from(span.content.clone() + ","));
+                                            *span = Span::raw(format!("{},", span.content));
                                         }
                                     }
                                 }
