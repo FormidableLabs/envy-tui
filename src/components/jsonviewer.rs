@@ -51,12 +51,35 @@ impl JSONViewer {
     pub fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
         match action {
             Action::NavigateUp(Some(_)) => {
-                if self.is_active {
-                    self.cursor_position = self.cursor_position.saturating_sub(1)
+                if !self.is_active {
+                    return Ok(None);
                 }
+
+                self.cursor_position = self.cursor_position.saturating_sub(1)
             }
             Action::NavigateDown(Some(_)) => {
-                if self.is_active {
+                if !self.is_active {
+                    return Ok(None);
+                }
+
+                let max_cursor_position = raw_lines(
+                    self.data.clone(),
+                    self.expanded_idxs.clone(),
+                    self.is_expanded,
+                )?
+                .len()
+                .saturating_sub(1);
+
+                if max_cursor_position > self.cursor_position {
+                    self.cursor_position = self.cursor_position.saturating_add(1)
+                }
+            }
+            Action::NavigateLeft(Some(_)) => {
+                if !self.is_active {
+                    return Ok(None);
+                }
+
+                if self.is_expanded {
                     let max_cursor_position = raw_lines(
                         self.data.clone(),
                         self.expanded_idxs.clone(),
@@ -64,88 +87,76 @@ impl JSONViewer {
                     )?
                     .len()
                     .saturating_sub(1);
-
-                    if max_cursor_position > self.cursor_position {
-                        self.cursor_position = self.cursor_position.saturating_add(1)
-                    }
-                }
-            }
-            Action::NavigateLeft(Some(_)) => {
-                if self.is_active {
-                    if self.is_expanded {
-                        let max_cursor_position = raw_lines(
-                            self.data.clone(),
-                            self.expanded_idxs.clone(),
-                            self.is_expanded,
-                        )?
-                        .len()
-                        .saturating_sub(1);
-                        self.expanded_idxs = (0..max_cursor_position).collect();
-                        self.expanded_idxs.retain(|&x| x != self.cursor_position);
-                        self.is_expanded = false
-                    } else {
-                        self.expanded_idxs.retain(|&x| x != self.cursor_position)
-                    }
+                    self.expanded_idxs = (0..max_cursor_position).collect();
+                    self.expanded_idxs.retain(|&x| x != self.cursor_position);
+                    self.is_expanded = false
+                } else {
+                    self.expanded_idxs.retain(|&x| x != self.cursor_position)
                 }
             }
             Action::NavigateRight(Some(_)) => {
-                if self.is_active {
-                    if self.is_expanded {
-                        return Ok(None);
-                    }
+                if !self.is_active {
+                    return Ok(None);
+                }
 
-                    let idx = self
-                        .expanded_idxs
-                        .partition_point(|&x| x < self.cursor_position);
+                if self.is_expanded {
+                    return Ok(None);
+                }
 
-                    // Expanding values above other expanded values
-                    // pushes the currently expanded values down.
-                    //
-                    // Indices of the currently expanded values
-                    // are increased by the size of
-                    // the value that is being expanded.
-                    if idx < self.expanded_idxs.len() {
-                        let current_length =
-                            raw_lines(self.data.clone(), vec![], self.is_expanded)?.len();
+                let idx = self
+                    .expanded_idxs
+                    .partition_point(|&x| x < self.cursor_position);
 
-                        let next_length = raw_lines(
-                            self.data.clone(),
-                            vec![self.cursor_position],
-                            self.is_expanded,
-                        )?
-                        .len();
+                // Expanding values above other expanded values
+                // pushes the currently expanded values down.
+                //
+                // Indices of the currently expanded values
+                // are increased by the size of
+                // the value that is being expanded.
+                if idx < self.expanded_idxs.len() {
+                    let current_length =
+                        raw_lines(self.data.clone(), vec![], self.is_expanded)?.len();
 
-                        self.expanded_idxs.insert(idx, self.cursor_position);
-                        let cascade_len = next_length.saturating_sub(current_length);
-                        let after_expanded_idxs =
-                            self.expanded_idxs.split_off(idx.saturating_add(1));
-                        let mut updated_idxs: Vec<usize> = after_expanded_idxs
-                            .into_iter()
-                            .map(|i| i.saturating_add(cascade_len))
-                            .collect();
+                    let next_length = raw_lines(
+                        self.data.clone(),
+                        vec![self.cursor_position],
+                        self.is_expanded,
+                    )?
+                    .len();
 
-                        self.expanded_idxs.append(&mut updated_idxs);
-                    } else {
-                        self.expanded_idxs.insert(idx, self.cursor_position)
-                    }
+                    self.expanded_idxs.insert(idx, self.cursor_position);
+                    let cascade_len = next_length.saturating_sub(current_length);
+                    let after_expanded_idxs = self.expanded_idxs.split_off(idx.saturating_add(1));
+                    let mut updated_idxs: Vec<usize> = after_expanded_idxs
+                        .into_iter()
+                        .map(|i| i.saturating_add(cascade_len))
+                        .collect();
+
+                    self.expanded_idxs.append(&mut updated_idxs);
+                } else {
+                    self.expanded_idxs.insert(idx, self.cursor_position)
                 }
             }
             Action::ExpandAll => {
-                if self.is_active {
-                    if !self.is_expanded {
-                        self.is_expanded = true;
-                        self.expanded_idxs.clear();
-                        // TODO(vandosant): shift cursor position to active value
-                    }
+                if !self.is_active {
+                    return Ok(None);
+                }
+
+                if !self.is_expanded {
+                    self.is_expanded = true;
+                    self.expanded_idxs.clear();
+                    // TODO(vandosant): shift cursor position to active value
                 }
             }
             Action::CollapseAll => {
-                if self.is_active {
-                    if self.is_expanded {
-                        self.is_expanded = false;
-                        self.expanded_idxs.clear();
-                        // TODO(vandosant): shift cursor position to active value
-                    }
+                if !self.is_active {
+                    return Ok(None);
+                }
+
+                if self.is_expanded {
+                    self.is_expanded = false;
+                    self.expanded_idxs.clear();
+                    // TODO(vandosant): shift cursor position to active value
                 }
             }
             Action::SelectTrace(maybe_trace) => {
