@@ -120,12 +120,15 @@ fn parse_key_code_with_modifiers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error;
 
     #[test]
-    fn test_config() {
-        let c = Config::new();
+    fn test_config() -> Result<(), Box<dyn Error>> {
+        let c = Config::new()?;
         let k = &parse_key_event("q").unwrap();
 
-        assert_eq!(c.mapping.get(k).unwrap(), &Action::Quit);
+        assert_eq!(c.mapping.0.get(k).unwrap(), &Action::Quit);
+
+        Ok(())
     }
 }

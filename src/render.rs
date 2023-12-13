@@ -1,11 +1,11 @@
 use crossterm::event::{KeyCode, KeyEvent};
+
 use std::collections::HashSet;
-use std::io::Stdout;
 use std::ops::Deref;
 use std::usize;
 
 use http::{HeaderName, HeaderValue};
-use ratatui::prelude::{Alignment, Constraint, CrosstermBackend, Direction, Layout, Margin, Rect};
+use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Position, Title};
@@ -21,10 +21,8 @@ use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
     RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::services::websocket::HTTPTrace;
-use crate::utils::{
-    get_currently_selected_trace, get_rendered_items, parse_query_params, truncate, TraceSort,
-};
+use crate::services::websocket::Trace;
+use crate::utils::{get_rendered_items, parse_query_params, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 enum RowStyle {
@@ -43,7 +41,7 @@ pub fn render_body(
     pretty_body: String,
     ui_state: &mut UIState,
     active_block: ActiveBlock,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
+    frame: &mut ratatui::Frame,
     area: Rect,
     block: ActiveBlock,
 ) {
@@ -128,69 +126,6 @@ pub fn render_body(
     }
 }
 
-pub fn get_currently_selected_http_trace(app: &Home) -> Option<HTTPTrace> {
-    let trace = get_currently_selected_trace(&app);
-
-    if trace.is_none() {
-        return None::<HTTPTrace>;
-    }
-
-    let trace = trace.unwrap();
-
-    trace.http
-}
-
-pub fn render_response_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    match get_currently_selected_http_trace(app) {
-        Some(request) => match &request.pretty_response_body {
-            Some(pretty_json) => {
-                render_body(
-                    pretty_json.to_string(),
-                    &mut app.response_body.clone(),
-                    app.active_block,
-                    frame,
-                    area,
-                    ActiveBlock::ResponseBody,
-                );
-            }
-            _ => {
-                let copy = if request.duration.is_some() {
-                    "This trace does not have a response body."
-                } else {
-                    "Loading..."
-                };
-
-                let body_to_render = Paragraph::new(copy)
-                    .alignment(Alignment::Center)
-                    .style(
-                        Style::default()
-                            .fg(if app.active_block == ActiveBlock::ResponseBody {
-                                Color::White
-                            } else {
-                                Color::DarkGray
-                            })
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .style(Style::default().fg(
-                                if app.active_block == ActiveBlock::ResponseBody {
-                                    Color::White
-                                } else {
-                                    Color::DarkGray
-                                },
-                            ))
-                            .title("Request body")
-                            .border_type(BorderType::Plain),
-                    );
-                frame.render_widget(body_to_render, area)
-            }
-        },
-        _ => {}
-    }
-}
-
 fn get_row_style(row_style: RowStyle) -> Style {
     let default_style = Style::default().fg(Color::White);
 
@@ -221,20 +156,15 @@ fn get_text_style(active: bool) -> Style {
     }
 }
 
-fn render_headers(
-    app: &Home,
-    frame: &mut Frame<CrosstermBackend<Stdout>>,
-    area: Rect,
-    header_type: HeaderType,
-) {
+fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: HeaderType) {
     let active_block = app.active_block;
 
-    let rows = match get_currently_selected_http_trace(app) {
+    let rows = match &app.selected_trace {
         Some(item) => {
             let headers = if header_type == HeaderType::Request {
-                &item.request_headers
+                item.http.clone().unwrap_or_default().request_headers
             } else {
-                &item.response_headers
+                item.http.clone().unwrap_or_default().response_headers
             };
 
             let offset = if header_type == HeaderType::Request {
@@ -318,12 +248,17 @@ fn render_headers(
     frame.render_widget(table, area);
 }
 
-pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
     let active_block = app.active_block;
 
-    match get_currently_selected_http_trace(app) {
+    match &app.selected_trace {
         Some(maybe_selected_item) => {
-            let uri = maybe_selected_item.uri.clone();
+            let uri = maybe_selected_item
+                .http
+                .clone()
+                .unwrap_or_default()
+                .uri
+                .clone();
 
             let raw_params = parse_query_params(uri);
 
@@ -422,7 +357,12 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
                     Title::from(format!(
                         "{} of {}",
                         app.selected_request_header_index + 1,
-                        maybe_selected_item.request_headers.len()
+                        maybe_selected_item
+                            .http
+                            .clone()
+                            .unwrap_or_default()
+                            .request_headers
+                            .len()
                     ))
                     .position(Position::Bottom)
                     .alignment(Alignment::Right),
@@ -449,14 +389,22 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
 
                     let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
-                    let trace = get_currently_selected_http_trace(app);
-
-                    let content_length = trace.unwrap().response_headers.len() as u16;
+                    let content_length = if let Some(trace) = &app.selected_trace {
+                        trace
+                            .http
+                            .clone()
+                            .unwrap_or_default()
+                            .response_headers
+                            .len()
+                            .clone()
+                    } else {
+                        0
+                    };
 
                     let viewport_height =
                         area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
 
-                    if content_length > viewport_height {
+                    if content_length > viewport_height.into() {
                         frame.render_stateful_widget(
                             vertical_scroll,
                             area.inner(&Margin {
@@ -473,61 +421,20 @@ pub fn render_request_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdou
     };
 }
 
-pub fn render_request_body(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    match get_currently_selected_http_trace(app) {
-        Some(request) => match &request.pretty_request_body {
-            Some(pretty_json) => {
-                render_body(
-                    pretty_json.to_string(),
-                    &mut app.request_body.clone(),
-                    app.active_block,
-                    frame,
-                    area,
-                    ActiveBlock::RequestBody,
-                );
-            }
-            _ => {
-                let body_to_render = Paragraph::new("This trace does not have a request body.")
-                    .alignment(Alignment::Center)
-                    .style(
-                        Style::default()
-                            .fg(if app.active_block == ActiveBlock::RequestBody {
-                                Color::White
-                            } else {
-                                Color::DarkGray
-                            })
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .style(Style::default().fg(
-                                if app.active_block == ActiveBlock::RequestBody {
-                                    Color::White
-                                } else {
-                                    Color::DarkGray
-                                },
-                            ))
-                            .title("Request body")
-                            .border_type(BorderType::Plain),
-                    );
-                frame.render_widget(body_to_render, area)
-            }
-        },
-        _ => {}
-    }
-}
+pub fn render_response_block(app: &Home, frame: &mut Frame, area: Rect) {
+    let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
-pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let uri = match get_currently_selected_http_trace(app) {
-        Some(item) => item.uri.clone(),
+    let maybe_selected_item = items_as_vector.get(app.main.index);
+
+    let uri = match maybe_selected_item {
+        Some(item) => item.deref().http.clone().unwrap_or_default().uri,
         None => String::from("Could not find request."),
     };
 
     let raw_params = parse_query_params(uri);
 
-    let is_progress = match get_currently_selected_http_trace(app) {
-        Some(v) => v.duration.is_none(),
+    let is_progress = match &app.selected_trace {
+        Some(v) => v.http.clone().unwrap_or_default().duration.is_none(),
         None => true,
     };
 
@@ -568,8 +475,11 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
                 Title::from(format!(
                     "{} of {}",
                     app.selected_response_header_index + 1,
-                    get_currently_selected_http_trace(app)
-                        .unwrap()
+                    app.selected_trace
+                        .clone()
+                        .unwrap_or_default()
+                        .http
+                        .unwrap_or_default()
                         .response_headers
                         .len()
                 ))
@@ -603,9 +513,16 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
 
         let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
-        let trace = get_currently_selected_http_trace(app);
-
-        let content_length = trace.unwrap().response_headers.len();
+        let content_length = if let Some(trace) = &app.selected_trace {
+            trace
+                .http
+                .clone()
+                .unwrap_or_default()
+                .response_headers
+                .len()
+        } else {
+            0
+        };
 
         if content_length > area.height as usize - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE {
             frame.render_stateful_widget(
@@ -620,7 +537,7 @@ pub fn render_response_block(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
     }
 }
 
-pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
     let height = area.height;
 
     let effective_height = height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
@@ -778,7 +695,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, ar
     }
 }
 
-pub fn render_search(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>) {
+pub fn render_search(app: &Home, frame: &mut Frame) {
     if app.active_block == ActiveBlock::SearchQuery {
         let area = overlay_area(frame.size());
         let widget = Paragraph::new(format!("/{}", &app.search_query))
@@ -794,7 +711,7 @@ pub fn render_search(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>) {
     }
 }
 
-pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
     let general_status = match app.status_message.clone() {
         Some(text) => text,
         None => "".to_string(),
@@ -849,10 +766,8 @@ pub fn render_footer(app: &Home, frame: &mut Frame<'_, CrosstermBackend<Stdout>>
     frame.render_widget(help_text, area);
 }
 
-pub fn render_request_summary(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
-    let selected_item = get_currently_selected_trace(app);
-
-    let message = match selected_item {
+pub fn render_request_summary(app: &Home, frame: &mut Frame, area: Rect) {
+    let message = match app.selected_trace.clone() {
         Some(item) => item.to_string(),
         None => "No item found".to_string(),
     };
@@ -875,7 +790,7 @@ pub fn render_request_summary(app: &Home, frame: &mut Frame<CrosstermBackend<Std
     frame.render_widget(status_bar, area);
 }
 
-pub fn render_help(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
     let mut entry_list: Vec<(KeyEvent, Action)> = vec![];
     for (k, v) in app.key_map.iter() {
         entry_list.push((*k, v.clone()));
@@ -980,7 +895,7 @@ pub fn render_help(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area
     frame.render_widget(list, area);
 }
 
-pub fn render_debug(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
     let debug_lines = app
         .logs
         .iter()
@@ -1027,7 +942,7 @@ pub fn get_services_from_traces(app: &Home) -> Vec<String> {
     services_as_vec.clone()
 }
 
-pub fn render_filters_source(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
     let mut services = get_services_from_traces(app);
 
     let mut a: Vec<String> = vec!["All".to_string()];
@@ -1124,7 +1039,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
     frame.render_widget(list.clone(), area);
 }
 
-pub fn render_filters_status(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
     let current_service = app.status_filters.iter().nth(app.filter_index);
 
     let rows1 = app
@@ -1186,17 +1101,17 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
     frame.render_widget(list.clone(), area);
 }
 
-pub fn render_filters_method(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
     let current_service = app
         .method_filters
         .iter()
-        .map(|(a, b)| b.name.clone())
+        .map(|(_a, b)| b.name.clone())
         .nth(app.filter_index);
 
     let rows1 = app
         .method_filters
         .iter()
-        .map(|(a, item)| {
+        .map(|(_a, item)| {
             let column_a = Cell::from(
                 Line::from(vec![Span::raw(item.name.clone())]).alignment(Alignment::Left),
             );
@@ -1251,7 +1166,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame<CrosstermBackend<Stdo
     frame.render_widget(list.clone(), area);
 }
 
-pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect) {
     let filter_items = vec!["method", "source", "status"];
 
     let current_service = filter_items.iter().nth(app.filter_index).cloned();
@@ -1306,7 +1221,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, a
     frame.render_widget(list.clone(), area);
 }
 
-pub fn render_sort(app: &Home, frame: &mut Frame<CrosstermBackend<Stdout>>, area: Rect) {
+pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
     let filter_items = vec![
         (
             "Method",

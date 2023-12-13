@@ -9,7 +9,8 @@ use std::error::Error;
 use std::io::{stdout, Stdout};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-pub type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<std::io::Stdout>>;
+pub type Frame<'a> = ratatui::Frame<'a>;
+pub type Rect = ratatui::layout::Rect;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Event {

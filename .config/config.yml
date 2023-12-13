@@ -1,7 +1,6 @@
 q: Quit
 ">": GoToEnd
 <: GoToStart
-q: Quit
 tab: NextSection
 backtab: PreviousSection
 y: CopyToClipBoard
@@ -25,3 +24,5 @@ f: OpenFilter
 s: OpenSort
 "]": NextPane
 "[": PreviousPane
+e: ExpandAll
+E: CollapseAll

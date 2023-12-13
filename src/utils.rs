@@ -297,8 +297,6 @@ pub struct ContentLengthElements {
 }
 
 pub fn get_content_length(app: &Home) -> ContentLengthElements {
-    let trace = get_currently_selected_trace(app);
-
     let mut content_length = ContentLengthElements {
         request_body: None,
         response_body: None,
@@ -309,11 +307,11 @@ pub fn get_content_length(app: &Home) -> ContentLengthElements {
         },
     };
 
-    if trace.is_none() {
+    if app.selected_trace.is_none() {
         return content_length;
     }
 
-    let http_trace = trace.unwrap().http;
+    let http_trace = app.selected_trace.clone().unwrap_or_default().http;
 
     if http_trace.is_none() {
         return content_length;
@@ -399,23 +397,25 @@ pub fn set_content_length(app: &mut Home) {
     app.request_details.scroll_state = app
         .request_details
         .scroll_state
-        .content_length(content_length_elements.request_headers.vertical);
+        .content_length(content_length_elements.request_headers.vertical.into());
 
     app.response_details.scroll_state = app
         .response_details
         .scroll_state
-        .content_length(response_details_content_length);
+        .content_length(response_details_content_length.into());
 
     if res.is_some() {
         let res = res.unwrap();
 
-        app.response_body.scroll_state =
-            app.response_body.scroll_state.content_length(res.vertical);
+        app.response_body.scroll_state = app
+            .response_body
+            .scroll_state
+            .content_length(res.vertical.into());
 
         app.response_body.horizontal_scroll_state = app
             .response_body
             .horizontal_scroll_state
-            .content_length(res.horizontal);
+            .content_length(res.horizontal.into());
     }
 
     let req = content_length_elements.request_body;
@@ -423,11 +423,14 @@ pub fn set_content_length(app: &mut Home) {
     if req.is_some() {
         let req = req.unwrap();
 
-        app.request_body.scroll_state = app.request_body.scroll_state.content_length(req.vertical);
+        app.request_body.scroll_state = app
+            .request_body
+            .scroll_state
+            .content_length(req.vertical.into());
 
         app.request_body.horizontal_scroll_state = app
             .request_body
             .horizontal_scroll_state
-            .content_length(req.horizontal);
+            .content_length(req.horizontal.into());
     }
 }

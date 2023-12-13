@@ -37,8 +37,9 @@ pub enum Mode {
     Normal,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilterScreen {
+    #[default]
     FilterMain,
     FilterMethod,
     FilterSource,
@@ -51,7 +52,7 @@ impl Display for FilterScreen {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
+#[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ActiveBlock {
     #[default]
     TracesBlock,
@@ -108,6 +109,8 @@ pub enum Action {
     ToggleDebug,
     DeleteItem,
     FocusOnTraces,
+    SelectTrace(Option<Trace>),
+    UpdateTraceIndex(usize),
     ShowTraceDetails,
     NextPane,
     PreviousPane,
@@ -129,6 +132,9 @@ pub enum Action {
     #[serde(skip)]
     AddTrace(Trace),
     AddTraceError,
+    ExpandAll,
+    CollapseAll,
+    ActivateBlock(ActiveBlock),
 }
 
 #[derive(Default)]
@@ -175,7 +181,7 @@ impl App {
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        // NOTE: Why we need this to be mutable?
+        // NOTE: Why do we need this to be mutable?
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
         self.register_action_handler(action_tx.clone())?;
@@ -204,7 +210,12 @@ impl App {
         let action_to_clone = self.action_tx.as_ref().unwrap().clone();
 
         tokio::spawn(async move {
-            client(Some(action_to_clone)).await;
+            // TODO(vandosant) Propagate errors with a Result type to update the connection status
+            // and optionally retry connecting
+            // https://users.rust-lang.org/t/propagating-errors-from-tokio-tasks/41723/4
+            client(Some(action_to_clone))
+                .await
+                .expect("Failed to broadcast action");
         });
 
         loop {
@@ -214,7 +225,7 @@ impl App {
                 for component in self.components.iter() {
                     let c = component.lock().await;
                     t.terminal.draw(|frame| {
-                        let r = c.render(frame);
+                        let r = c.render(frame, frame.size());
                         if let Err(e) = r {
                             action_tx
                                 .send(Action::Error(format!("Failed to draw: {:?}", e)))
@@ -251,6 +262,7 @@ impl App {
                 }
             }
 
+            // Consume all actions that have been broadcast
             while let Ok(action) = action_rx.try_recv() {
                 if let Action::QuitApplication = action {
                     self.should_quit = true;
