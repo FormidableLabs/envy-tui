@@ -2,7 +2,6 @@ mapping:
   q: Quit
   ">": GoToEnd
   <: GoToStart
-  q: Quit
   tab: NextSection
   backtab: PreviousSection
   y: CopyToClipBoard
@@ -26,18 +25,20 @@ mapping:
   s: OpenSort
   "]": NextPane
   "[": PreviousPane
+  e: ExpandAll
+  E: CollapseAll
 colors:
   surface:
-    bg: !Rgb [32, 32, 32]
-    unselected: !Rgb [128, 128, 128]
-    selected: !Rgb [92, 201, 157]
-    success: !Rgb [92, 200, 113]
-    error: !Rgb [235, 72, 38]
-    warning: !Rgb [248, 205, 118]
-    null: !Rgb [170, 170, 170]
+    bg: !Indexed 235
+    unselected: !Indexed 244
+    selected: !Indexed 43
+    success: !Indexed 42
+    error: !Indexed 202
+    warning: !Indexed 222
+    null: !Indexed 248
   text:
-    unselected: !Rgb [128, 128, 128]
-    selected: !Rgb [32, 32, 32]
-    default: !Rgb [245, 245, 245]
-    accent_1: !Rgb [67, 151, 152]
-    accent_2: !Rgb [92, 201, 157]
+    selected: !Indexed 235
+    unselected: !Indexed 244
+    default: !Indexed 255
+    accent_1: !Indexed 37
+    accent_2: !Indexed 121
