@@ -2,6 +2,7 @@ use crate::app::Action;
 use crate::mock;
 use crate::parser::{parse_raw_trace, Payload};
 use crate::wss::WebSocket;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
@@ -14,8 +15,9 @@ pub struct Services {
     pub collector_server: Arc<Mutex<WebSocket>>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub enum State {
+    #[default]
     Received,
     Sent,
     Aborted,
@@ -24,12 +26,16 @@ pub enum State {
     Error,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct HTTPTrace {
+    #[serde(skip_serializing, skip_deserializing)]
     pub method: http::method::Method,
     pub state: State,
+    #[serde(skip_serializing, skip_deserializing)]
     pub status: Option<http::status::StatusCode>,
+    #[serde(skip_serializing, skip_deserializing)]
     pub request_headers: http::HeaderMap,
+    #[serde(skip_serializing, skip_deserializing)]
     pub response_headers: http::HeaderMap,
     pub uri: String,
     pub duration: Option<u32>,
@@ -39,12 +45,13 @@ pub struct HTTPTrace {
     pub pretty_response_body_lines: Option<usize>,
     pub pretty_request_body: Option<String>,
     pub pretty_request_body_lines: Option<usize>,
+    #[serde(skip_serializing, skip_deserializing)]
     pub http_version: Option<http::Version>,
     pub raw: String,
     pub port: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Trace {
     pub id: String,
     pub timestamp: u64,
@@ -189,6 +196,7 @@ impl Client {
             mock::TEST_JSON_16,
             mock::TEST_JSON_17,
             mock::TEST_JSON_18,
+            mock::TEST_JSON_19,
         ];
 
         for json_string in json_strings {

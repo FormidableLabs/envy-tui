@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::Layout,
-    prelude::{Constraint, Direction},
+    prelude::{Constraint, Direction, Rect},
 };
 use std::error::Error;
 use std::{
@@ -16,6 +16,7 @@ use crate::{
     components::component::Component,
     components::handlers,
     config::{Colors, Config},
+    components::jsonviewer,
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
@@ -81,6 +82,9 @@ pub struct Home {
     pub wss_connected: bool,
     pub wss_connection_count: usize,
     pub wss_state: WebSockerInternalState,
+    pub request_json_viewer: jsonviewer::JSONViewer,
+    pub response_json_viewer: jsonviewer::JSONViewer,
+    pub selected_trace: Option<Trace>,
     pub filter_index: usize,
     pub sort_index: usize,
     metadata: Option<handlers::HandlerMetadata>,
@@ -96,7 +100,16 @@ impl Home {
         let mut home = Home {
             key_map: config.mapping.0,
             colors: config.colors,
-
+            request_json_viewer: jsonviewer::JSONViewer::new(
+                ActiveBlock::RequestBody,
+                4,
+                "Request body",
+            )?,
+            response_json_viewer: jsonviewer::JSONViewer::new(
+                ActiveBlock::ResponseBody,
+                4,
+                "Response body",
+            )?,
             ..Self::default()
         };
 
@@ -167,6 +180,10 @@ impl Component for Home {
         &mut self,
         tx: UnboundedSender<Action>,
     ) -> Result<(), Box<dyn Error>> {
+        self.request_json_viewer
+            .register_action_handler(tx.clone())?;
+        self.response_json_viewer
+            .register_action_handler(tx.clone())?;
         self.action_tx = Some(tx);
         Ok(())
     }
@@ -193,6 +210,9 @@ impl Component for Home {
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>, Box<dyn Error>> {
+        self.request_json_viewer.update(action.clone())?;
+        self.response_json_viewer.update(action.clone())?;
+
         let metadata = self
             .metadata
             .as_ref()
@@ -216,19 +236,23 @@ impl Component for Home {
                 self.filter_index = 0;
 
                 self.active_block = last_block.unwrap();
+
+                Ok(None)
             }
-            Action::NextSection => handlers::handle_tab(self),
-            Action::OnMount => handlers::handle_adjust_scroll_bar(self, metadata),
-            Action::Help => handlers::handle_help(self),
-            Action::ToggleDebug => handlers::handle_debug(self),
-            Action::Select => handlers::handle_select(self),
-            Action::HandleFilter(l) => handlers::handle_general_status(self, l.to_string()),
+            Action::NextSection => Ok(handlers::handle_tab(self)),
+            Action::OnMount => Ok(handlers::handle_adjust_scroll_bar(self, metadata)),
+            Action::Help => Ok(handlers::handle_help(self)),
+            Action::ToggleDebug => Ok(handlers::handle_debug(self)),
+            Action::Select => Ok(handlers::handle_select(self)),
+            Action::HandleFilter(l) => Ok(handlers::handle_general_status(self, l.to_string())),
             Action::OpenFilter => {
                 let current_block = self.active_block;
 
                 self.previous_blocks.push(current_block);
 
-                self.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMain)
+                self.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMain);
+
+                Ok(None)
             }
             Action::OpenSort => {
                 let current_block = self.active_block;
@@ -236,54 +260,70 @@ impl Component for Home {
                 self.previous_blocks.push(current_block);
 
                 self.active_block = ActiveBlock::Sort;
+
+                Ok(None)
             }
-            Action::DeleteItem => handlers::handle_delete_item(self),
-            Action::CopyToClipBoard => handlers::handle_yank(self, self.action_tx.clone()),
-            Action::GoToEnd => handlers::handle_go_to_end(self, metadata),
-            Action::GoToStart => handlers::handle_go_to_start(self),
-            Action::PreviousSection => handlers::handle_back_tab(self),
-            Action::NextPane => handlers::handle_pane_next(self),
-            Action::PreviousPane => handlers::handle_pane_prev(self),
-            Action::NewSearch => handlers::handle_new_search(self),
-            Action::UpdateSearchQuery(c) => handlers::handle_search_push(self, c),
-            Action::DeleteSearchQuery => handlers::handle_search_pop(self),
-            Action::ExitSearch => handlers::handle_search_exit(self),
-            Action::ShowTraceDetails => handlers::handle_enter(self),
-            Action::FocusOnTraces => handlers::handle_esc(self),
-            Action::StopWebSocketServer => self.wss_connected = false,
-            Action::StartWebSocketServer => self.wss_connected = true,
-            Action::SetGeneralStatus(s) => handlers::handle_general_status(self, s),
-            Action::SetWebsocketStatus(s) => self.wss_state = s,
-            Action::NavigateUp(Some(key)) => handlers::handle_up(self, key, metadata),
-            Action::NavigateDown(Some(key)) => handlers::handle_down(self, key, metadata),
-            Action::NavigateLeft(Some(key)) => handlers::handle_left(self, key, metadata),
-            Action::NavigateRight(Some(key)) => handlers::handle_right(self, key, metadata),
-            Action::UpdateMeta(metadata) => self.metadata = Some(metadata),
+            Action::DeleteItem => Ok(handlers::handle_delete_item(self)),
+            Action::CopyToClipBoard => Ok(handlers::handle_yank(self, self.action_tx.clone())),
+            Action::GoToEnd => Ok(handlers::handle_go_to_end(self, metadata)),
+            Action::GoToStart => Ok(handlers::handle_go_to_start(self)),
+            Action::PreviousSection => Ok(handlers::handle_back_tab(self)),
+            Action::NextPane => Ok(handlers::handle_pane_next(self)),
+            Action::PreviousPane => Ok(handlers::handle_pane_prev(self)),
+            Action::NewSearch => Ok(handlers::handle_new_search(self)),
+            Action::UpdateSearchQuery(c) => Ok(handlers::handle_search_push(self, c)),
+            Action::DeleteSearchQuery => Ok(handlers::handle_search_pop(self)),
+            Action::ExitSearch => Ok(handlers::handle_search_exit(self)),
+            Action::ShowTraceDetails => Ok(handlers::handle_enter(self)),
+            Action::FocusOnTraces => Ok(handlers::handle_esc(self)),
+            Action::StopWebSocketServer => {
+                self.wss_connected = false;
+                Ok(None)
+            }
+            Action::StartWebSocketServer => {
+                self.wss_connected = true;
+                Ok(None)
+            }
+            Action::SetGeneralStatus(s) => Ok(handlers::handle_general_status(self, s)),
+            Action::SetWebsocketStatus(s) => {
+                self.wss_state = s;
+                Ok(None)
+            }
+            Action::NavigateUp(Some(key)) => Ok(handlers::handle_up(self, key, metadata)),
+            Action::NavigateDown(Some(key)) => Ok(handlers::handle_down(self, key, metadata)),
+            Action::UpdateMeta(metadata) => {
+                self.metadata = Some(metadata);
+                Ok(None)
+            }
             Action::ClearStatusMessage => {
                 self.status_message = None;
+                Ok(None)
             }
-            Action::GoToRight => handlers::handle_go_to_right(self, metadata),
-            Action::GoToLeft => handlers::handle_go_to_left(self),
             Action::AddTrace(trace) => {
                 self.items.replace(trace);
-
                 handlers::handle_adjust_scroll_bar(self, metadata);
+                Ok(None)
             }
-            Action::MarkTraceAsTimedOut(id) => self.mark_trace_as_timed_out(id),
-            _ => {}
+            Action::MarkTraceAsTimedOut(id) => {
+                self.mark_trace_as_timed_out(id);
+                Ok(Some(Action::SelectTrace(self.selected_trace.clone())))
+            }
+            Action::SelectTrace(trace) => {
+                self.selected_trace = trace;
+                Ok(None)
+            }
+            _ => Ok(None),
         }
-
-        Ok(None)
     }
 
-    fn render(&self, frame: &mut Frame) -> Result<(), Box<dyn Error>> {
+    fn render(&self, frame: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
         match self.active_block {
             ActiveBlock::Help => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_help(self, frame, main_layout[0]);
             }
@@ -337,7 +377,7 @@ impl Component for Home {
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_debug(self, frame, main_layout[0]);
             }
@@ -349,7 +389,7 @@ impl Component for Home {
                         .direction(Direction::Vertical)
                         .margin(1)
                         .constraints([Constraint::Percentage(95), Constraint::Length(3)].as_ref())
-                        .split(frame.size());
+                        .split(rect);
 
                     let split_layout = Layout::default()
                         .direction(Direction::Horizontal)
@@ -385,12 +425,15 @@ impl Component for Home {
                         .split(details_layout[2]);
 
                     render::render_request_block(self, frame, request_layout[0]);
-                    render::render_request_body(self, frame, request_layout[1]);
+
+                    self.request_json_viewer.render(frame, request_layout[1])?;
+                    self.response_json_viewer
+                        .render(frame, response_layout[1])?;
+
                     render::render_traces(self, frame, split_layout[0]);
 
                     render::render_request_summary(self, frame, details_layout[0]);
                     render::render_response_block(self, frame, response_layout[0]);
-                    render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_footer(self, frame, main_layout[1]);
 
@@ -419,7 +462,7 @@ impl Component for Home {
                             ]
                             .as_ref(),
                         )
-                        .split(frame.size());
+                        .split(rect);
 
                     let request_layout = Layout::default()
                         .direction(Direction::Horizontal)
@@ -436,12 +479,13 @@ impl Component for Home {
                         .split(main_layout[3]);
 
                     render::render_request_block(self, frame, request_layout[0]);
-                    render::render_request_body(self, frame, request_layout[1]);
+                    self.request_json_viewer.render(frame, request_layout[1])?;
+                    self.response_json_viewer
+                        .render(frame, response_layout[1])?;
                     render::render_traces(self, frame, main_layout[0]);
 
                     render::render_request_summary(self, frame, main_layout[1]);
                     render::render_response_block(self, frame, response_layout[0]);
-                    render::render_response_body(self, frame, response_layout[1]);
 
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);
