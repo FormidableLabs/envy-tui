@@ -181,7 +181,7 @@ impl App {
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        // NOTE: Why we need this to be mutable?
+        // NOTE: Why do we need this to be mutable?
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
         self.register_action_handler(action_tx.clone())?;
@@ -210,8 +210,12 @@ impl App {
         let action_to_clone = self.action_tx.as_ref().unwrap().clone();
 
         tokio::spawn(async move {
-            //TODO(vandosant) Handle possible Error from this Result
-            let _ = client(Some(action_to_clone)).await;
+            // TODO(vandosant) Propagate errors with a Result type to update the connection status
+            // and optionally retry connecting
+            // https://users.rust-lang.org/t/propagating-errors-from-tokio-tasks/41723/4
+            client(Some(action_to_clone))
+                .await
+                .expect("Failed to broadcast action");
         });
 
         loop {
