@@ -15,8 +15,8 @@ use crate::{
     app::{Action, ActiveBlock, Mode, RequestDetailsPane, ResponseDetailsPane, UIState},
     components::component::Component,
     components::handlers,
-    config::{Colors, Config},
     components::jsonviewer,
+    config::{Colors, Config},
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
@@ -424,7 +424,7 @@ impl Component for Home {
                         )
                         .split(details_layout[2]);
 
-                    render::render_request_block(self, frame, request_layout[0]);
+                    render::render_request_details(self, frame, request_layout[0]);
 
                     self.request_json_viewer.render(frame, request_layout[1])?;
                     self.response_json_viewer
@@ -433,7 +433,7 @@ impl Component for Home {
                     render::render_traces(self, frame, split_layout[0]);
 
                     render::render_request_summary(self, frame, details_layout[0]);
-                    render::render_response_block(self, frame, response_layout[0]);
+                    render::render_response_details(self, frame, response_layout[0]);
 
                     render::render_footer(self, frame, main_layout[1]);
 
@@ -478,14 +478,14 @@ impl Component for Home {
                         )
                         .split(main_layout[3]);
 
-                    render::render_request_block(self, frame, request_layout[0]);
+                    render::render_request_details(self, frame, request_layout[0]);
                     self.request_json_viewer.render(frame, request_layout[1])?;
                     self.response_json_viewer
                         .render(frame, response_layout[1])?;
                     render::render_traces(self, frame, main_layout[0]);
 
                     render::render_request_summary(self, frame, main_layout[1]);
-                    render::render_response_block(self, frame, response_layout[0]);
+                    render::render_response_details(self, frame, response_layout[0]);
 
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);
