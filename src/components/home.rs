@@ -56,8 +56,8 @@ pub struct StatusFilter {
 
 #[derive(Default)]
 pub struct Home {
-    pub action_tx: Option<UnboundedSender<Action>>,
     pub active_block: ActiveBlock,
+    pub action_tx: Option<UnboundedSender<Action>>,
     pub previous_blocks: Vec<ActiveBlock>,
     pub request_details_block: RequestDetailsPane,
     pub response_details_block: ResponseDetailsPane,
@@ -87,8 +87,8 @@ pub struct Home {
     pub selected_trace: Option<Trace>,
     pub filter_index: usize,
     pub sort_index: usize,
-    metadata: Option<handlers::HandlerMetadata>,
-    filter_source: FilterSource,
+    pub metadata: Option<handlers::HandlerMetadata>,
+    pub filter_source: FilterSource,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub order: TraceSort,
@@ -99,16 +99,18 @@ impl Home {
         let config = Config::new()?;
         let mut home = Home {
             key_map: config.mapping.0,
-            colors: config.colors,
+            colors: config.colors.clone(),
             request_json_viewer: jsonviewer::JSONViewer::new(
                 ActiveBlock::RequestBody,
                 4,
                 "Request body",
+                config.colors.clone(),
             )?,
             response_json_viewer: jsonviewer::JSONViewer::new(
                 ActiveBlock::ResponseBody,
                 4,
                 "Response body",
+                config.colors.clone(),
             )?,
             ..Self::default()
         };

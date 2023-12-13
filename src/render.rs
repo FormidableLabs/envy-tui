@@ -26,7 +26,7 @@ use crate::services::websocket::Trace;
 use crate::utils::{get_rendered_items, parse_query_params, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
-enum RowStyle {
+pub enum RowStyle {
     Default,
     Selected,
     Active,
@@ -39,7 +39,7 @@ enum HeaderType {
     Response,
 }
 
-fn get_row_style(row_style: RowStyle, colors: Colors) -> Style {
+pub fn get_row_style(row_style: RowStyle, colors: Colors) -> Style {
     let default_style = Style::default().fg(colors.text.unselected);
 
     let active_style = Style::default().fg(colors.text.default);
@@ -60,7 +60,7 @@ fn get_row_style(row_style: RowStyle, colors: Colors) -> Style {
     }
 }
 
-fn get_border_style(active: bool, colors: Colors) -> Style {
+pub fn get_border_style(active: bool, colors: Colors) -> Style {
     if active {
         Style::default().fg(colors.surface.selected)
     } else {
@@ -70,7 +70,7 @@ fn get_border_style(active: bool, colors: Colors) -> Style {
 
 fn get_text_style(active: bool, colors: Colors) -> Style {
     if active {
-        Style::default().fg(colors.text.selected)
+        Style::default().fg(colors.text.default)
     } else {
         Style::default().fg(colors.text.unselected)
     }
@@ -296,13 +296,10 @@ pub fn render_request_details(app: &Home, frame: &mut Frame, area: Rect) {
                     .position(Position::Bottom)
                     .alignment(Alignment::Right),
                 )
-                .style(
-                    Style::default().fg(if active_block == ActiveBlock::RequestDetails {
-                        app.colors.text.selected
-                    } else {
-                        app.colors.text.unselected
-                    }),
-                )
+                .border_style(get_border_style(
+                    app.active_block == ActiveBlock::RequestDetails,
+                    app.colors.clone(),
+                ))
                 .border_type(BorderType::Plain)
                 .borders(Borders::ALL);
 
@@ -374,7 +371,7 @@ pub fn render_response_details(app: &Home, frame: &mut Frame, area: Rect) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .style(get_border_style(
+                    .border_style(get_border_style(
                         app.active_block == ActiveBlock::ResponseDetails,
                         app.colors.clone(),
                     ))
@@ -416,13 +413,10 @@ pub fn render_response_details(app: &Home, frame: &mut Frame, area: Rect) {
                 .position(Position::Bottom)
                 .alignment(Alignment::Right),
             )
-            .style(
-                Style::default().fg(if app.active_block == ActiveBlock::ResponseDetails {
-                    app.colors.text.selected
-                } else {
-                    app.colors.text.unselected
-                }),
-            )
+            .border_style(get_border_style(
+                app.active_block == ActiveBlock::ResponseDetails,
+                app.colors.clone(),
+            ))
             .border_type(BorderType::Plain)
             .borders(Borders::ALL);
 
@@ -594,7 +588,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(
+                .border_style(get_border_style(
                     app.active_block == ActiveBlock::TracesBlock,
                     app.colors.clone(),
                 ))
@@ -656,14 +650,14 @@ pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
     let help_text = Paragraph::new("For help, press ?")
         .style(
             Style::default()
-                .fg(app.colors.text.selected)
+                .fg(app.colors.text.accent_1)
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Left)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(app.colors.surface.selected))
+                .border_style(Style::default().fg(app.colors.surface.unselected))
                 .title("Status Bar")
                 .padding(Padding::new(1, 0, 0, 0))
                 .border_type(BorderType::Plain),
@@ -691,7 +685,7 @@ pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(app.colors.surface.unselected))
+                .border_style(Style::default().fg(app.colors.surface.unselected))
                 .title("Status Bar")
                 .padding(Padding::new(0, 1, 0, 0))
                 .border_type(BorderType::Plain),
@@ -717,11 +711,11 @@ pub fn render_request_summary(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(
+                .border_style(get_border_style(
                     app.active_block == ActiveBlock::RequestSummary,
                     app.colors.clone(),
                 ))
-                .title("Request Summary")
+                .title("Request summary")
                 .border_type(BorderType::Plain),
         );
 
@@ -824,7 +818,7 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("Key Mappings")
                 .border_type(BorderType::Plain),
         )
@@ -847,7 +841,7 @@ pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("Debug logs")
                 .border_type(BorderType::Plain),
         );
@@ -966,7 +960,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Sources]")
                 .border_type(BorderType::Plain),
         )
@@ -1029,7 +1023,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Status]")
                 .border_type(BorderType::Plain),
         )
@@ -1095,7 +1089,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Method]")
                 .border_type(BorderType::Plain),
         )
@@ -1151,7 +1145,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Filters]")
                 .border_type(BorderType::Plain),
         )
@@ -1288,7 +1282,7 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Sort traces by]")
                 .border_type(BorderType::Plain),
         )
