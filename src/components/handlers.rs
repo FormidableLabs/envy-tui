@@ -1,4 +1,4 @@
-use crate::app::{Action, ActiveBlock, FilterScreen, RequestDetailsPane};
+use crate::app::{Action, ActiveBlock, FilterScreen, DetailsPane};
 use crate::components::home::Home;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -104,7 +104,7 @@ pub fn handle_up(
             }
             _ => None,
         },
-        _ => match (app.active_block, app.request_details_block) {
+        _ => match (app.active_block, app.details_block) {
             (ActiveBlock::Filter(_), _) => match app.filter_index.checked_sub(1) {
                 Some(v) => {
                     app.filter_index = v;
@@ -161,7 +161,7 @@ pub fn handle_up(
                     Some(Action::SelectTrace(get_currently_selected_trace(app)))
                 }
             }
-            (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
+            (ActiveBlock::RequestDetails, DetailsPane::QueryParams) => {
                 let next_index = if app.selected_params_index == 0 {
                     0
                 } else {
@@ -172,7 +172,7 @@ pub fn handle_up(
 
                 None
             }
-            (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
+            (ActiveBlock::RequestDetails, DetailsPane::RequestHeaders) => {
                 let next_index = if app.selected_request_header_index == 0 {
                     0
                 } else {
@@ -308,7 +308,7 @@ pub fn handle_down(
             }
             _ => None,
         },
-        _ => match (app.active_block, app.request_details_block) {
+        _ => match (app.active_block, app.details_block) {
             (ActiveBlock::Filter(FilterScreen::FilterMethod), _) => {
                 if app.filter_index + 1 < app.method_filters.len() {
                     app.filter_index += 1;
@@ -392,7 +392,7 @@ pub fn handle_down(
 
                 Some(Action::SelectTrace(get_currently_selected_trace(app)))
             }
-            (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
+            (ActiveBlock::RequestDetails, DetailsPane::QueryParams) => {
                 let item = app.selected_trace.as_ref().unwrap();
 
                 let params = parse_query_params(item.http.clone().unwrap_or_default().uri);
@@ -405,7 +405,7 @@ pub fn handle_down(
 
                 None
             }
-            (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
+            (ActiveBlock::RequestDetails, DetailsPane::RequestHeaders) => {
                 let item = app.selected_trace.as_ref().unwrap();
 
                 let item_length = item.http.clone().unwrap_or_default().request_headers.len();
@@ -588,12 +588,12 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
 }
 
 pub fn handle_pane_next(app: &mut Home) -> Option<Action> {
-    match (app.active_block, app.request_details_block) {
-        (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
-            app.request_details_block = RequestDetailsPane::Query
+    match (app.active_block, app.details_block) {
+        (ActiveBlock::RequestDetails, DetailsPane::RequestHeaders) => {
+            app.details_block = DetailsPane::QueryParams
         }
-        (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
-            app.request_details_block = RequestDetailsPane::Headers
+        (ActiveBlock::RequestDetails, DetailsPane::QueryParams) => {
+            app.details_block = DetailsPane::RequestHeaders
         }
         (_, _) => {}
     }
@@ -602,12 +602,12 @@ pub fn handle_pane_next(app: &mut Home) -> Option<Action> {
 }
 
 pub fn handle_pane_prev(app: &mut Home) -> Option<Action> {
-    match (app.active_block, app.request_details_block) {
-        (ActiveBlock::RequestDetails, RequestDetailsPane::Headers) => {
-            app.request_details_block = RequestDetailsPane::Query
+    match (app.active_block, app.details_block) {
+        (ActiveBlock::RequestDetails, DetailsPane::RequestHeaders) => {
+            app.details_block = DetailsPane::QueryParams
         }
-        (ActiveBlock::RequestDetails, RequestDetailsPane::Query) => {
-            app.request_details_block = RequestDetailsPane::Headers
+        (ActiveBlock::RequestDetails, DetailsPane::QueryParams) => {
+            app.details_block = DetailsPane::RequestHeaders
         }
         (_, _) => {}
     }

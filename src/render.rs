@@ -15,7 +15,7 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::app::{Action, ActiveBlock, RequestDetailsPane};
+use crate::app::{Action, ActiveBlock, DetailsPane};
 use crate::components::home::{FilterSource, Home};
 use crate::config::Colors;
 use crate::consts::{
@@ -255,24 +255,35 @@ pub fn render_request_details(app: &Home, frame: &mut Frame, area: Rect) {
                 //
                 .highlight_symbol(">>");
 
-            let tabs = Tabs::new(vec!["Request Header", "Request Params"])
-                .block(
-                    Block::default()
-                        .borders(Borders::BOTTOM)
-                        .style(Style::default().fg(
-                            if active_block == ActiveBlock::RequestDetails {
-                                app.colors.surface.selected
-                            } else {
-                                app.colors.surface.unselected
-                            },
-                        ))
-                        .border_type(BorderType::Plain),
-                )
-                .select(match app.request_details_block {
-                    RequestDetailsPane::Headers => 0,
-                    RequestDetailsPane::Query => 1,
-                })
-                .highlight_style(Style::default().fg(app.colors.surface.selected));
+            let tabs = Tabs::new(vec![
+                "REQUEST DETAILS",
+                "QUERY PARAMS",
+                "REQUEST HEADERS",
+                "RESPONSE DETAILS",
+                "RESPONSE HEADERS",
+                "TIMING",
+            ])
+            .block(
+                Block::default()
+                    .borders(Borders::BOTTOM)
+                    .border_style(Style::default().fg(
+                        if active_block == ActiveBlock::RequestDetails {
+                            app.colors.surface.selected
+                        } else {
+                            app.colors.surface.unselected
+                        },
+                    ))
+                    .border_type(BorderType::Plain),
+            )
+            .select(match app.details_block {
+                DetailsPane::RequestDetails => 0,
+                DetailsPane::QueryParams => 1,
+                DetailsPane::RequestHeaders => 2,
+                DetailsPane::ResponseDetails => 3,
+                DetailsPane::ResponseHeaders => 4,
+                DetailsPane::Timing => 5,
+            })
+            .highlight_style(Style::default().fg(app.colors.surface.selected));
 
             let inner_layout = Layout::default()
                 .direction(Direction::Vertical)
@@ -306,11 +317,14 @@ pub fn render_request_details(app: &Home, frame: &mut Frame, area: Rect) {
             frame.render_widget(main, area);
             frame.render_widget(tabs, inner_layout[0]);
 
-            match app.request_details_block {
-                RequestDetailsPane::Query => {
+            match app.details_block {
+                DetailsPane::RequestDetails => {
                     frame.render_widget(table, inner_layout[1]);
                 }
-                RequestDetailsPane::Headers => {
+                DetailsPane::QueryParams => {
+                    frame.render_widget(table, inner_layout[1]);
+                }
+                DetailsPane::RequestHeaders => {
                     render_headers(app, frame, inner_layout[1], HeaderType::Request);
 
                     let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
@@ -340,6 +354,15 @@ pub fn render_request_details(app: &Home, frame: &mut Frame, area: Rect) {
                             &mut app.request_details.scroll_state.clone(),
                         );
                     }
+                }
+                DetailsPane::ResponseDetails => {
+                    frame.render_widget(table, inner_layout[1]);
+                }
+                DetailsPane::ResponseHeaders => {
+                    frame.render_widget(table, inner_layout[1]);
+                }
+                DetailsPane::Timing => {
+                    frame.render_widget(table, inner_layout[1]);
                 }
             }
         }

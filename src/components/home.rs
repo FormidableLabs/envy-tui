@@ -12,7 +12,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
 use crate::{
-    app::{Action, ActiveBlock, Mode, RequestDetailsPane, ResponseDetailsPane, UIState},
+    app::{Action, ActiveBlock, DetailsPane, Mode, UIState},
     components::component::Component,
     components::handlers,
     components::jsonviewer,
@@ -59,8 +59,7 @@ pub struct Home {
     pub active_block: ActiveBlock,
     pub action_tx: Option<UnboundedSender<Action>>,
     pub previous_blocks: Vec<ActiveBlock>,
-    pub request_details_block: RequestDetailsPane,
-    pub response_details_block: ResponseDetailsPane,
+    pub details_block: DetailsPane,
     pub items: BTreeSet<Trace>,
     pub selected_request_header_index: usize,
     pub selected_response_header_index: usize,
@@ -390,64 +389,53 @@ impl Component for Home {
                     let main_layout = Layout::default()
                         .direction(Direction::Vertical)
                         .margin(1)
-                        .constraints([Constraint::Percentage(95), Constraint::Length(3)].as_ref())
+                        .constraints(
+                            [Constraint::Percentage(95), Constraint::Percentage(5)].as_ref(),
+                        )
                         .split(rect);
 
-                    let split_layout = Layout::default()
+                    let main_columns = Layout::default()
                         .direction(Direction::Horizontal)
                         .constraints(
-                            [Constraint::Percentage(30), Constraint::Percentage(70)].as_ref(),
+                            [Constraint::Percentage(35), Constraint::Percentage(65)].as_ref(),
                         )
                         .split(main_layout[0]);
 
-                    let details_layout = Layout::default()
+                    let [left_column, right_column, ..] = main_columns[..] else { todo!() };
+
+                    let right_column_layout = Layout::default()
                         .direction(Direction::Vertical)
                         .constraints(
-                            [
-                                Constraint::Length(3),
-                                Constraint::Percentage(45),
-                                Constraint::Percentage(45),
-                            ]
-                            .as_ref(),
+                            [Constraint::Percentage(68), Constraint::Percentage(32)].as_ref(),
                         )
-                        .split(split_layout[1]);
+                        .split(right_column);
 
-                    let request_layout = Layout::default()
+                    let body_layout = Layout::default()
                         .direction(Direction::Horizontal)
                         .constraints(
                             [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
                         )
-                        .split(details_layout[1]);
+                        .split(right_column_layout[1]);
 
-                    let response_layout = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints(
-                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
-                        )
-                        .split(details_layout[2]);
+                    render::render_traces(self, frame, left_column);
 
-                    render::render_request_details(self, frame, request_layout[0]);
+                    render::render_request_details(self, frame, right_column_layout[0]);
+                    self.request_json_viewer.render(frame, body_layout[1])?;
+                    self.response_json_viewer.render(frame, body_layout[0])?;
 
-                    self.request_json_viewer.render(frame, request_layout[1])?;
-                    self.response_json_viewer
-                        .render(frame, response_layout[1])?;
-
-                    render::render_traces(self, frame, split_layout[0]);
-
-                    render::render_request_summary(self, frame, details_layout[0]);
-                    render::render_response_details(self, frame, response_layout[0]);
+                    // render::render_request_summary(self, frame, details_layout[0]);
+                    // render::render_response_details(self, frame, response_layout[0]);
 
                     render::render_footer(self, frame, main_layout[1]);
-
                     render::render_search(self, frame);
 
                     let _ = self.action_tx.as_ref().unwrap().send(Action::UpdateMeta(
                         handlers::HandlerMetadata {
-                            main_height: split_layout[0].height,
-                            response_body_rectangle_height: response_layout[1].height,
-                            response_body_rectangle_width: response_layout[1].width,
-                            request_body_rectangle_height: request_layout[1].height,
-                            request_body_rectangle_width: request_layout[1].width,
+                            main_height: left_column.height,
+                            response_body_rectangle_height: body_layout[0].height,
+                            response_body_rectangle_width: body_layout[0].width,
+                            request_body_rectangle_height: body_layout[1].height,
+                            request_body_rectangle_width: body_layout[1].width,
                         },
                     ));
                 } else {

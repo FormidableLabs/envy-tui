@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use ratatui::prelude::{
-    Alignment, Color, Constraint, Direction, Layout, Line, Margin, Modifier, Rect, Span, Style,
+    Alignment, Constraint, Direction, Layout, Line, Margin, Modifier, Rect, Span, Style,
 };
 use ratatui::widgets::{
     block::Padding, Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation,

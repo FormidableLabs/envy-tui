@@ -18,16 +18,14 @@ use crate::tui::{Event, Tui};
 use crate::wss::client;
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
-pub enum RequestDetailsPane {
-    Query,
+pub enum DetailsPane {
     #[default]
-    Headers,
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
-pub enum ResponseDetailsPane {
-    #[default]
-    Body,
+    RequestDetails,
+    RequestHeaders,
+    QueryParams,
+    ResponseDetails,
+    ResponseHeaders,
+    Timing,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
