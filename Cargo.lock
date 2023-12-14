@@ -831,6 +831,7 @@ dependencies = [
  "itertools",
  "lru",
  "paste",
+ "serde",
  "strum",
  "time",
  "unicode-segmentation",

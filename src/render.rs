@@ -6,7 +6,7 @@ use std::usize;
 
 use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{
@@ -15,19 +15,21 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::app::{Action, ActiveBlock, RequestDetailsPane, UIState};
+use crate::app::{Action, ActiveBlock, RequestDetailsPane};
 use crate::components::home::{FilterSource, Home};
+use crate::config::Colors;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
-    RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE, RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
+    RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
 use crate::services::websocket::Trace;
 use crate::utils::{get_rendered_items, parse_query_params, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
-enum RowStyle {
+pub enum RowStyle {
     Default,
     Selected,
+    Active,
     Inactive,
 }
 
@@ -37,122 +39,40 @@ enum HeaderType {
     Response,
 }
 
-pub fn render_body(
-    pretty_body: String,
-    ui_state: &mut UIState,
-    active_block: ActiveBlock,
-    frame: &mut ratatui::Frame,
-    area: Rect,
-    block: ActiveBlock,
-) {
-    let mut longest_line_length = 0;
+pub fn get_row_style(row_style: RowStyle, colors: Colors) -> Style {
+    let default_style = Style::default().fg(colors.text.unselected);
 
-    let lines = pretty_body
-        .lines()
-        .map(|lines| {
-            let len = lines.len();
+    let active_style = Style::default().fg(colors.text.default);
 
-            longest_line_length = len.max(longest_line_length);
+    let selected_style = Style::default()
+        .fg(colors.text.selected)
+        .bg(colors.surface.selected);
 
-            Line::from(lines)
-        })
-        .collect::<Vec<_>>();
-
-    let number_of_lines = lines.len();
-
-    let has_overflown_x_axis = longest_line_length as u16 > area.width;
-
-    let has_overflown_y_axis =
-        number_of_lines as u16 > area.height - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
-
-    let body_to_render = Paragraph::new(lines)
-        .style(
-            Style::default()
-                .fg(if active_block == block {
-                    Color::White
-                } else {
-                    Color::DarkGray
-                })
-                .add_modifier(Modifier::BOLD),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .style(Style::default().fg(if active_block == block {
-                    Color::White
-                } else {
-                    Color::DarkGray
-                }))
-                .title(format!(
-                    "{} body",
-                    if block == ActiveBlock::RequestBody {
-                        "Request"
-                    } else {
-                        "Response"
-                    },
-                ))
-                .border_type(BorderType::Plain),
-        )
-        .scroll((ui_state.offset as u16, ui_state.horizontal_offset as u16));
-
-    frame.render_widget(body_to_render, area);
-
-    if has_overflown_y_axis {
-        let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-
-        frame.render_stateful_widget(
-            vertical_scroll,
-            area.inner(&Margin {
-                vertical: 1,
-                horizontal: 0,
-            }),
-            &mut ui_state.scroll_state,
-        );
-    }
-
-    if has_overflown_x_axis {
-        let horizontal_scroll = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-            .begin_symbol(Some("<-"))
-            .end_symbol(Some("->"));
-
-        frame.render_stateful_widget(
-            horizontal_scroll,
-            area.inner(&Margin {
-                vertical: 0,
-                horizontal: 1,
-            }),
-            &mut ui_state.horizontal_scroll_state,
-        );
-    }
-}
-
-fn get_row_style(row_style: RowStyle) -> Style {
-    let default_style = Style::default().fg(Color::White);
-
-    let selected_style = Style::default().fg(Color::Black).bg(Color::LightRed);
-
-    let inactive_stlye = Style::default().fg(Color::Black).bg(Color::Gray);
+    let inactive_style = Style::default()
+        .fg(colors.text.selected)
+        .bg(colors.surface.unselected);
 
     match row_style {
         RowStyle::Default => default_style,
-        RowStyle::Inactive => inactive_stlye,
+        RowStyle::Active => active_style,
+        RowStyle::Inactive => inactive_style,
         RowStyle::Selected => selected_style,
     }
 }
 
-fn get_border_style(active: bool) -> Style {
+pub fn get_border_style(active: bool, colors: Colors) -> Style {
     if active {
-        Style::default().fg(Color::White)
+        Style::default().fg(colors.surface.selected)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(colors.surface.unselected)
     }
 }
 
-fn get_text_style(active: bool) -> Style {
+fn get_text_style(active: bool, colors: Colors) -> Style {
     if active {
-        Style::default().fg(Color::White)
+        Style::default().fg(colors.text.default)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(colors.text.unselected)
     }
 }
 
@@ -209,13 +129,19 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
                     Row::new(vec![String::from(header_name), String::from(header_value)]).style(
                         match (is_active_header, active_block, header_type) {
                             (true, ActiveBlock::RequestDetails, HeaderType::Request) => {
-                                get_row_style(RowStyle::Selected)
+                                get_row_style(RowStyle::Selected, app.colors.clone())
                             }
                             (true, ActiveBlock::ResponseDetails, HeaderType::Response) => {
-                                get_row_style(RowStyle::Selected)
+                                get_row_style(RowStyle::Selected, app.colors.clone())
                             }
-                            (true, _, _) => get_row_style(RowStyle::Inactive),
-                            (_, _, _) => get_row_style(RowStyle::Default),
+                            (false, ActiveBlock::RequestDetails, HeaderType::Request) => {
+                                get_row_style(RowStyle::Active, app.colors.clone())
+                            }
+                            (false, ActiveBlock::ResponseDetails, HeaderType::Response) => {
+                                get_row_style(RowStyle::Active, app.colors.clone())
+                            }
+                            (true, _, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
+                            (false, _, _) => get_row_style(RowStyle::Default, app.colors.clone()),
                         },
                     )
                 })
@@ -228,11 +154,11 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
 
     let table = Table::new(rows)
         // You can set the style of the entire Table.
-        .style(Style::default().fg(Color::White))
+        .style(Style::default().fg(app.colors.text.default))
         // It has an optional header, which is simply a Row always visible at the top.
         .header(
             Row::new(vec!["Header name", "Header value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 // If you want some space between the header and the rest of the rows, you can always
                 // specify some margin at the bottom.
                 .bottom_margin(1),
@@ -248,7 +174,7 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
     frame.render_widget(table, area);
 }
 
-pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
+pub fn render_request_details(app: &Home, frame: &mut Frame, area: Rect) {
     let active_block = app.active_block;
 
     match &app.selected_trace {
@@ -292,10 +218,13 @@ pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
                     Row::new(vec![cloned_name, cloned_value]).style(
                         match (is_selected, active_block) {
                             (true, ActiveBlock::RequestDetails) => {
-                                get_row_style(RowStyle::Selected)
+                                get_row_style(RowStyle::Selected, app.colors.clone())
                             }
-                            (true, _) => get_row_style(RowStyle::Inactive),
-                            (_, _) => get_row_style(RowStyle::Default),
+                            (false, ActiveBlock::RequestDetails) => {
+                                get_row_style(RowStyle::Active, app.colors.clone())
+                            }
+                            (true, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
+                            (false, _) => get_row_style(RowStyle::Default, app.colors.clone()),
                         },
                     )
                 })
@@ -303,11 +232,11 @@ pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
 
             let table = Table::new(rows)
                 // You can set the style of the entire Table.
-                .style(Style::default().fg(Color::White))
+                .style(Style::default().fg(app.colors.text.unselected))
                 // It has an optional header, which is simply a Row always visible at the top.
                 .header(
                     Row::new(vec!["Query name", "Query Param value"])
-                        .style(Style::default().fg(Color::Yellow))
+                        .style(Style::default().fg(app.colors.text.accent_1))
                         // If you want some space between the header and the rest of the rows, you can always
                         // specify some margin at the bottom.
                         .bottom_margin(1),
@@ -332,9 +261,9 @@ pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
                         .borders(Borders::BOTTOM)
                         .style(Style::default().fg(
                             if active_block == ActiveBlock::RequestDetails {
-                                Color::White
+                                app.colors.surface.selected
                             } else {
-                                Color::DarkGray
+                                app.colors.surface.unselected
                             },
                         ))
                         .border_type(BorderType::Plain),
@@ -343,7 +272,7 @@ pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
                     RequestDetailsPane::Headers => 0,
                     RequestDetailsPane::Query => 1,
                 })
-                .highlight_style(Style::default().fg(Color::LightMagenta));
+                .highlight_style(Style::default().fg(app.colors.surface.selected));
 
             let inner_layout = Layout::default()
                 .direction(Direction::Vertical)
@@ -367,13 +296,10 @@ pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
                     .position(Position::Bottom)
                     .alignment(Alignment::Right),
                 )
-                .style(
-                    Style::default().fg(if active_block == ActiveBlock::RequestDetails {
-                        Color::White
-                    } else {
-                        Color::DarkGray
-                    }),
-                )
+                .border_style(get_border_style(
+                    app.active_block == ActiveBlock::RequestDetails,
+                    app.colors.clone(),
+                ))
                 .border_type(BorderType::Plain)
                 .borders(Borders::ALL);
 
@@ -421,7 +347,7 @@ pub fn render_request_block(app: &Home, frame: &mut Frame, area: Rect) {
     };
 }
 
-pub fn render_response_block(app: &Home, frame: &mut Frame, area: Rect) {
+pub fn render_response_details(app: &Home, frame: &mut Frame, area: Rect) {
     let items_as_vector = app.items.iter().collect::<Vec<&Trace>>();
 
     let maybe_selected_item = items_as_vector.get(app.main.index);
@@ -440,13 +366,14 @@ pub fn render_response_block(app: &Home, frame: &mut Frame, area: Rect) {
 
     if is_progress {
         let status_bar = Paragraph::new("Loading...")
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(app.colors.text.selected))
             .alignment(Alignment::Center)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .style(get_border_style(
+                    .border_style(get_border_style(
                         app.active_block == ActiveBlock::ResponseDetails,
+                        app.colors.clone(),
                     ))
                     .title("Response details")
                     .border_type(BorderType::Plain),
@@ -486,13 +413,10 @@ pub fn render_response_block(app: &Home, frame: &mut Frame, area: Rect) {
                 .position(Position::Bottom)
                 .alignment(Alignment::Right),
             )
-            .style(
-                Style::default().fg(if app.active_block == ActiveBlock::ResponseDetails {
-                    Color::White
-                } else {
-                    Color::DarkGray
-                }),
-            )
+            .border_style(get_border_style(
+                app.active_block == ActiveBlock::ResponseDetails,
+                app.colors.clone(),
+            ))
             .border_type(BorderType::Plain)
             .borders(Borders::ALL);
 
@@ -500,11 +424,11 @@ pub fn render_response_block(app: &Home, frame: &mut Frame, area: Rect) {
             .block(
                 Block::default()
                     .borders(Borders::BOTTOM)
-                    .style(Style::default().fg(Color::White))
+                    .style(Style::default().fg(app.colors.text.unselected))
                     .border_type(BorderType::Plain),
             )
             .select(0)
-            .highlight_style(Style::default().fg(Color::LightMagenta));
+            .highlight_style(Style::default().fg(app.colors.surface.selected));
 
         frame.render_widget(main, area);
         frame.render_widget(tabs, inner_layout[0]);
@@ -640,27 +564,33 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
                 .clone();
 
             Row::new(str_vec).style(match (*selected, active_block) {
-                (true, ActiveBlock::TracesBlock) => get_row_style(RowStyle::Selected),
-                (true, _) => get_row_style(RowStyle::Inactive),
-                (_, _) => get_row_style(RowStyle::Default),
+                (true, ActiveBlock::TracesBlock) => {
+                    get_row_style(RowStyle::Selected, app.colors.clone())
+                }
+                (false, ActiveBlock::TracesBlock) => {
+                    get_row_style(RowStyle::Active, app.colors.clone())
+                }
+                (true, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
+                (false, _) => get_row_style(RowStyle::Default, app.colors.clone()),
             })
         })
         .collect();
 
     let requests = Table::new(styled_rows)
         // You can set the style of the entire Table.
-        .style(Style::default().fg(Color::White))
+        .style(Style::default().fg(app.colors.surface.selected))
         // It has an optional header, which is simply a Row always visible at the top.
         .header(
             Row::new(vec!["Method", "Status", "Request", "Duration"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(
+                .border_style(get_border_style(
                     app.active_block == ActiveBlock::TracesBlock,
+                    app.colors.clone(),
                 ))
                 .title(title)
                 .title(
@@ -701,7 +631,7 @@ pub fn render_search(app: &Home, frame: &mut Frame) {
         let widget = Paragraph::new(format!("/{}", &app.search_query))
             .style(
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(app.colors.text.selected)
                     .add_modifier(Modifier::BOLD),
             )
             .alignment(Alignment::Left);
@@ -720,14 +650,14 @@ pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
     let help_text = Paragraph::new("For help, press ?")
         .style(
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(app.colors.text.accent_1)
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Left)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::DarkGray))
+                .border_style(Style::default().fg(app.colors.surface.unselected))
                 .title("Status Bar")
                 .padding(Padding::new(1, 0, 0, 0))
                 .border_type(BorderType::Plain),
@@ -748,14 +678,14 @@ pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
     let status_bar = Paragraph::new(format!("{} {}", general_status, wss_status_message))
         .style(
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(app.colors.text.selected)
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Right)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::DarkGray))
+                .border_style(Style::default().fg(app.colors.surface.unselected))
                 .title("Status Bar")
                 .padding(Padding::new(0, 1, 0, 0))
                 .border_type(BorderType::Plain),
@@ -775,15 +705,17 @@ pub fn render_request_summary(app: &Home, frame: &mut Frame, area: Rect) {
     let status_bar = Paragraph::new(message)
         .style(get_text_style(
             app.active_block == ActiveBlock::RequestSummary,
+            app.colors.clone(),
         ))
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(
+                .border_style(get_border_style(
                     app.active_block == ActiveBlock::RequestSummary,
+                    app.colors.clone(),
                 ))
-                .title("Request Summary")
+                .title("Request summary")
                 .border_type(BorderType::Plain),
         );
 
@@ -871,21 +803,22 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
                 Cell::from(Line::from(vec![Span::raw(description)]).alignment(Alignment::Right));
             let column_b = Cell::from(key_code.join(", "));
 
-            Row::new(vec![column_a, column_b]).style(get_row_style(RowStyle::Default))
+            Row::new(vec![column_a, column_b])
+                .style(get_row_style(RowStyle::Default, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
     let list = Table::new(debug_lines)
-        .style(get_text_style(true))
+        .style(get_text_style(true, app.colors.clone()))
         .header(
             Row::new(vec!["Action", "Map"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("Key Mappings")
                 .border_type(BorderType::Plain),
         )
@@ -903,13 +836,15 @@ pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     // TODO: Render different Keybindings that are relevant for the given `active_block`.
-    let list = List::new(debug_lines).style(get_text_style(true)).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .style(get_border_style(true))
-            .title("Debug logs")
-            .border_type(BorderType::Plain),
-    );
+    let list = List::new(debug_lines)
+        .style(get_text_style(true, app.colors.clone()))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(get_border_style(true, app.colors.clone()))
+                .title("Debug logs")
+                .border_type(BorderType::Plain),
+        );
 
     frame.render_widget(list, area);
 }
@@ -979,7 +914,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                     );
 
                     return Row::new(vec![column_b, middle, column_a])
-                        .style(get_row_style(row_style));
+                        .style(get_row_style(row_style, app.colors.clone()));
                 }
                 FilterSource::Applied(applied) => {
                     // let column_b = if applied.contains(current_service.as_ref().unwrap()) {
@@ -1009,23 +944,23 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                     );
 
                     return Row::new(vec![column_b, middle, column_a])
-                        .style(get_row_style(row_style));
+                        .style(get_row_style(row_style, app.colors.clone()));
                 }
             };
         })
         .collect::<Vec<_>>();
 
     let list = Table::new([rows].concat())
-        .style(get_text_style(true))
+        .style(get_text_style(true, app.colors.clone()))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Sources]")
                 .border_type(BorderType::Plain),
         )
@@ -1073,21 +1008,22 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
                 Line::from(vec![Span::raw("Status".to_string())]).alignment(Alignment::Left),
             );
 
-            Row::new(vec![column_b, h, column_a]).style(get_row_style(row_style))
+            Row::new(vec![column_b, h, column_a])
+                .style(get_row_style(row_style, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
     let list = Table::new([rows1].concat())
-        .style(get_text_style(true))
+        .style(get_text_style(true, app.colors.clone()))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Status]")
                 .border_type(BorderType::Plain),
         )
@@ -1138,21 +1074,22 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
                 Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
             );
 
-            Row::new(vec![column_b, h, column_a]).style(get_row_style(row_style))
+            Row::new(vec![column_b, h, column_a])
+                .style(get_row_style(row_style, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
     let list = Table::new([rows1].concat())
-        .style(get_text_style(true))
+        .style(get_text_style(true, app.colors.clone()))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Filters - Method]")
                 .border_type(BorderType::Plain),
         )
@@ -1193,21 +1130,22 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect) {
                 Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
             );
 
-            Row::new(vec![column_b, middle, column_a]).style(get_row_style(row_style))
+            Row::new(vec![column_b, middle, column_a])
+                .style(get_row_style(row_style, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
     let list = Table::new([filter_item_rows].concat())
-        .style(get_text_style(true))
+        .style(get_text_style(true, app.colors.clone()))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Filters]")
                 .border_type(BorderType::Plain),
         )
@@ -1330,21 +1268,21 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
                 column_a.clone(),
                 order1,
             ])
-            .style(get_row_style(row_style))
+            .style(get_row_style(row_style, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
     let list = Table::new([filter_item_rows].concat())
-        .style(get_text_style(true))
+        .style(get_text_style(true, app.colors.clone()))
         .header(
             Row::new(vec!["Selected", "Type", "Value", "Order"])
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(app.colors.text.accent_1))
                 .bottom_margin(1),
         )
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(get_border_style(true))
+                .border_style(get_border_style(true, app.colors.clone()))
                 .title("[Sort traces by]")
                 .border_type(BorderType::Plain),
         )

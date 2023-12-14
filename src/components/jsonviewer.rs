@@ -10,20 +10,25 @@ use ratatui::widgets::{
 use ratatui::Frame;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::app::{Action, ActiveBlock};
-use crate::consts::RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE;
+use crate::{
+    app::{Action, ActiveBlock},
+    config::Colors,
+    consts::RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE,
+    render::{get_border_style, get_row_style, RowStyle},
+};
 
 #[derive(Default)]
 pub struct JSONViewer {
-    pub action_tx: Option<UnboundedSender<Action>>,
     active_block: ActiveBlock,
-    is_active: bool,
-    is_expanded: bool,
+    pub action_tx: Option<UnboundedSender<Action>>,
+    colors: Colors,
+    cursor_position: usize,
+    data: Option<String>,
     expanded_idxs: Vec<usize>,
     indent_spacing: usize,
-    cursor_position: usize,
+    is_active: bool,
+    is_expanded: bool,
     title: String,
-    data: Option<String>,
 }
 
 impl JSONViewer {
@@ -31,9 +36,11 @@ impl JSONViewer {
         active_block: ActiveBlock,
         indent_spacing: usize,
         title: &str,
+        colors: Colors,
     ) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             active_block,
+            colors,
             indent_spacing,
             title: title.to_string(),
             ..Self::default()
@@ -192,11 +199,7 @@ impl JSONViewer {
         let outer_block = Block::default()
             .borders(Borders::ALL)
             .padding(padding)
-            .style(Style::default().fg(if self.is_active {
-                Color::White
-            } else {
-                Color::DarkGray
-            }))
+            .border_style(get_border_style(self.is_active, self.colors.clone()))
             .title(self.title.to_string())
             .border_type(BorderType::Plain);
 
@@ -207,13 +210,21 @@ impl JSONViewer {
             .constraints([Constraint::Length(4), Constraint::Min(0)])
             .split(inner_area);
 
-        let mut lines = json_to_lines(
+        let mut lines = raw_lines(
             self.data.clone(),
-            self.is_active,
-            self.is_expanded,
             self.expanded_idxs.clone(),
-            self.cursor_position,
+            self.is_expanded,
         )?;
+
+        for (idx, line) in lines.iter_mut().enumerate() {
+            let style = match (self.is_active, idx == self.cursor_position) {
+                (true, true) => get_row_style(RowStyle::Selected, self.colors.clone()),
+                (true, false) => get_row_style(RowStyle::Active, self.colors.clone()),
+                (false, true) => get_row_style(RowStyle::Inactive, self.colors.clone()),
+                (false, false) => get_row_style(RowStyle::Default, self.colors.clone()),
+            };
+            line.patch_style(style);
+        }
 
         let mut indent: usize = 0;
         for line in lines.iter_mut() {
@@ -245,9 +256,9 @@ impl JSONViewer {
                     "  ",
                     Style::default()
                         .fg(if self.is_active {
-                            Color::White
+                            self.colors.text.default
                         } else {
-                            Color::DarkGray
+                            self.colors.text.unselected
                         })
                         .add_modifier(Modifier::BOLD),
                 )]));
@@ -256,9 +267,9 @@ impl JSONViewer {
                     "˃ ",
                     Style::default()
                         .fg(if self.is_active {
-                            Color::White
+                            self.colors.text.default
                         } else {
-                            Color::DarkGray
+                            self.colors.text.unselected
                         })
                         .add_modifier(Modifier::BOLD),
                 )]));
@@ -268,9 +279,9 @@ impl JSONViewer {
                     "˅ ",
                     Style::default()
                         .fg(if self.is_active {
-                            Color::White
+                            self.colors.text.default
                         } else {
-                            Color::DarkGray
+                            self.colors.text.unselected
                         })
                         .add_modifier(Modifier::BOLD),
                 )]));
@@ -279,9 +290,9 @@ impl JSONViewer {
                     "  ",
                     Style::default()
                         .fg(if self.is_active {
-                            Color::White
+                            self.colors.text.default
                         } else {
-                            Color::DarkGray
+                            self.colors.text.unselected
                         })
                         .add_modifier(Modifier::BOLD),
                 )]));
@@ -297,9 +308,9 @@ impl JSONViewer {
             .style(
                 Style::default()
                     .fg(if self.is_active {
-                        Color::White
+                        self.colors.text.default
                     } else {
-                        Color::DarkGray
+                        self.colors.text.unselected
                     })
                     .add_modifier(Modifier::BOLD),
             )
@@ -339,39 +350,6 @@ impl JSONViewer {
 
         Ok(())
     }
-}
-
-fn json_to_lines(
-    maybe_data: Option<String>,
-    is_active: bool,
-    is_expanded: bool,
-    expanded_idxs: Vec<usize>,
-    cursor_position: usize,
-) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
-    if is_active {
-        active_lines(maybe_data, expanded_idxs, is_expanded, cursor_position)
-    } else {
-        raw_lines(maybe_data, expanded_idxs, is_expanded)
-    }
-}
-
-fn active_lines(
-    maybe_data: Option<String>,
-    expanded_idxs: Vec<usize>,
-    expanded: bool,
-    cursor_position: usize,
-) -> Result<Vec<Line<'static>>, Box<dyn Error>> {
-    let mut lines = raw_lines(maybe_data, expanded_idxs, expanded)?;
-
-    let style = Style::default().fg(Color::Green);
-
-    if let Some(elem) = lines.get_mut(cursor_position) {
-        elem.patch_style(style);
-    } else if let Some(elem) = lines.last_mut() {
-        elem.patch_style(style);
-    }
-
-    Ok(lines)
 }
 
 fn raw_lines(
@@ -593,7 +571,7 @@ fn obj_lines(
 mod tests {
     use crate::components::jsonviewer;
     use pretty_assertions::assert_eq;
-    use ratatui::prelude::{Color, Line, Style};
+    use ratatui::prelude::Line;
     use std::error::Error;
 
     #[test]
@@ -630,29 +608,6 @@ mod tests {
         let result = jsonviewer::raw_lines(Some(input.to_string()), vec![], true)?;
 
         assert_eq!(vec![Line::raw("200")], result);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_active_styles() -> Result<(), Box<dyn Error>> {
-        let input = serde_json::json!({
-            "code": 200,
-        });
-
-        let result = jsonviewer::active_lines(Some(input.to_string()), vec![], true, 1)?;
-
-        let default_style = Style::default();
-        let selected_style = Style::default().fg(Color::Green);
-
-        assert_eq!(
-            vec![
-                Line::styled("{", default_style),
-                Line::styled("\"code\": 200", selected_style),
-                Line::styled("}", default_style),
-            ],
-            result
-        );
 
         Ok(())
     }

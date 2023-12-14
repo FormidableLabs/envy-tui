@@ -16,6 +16,7 @@ use crate::{
     components::component::Component,
     components::handlers,
     components::jsonviewer,
+    config::{Colors, Config},
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
@@ -55,8 +56,8 @@ pub struct StatusFilter {
 
 #[derive(Default)]
 pub struct Home {
-    pub action_tx: Option<UnboundedSender<Action>>,
     pub active_block: ActiveBlock,
+    pub action_tx: Option<UnboundedSender<Action>>,
     pub previous_blocks: Vec<ActiveBlock>,
     pub request_details_block: RequestDetailsPane,
     pub response_details_block: ResponseDetailsPane,
@@ -75,6 +76,7 @@ pub struct Home {
     pub logs: Vec<String>,
     pub mode: Mode,
     pub key_map: HashMap<KeyEvent, Action>,
+    pub colors: Colors,
     pub status_message: Option<String>,
     pub ws_status: String,
     pub wss_connected: bool,
@@ -85,8 +87,8 @@ pub struct Home {
     pub selected_trace: Option<Trace>,
     pub filter_index: usize,
     pub sort_index: usize,
-    metadata: Option<handlers::HandlerMetadata>,
-    filter_source: FilterSource,
+    pub metadata: Option<handlers::HandlerMetadata>,
+    pub filter_source: FilterSource,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub order: TraceSort,
@@ -94,18 +96,21 @@ pub struct Home {
 
 impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
-        let config = crate::config::Config::new()?;
+        let config = Config::new()?;
         let mut home = Home {
             key_map: config.mapping.0,
+            colors: config.colors.clone(),
             request_json_viewer: jsonviewer::JSONViewer::new(
                 ActiveBlock::RequestBody,
                 4,
                 "Request body",
+                config.colors.clone(),
             )?,
             response_json_viewer: jsonviewer::JSONViewer::new(
                 ActiveBlock::ResponseBody,
                 4,
                 "Response body",
+                config.colors.clone(),
             )?,
             ..Self::default()
         };
@@ -421,7 +426,7 @@ impl Component for Home {
                         )
                         .split(details_layout[2]);
 
-                    render::render_request_block(self, frame, request_layout[0]);
+                    render::render_request_details(self, frame, request_layout[0]);
 
                     self.request_json_viewer.render(frame, request_layout[1])?;
                     self.response_json_viewer
@@ -430,7 +435,7 @@ impl Component for Home {
                     render::render_traces(self, frame, split_layout[0]);
 
                     render::render_request_summary(self, frame, details_layout[0]);
-                    render::render_response_block(self, frame, response_layout[0]);
+                    render::render_response_details(self, frame, response_layout[0]);
 
                     render::render_footer(self, frame, main_layout[1]);
 
@@ -475,14 +480,14 @@ impl Component for Home {
                         )
                         .split(main_layout[3]);
 
-                    render::render_request_block(self, frame, request_layout[0]);
+                    render::render_request_details(self, frame, request_layout[0]);
                     self.request_json_viewer.render(frame, request_layout[1])?;
                     self.response_json_viewer
                         .render(frame, response_layout[1])?;
                     render::render_traces(self, frame, main_layout[0]);
 
                     render::render_request_summary(self, frame, main_layout[1]);
-                    render::render_response_block(self, frame, response_layout[0]);
+                    render::render_response_details(self, frame, response_layout[0]);
 
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);

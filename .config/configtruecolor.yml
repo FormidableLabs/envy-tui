@@ -1,0 +1,15 @@
+colors:
+  surface:
+    bg: !Rgb [32, 32, 32]
+    unselected: !Rgb [128, 128, 128]
+    selected: !Rgb [92, 201, 157]
+    success: !Rgb [92, 200, 113]
+    error: !Rgb [235, 72, 38]
+    warning: !Rgb [248, 205, 118]
+    null: !Rgb [170, 170, 170]
+  text:
+    unselected: !Rgb [128, 128, 128]
+    selected: !Rgb [32, 32, 32]
+    default: !Rgb [245, 245, 245]
+    accent_1: !Rgb [67, 151, 152]
+    accent_2: !Rgb [92, 201, 157]

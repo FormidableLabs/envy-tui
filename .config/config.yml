@@ -1,28 +1,44 @@
-q: Quit
-">": GoToEnd
-<: GoToStart
-tab: NextSection
-backtab: PreviousSection
-y: CopyToClipBoard
-/: NewSearch
-esc: FocusOnTraces
-down: !NavigateDown
-up: !NavigateUp
-h: !NavigateLeft
-j: !NavigateDown
-L: !GoToRight
-H: !GoToLeft
-k: !NavigateUp
-l: !NavigateRight
-x: StopWebSocketServer
-X: StartWebSocketServer
-?: Help
-p: ToggleDebug
-d: DeleteItem
-space: Select
-f: OpenFilter
-s: OpenSort
-"]": NextPane
-"[": PreviousPane
-e: ExpandAll
-E: CollapseAll
+mapping:
+  q: Quit
+  ">": GoToEnd
+  <: GoToStart
+  tab: NextSection
+  backtab: PreviousSection
+  y: CopyToClipBoard
+  /: NewSearch
+  esc: FocusOnTraces
+  down: !NavigateDown
+  up: !NavigateUp
+  h: !NavigateLeft
+  j: !NavigateDown
+  L: !GoToRight
+  H: !GoToLeft
+  k: !NavigateUp
+  l: !NavigateRight
+  x: StopWebSocketServer
+  X: StartWebSocketServer
+  ?: Help
+  p: ToggleDebug
+  d: DeleteItem
+  space: Select
+  f: OpenFilter
+  s: OpenSort
+  "]": NextPane
+  "[": PreviousPane
+  e: ExpandAll
+  E: CollapseAll
+colors:
+  surface:
+    bg: !Indexed 235
+    unselected: !Indexed 244
+    selected: !Indexed 43
+    success: !Indexed 42
+    error: !Indexed 202
+    warning: !Indexed 222
+    null: !Indexed 248
+  text:
+    selected: !Indexed 235
+    unselected: !Indexed 244
+    default: !Indexed 255
+    accent_1: !Indexed 37
+    accent_2: !Indexed 121
