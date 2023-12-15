@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crossterm::event::KeyEvent;
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
@@ -17,12 +18,13 @@ use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
 use crate::wss::client;
 
-#[derive(Clone, Copy, Default, PartialEq, Debug)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, EnumIter)]
+#[repr(u8)]
 pub enum DetailsPane {
     #[default]
-    RequestDetails,
-    RequestHeaders,
+    RequestDetails = 0,
     QueryParams,
+    RequestHeaders,
     ResponseDetails,
     ResponseHeaders,
     Timing,

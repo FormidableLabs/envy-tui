@@ -275,14 +275,7 @@ pub fn render_request_details(app: &Home, frame: &mut Frame, area: Rect) {
                     ))
                     .border_type(BorderType::Plain),
             )
-            .select(match app.details_block {
-                DetailsPane::RequestDetails => 0,
-                DetailsPane::QueryParams => 1,
-                DetailsPane::RequestHeaders => 2,
-                DetailsPane::ResponseDetails => 3,
-                DetailsPane::ResponseHeaders => 4,
-                DetailsPane::Timing => 5,
-            })
+            .select(app.details_block as usize)
             .highlight_style(Style::default().fg(app.colors.surface.selected));
 
             let inner_layout = Layout::default()

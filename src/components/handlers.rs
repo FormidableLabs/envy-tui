@@ -1,4 +1,4 @@
-use crate::app::{Action, ActiveBlock, FilterScreen, DetailsPane};
+use crate::app::{Action, ActiveBlock, DetailsPane, FilterScreen};
 use crate::components::home::Home;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -15,6 +15,7 @@ use crossterm::event::{KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::time::Duration;
+use strum::IntoEnumIterator;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
@@ -588,28 +589,30 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
 }
 
 pub fn handle_pane_next(app: &mut Home) -> Option<Action> {
-    match (app.active_block, app.details_block) {
-        (ActiveBlock::RequestDetails, DetailsPane::RequestHeaders) => {
-            app.details_block = DetailsPane::QueryParams
-        }
-        (ActiveBlock::RequestDetails, DetailsPane::QueryParams) => {
-            app.details_block = DetailsPane::RequestHeaders
-        }
-        (_, _) => {}
+    // cycle so the last pane advances to the first
+    let mut iter = DetailsPane::iter().cycle();
+
+    // advance iterator to the current block
+    iter.find(|&v| app.details_block == v);
+
+    // set current to the next item
+    if let Some(next_pane) = iter.next() {
+        app.details_block = next_pane;
     }
 
     None
 }
 
 pub fn handle_pane_prev(app: &mut Home) -> Option<Action> {
-    match (app.active_block, app.details_block) {
-        (ActiveBlock::RequestDetails, DetailsPane::RequestHeaders) => {
-            app.details_block = DetailsPane::QueryParams
-        }
-        (ActiveBlock::RequestDetails, DetailsPane::QueryParams) => {
-            app.details_block = DetailsPane::RequestHeaders
-        }
-        (_, _) => {}
+    // cycle so the last pane advances to the first
+    let mut iter = DetailsPane::iter().rev().cycle();
+
+    // advance iterator to the current block
+    iter.find(|&v| app.details_block == v);
+
+    // set current to the next item
+    if let Some(next_pane) = iter.next() {
+        app.details_block = next_pane;
     }
 
     None
