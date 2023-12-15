@@ -168,10 +168,8 @@ pub async fn client(
 
                                     let http_trace = trace.http.as_ref().unwrap();
 
-                                    if let Some(port) = &http_trace.port {
-                                        if port == "9999" {
-                                            should_persist = false;
-                                        }
+                                    if &http_trace.port == "9999" {
+                                        should_persist = false;
                                     }
 
                                     if let Some(s) = tx.clone() {

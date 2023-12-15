@@ -1,5 +1,6 @@
 use crate::app::Action;
 use crate::mock;
+use crate::parser::HTTPTimings;
 use crate::parser::{parse_raw_trace, Payload};
 use crate::wss::WebSocket;
 use serde::{Deserialize, Serialize};
@@ -47,14 +48,16 @@ pub struct HTTPTrace {
     pub pretty_request_body_lines: Option<usize>,
     #[serde(skip_serializing, skip_deserializing)]
     pub http_version: Option<http::Version>,
+    pub timings: Option<HTTPTimings>,
+    pub port: String,
+    pub path: String,
     pub raw: String,
-    pub port: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Trace {
     pub id: String,
-    pub timestamp: u64,
+    pub timestamp: i64,
     pub service_name: Option<String>,
     pub http: Option<HTTPTrace>,
 }

@@ -1,12 +1,13 @@
-use crossterm::event::{KeyCode, KeyEvent};
-
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::usize;
 
+use chrono::prelude::*;
+use crossterm::event::{KeyCode, KeyEvent};
 use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Modifier, Style};
+use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{
@@ -20,9 +21,7 @@ use crate::components::home::{FilterSource, Home};
 use crate::config::Colors;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
-    RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::services::websocket::Trace;
 use crate::utils::{get_rendered_items, parse_query_params, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -40,6 +39,27 @@ enum HeaderType {
 }
 
 pub fn get_row_style(row_style: RowStyle, colors: Colors) -> Style {
+    let default_style = Style::default().fg(colors.text.unselected);
+
+    let active_style = Style::default().fg(colors.text.default);
+
+    let selected_style = Style::default()
+        .fg(colors.text.selected)
+        .bg(colors.surface.selected);
+
+    let inactive_style = Style::default()
+        .fg(colors.text.selected)
+        .bg(colors.surface.unselected);
+
+    match row_style {
+        RowStyle::Default => default_style,
+        RowStyle::Active => active_style,
+        RowStyle::Inactive => inactive_style,
+        RowStyle::Selected => selected_style,
+    }
+}
+
+pub fn get_row_style_borrowed(row_style: RowStyle, colors: &Colors) -> Style {
     let default_style = Style::default().fg(colors.text.unselected);
 
     let active_style = Style::default().fg(colors.text.default);
@@ -153,22 +173,14 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
     };
 
     let table = Table::new(rows)
-        // You can set the style of the entire Table.
         .style(Style::default().fg(app.colors.text.default))
-        // It has an optional header, which is simply a Row always visible at the top.
         .header(
             Row::new(vec!["Header name", "Header value"])
                 .style(Style::default().fg(app.colors.text.accent_1))
-                // If you want some space between the header and the rest of the rows, you can always
-                // specify some margin at the bottom.
                 .bottom_margin(1),
         )
         .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
-        // ...and they can be separated by a fixed spacing.
-        // .column_spacing(1)
-        // If you wish to highlight a row in any specific way when it is selected...
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        // ...and potentially show a symbol in front of the selection.
         .highlight_symbol(">>");
 
     frame.render_widget(table, area);
@@ -177,220 +189,202 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
 pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
     let active_block = app.active_block;
 
-    match &app.selected_trace {
-        Some(maybe_selected_item) => {
-            let uri = maybe_selected_item
-                .http
-                .clone()
-                .unwrap_or_default()
-                .uri
-                .clone();
-
-            let tabs = Tabs::new(vec![
-                "REQUEST DETAILS",
-                "QUERY PARAMS",
-                "REQUEST HEADERS",
-                "RESPONSE DETAILS",
-                "RESPONSE HEADERS",
-                "TIMING",
-            ])
-            .block(
-                Block::default()
-                    .borders(Borders::BOTTOM)
-                    .border_style(Style::default().fg(
-                        if active_block == ActiveBlock::RequestDetails {
-                            app.colors.surface.selected
-                        } else {
-                            app.colors.surface.unselected
-                        },
-                    ))
-                    .border_type(BorderType::Plain),
-            )
-            .select(app.details_block as usize)
-            .highlight_style(Style::default().fg(app.colors.surface.selected));
-
-            let inner_layout = Layout::default()
-                .direction(Direction::Vertical)
-                .margin(1)
-                .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
-                .split(area);
-
-            let main = Block::default()
-                .title("  DETAILS  ")
-                .title(
-                    Title::from(format!(
-                        "  {} OF {}  ",
-                        app.selected_request_header_index + 1,
-                        maybe_selected_item
-                            .http
-                            .clone()
-                            .unwrap_or_default()
-                            .request_headers
-                            .len()
-                    ))
-                    .position(Position::Bottom)
-                    .alignment(Alignment::Right),
-                )
-                .border_style(get_border_style(
-                    app.active_block == ActiveBlock::RequestDetails,
-                    app.colors.clone(),
-                ))
-                .border_type(BorderType::Plain)
-                .borders(Borders::ALL);
-
-            frame.render_widget(main, area);
-            frame.render_widget(tabs, inner_layout[0]);
-
-            match app.details_block {
-                DetailsPane::RequestDetails => {
-                    let table = Table::new([])
-                        // You can set the style of the entire Table.
-                        .style(Style::default().fg(app.colors.text.unselected))
-                        // It has an optional header, which is simply a Row always visible at the top.
-                        .header(
-                            Row::new(vec!["Query name", "Query Param value"])
-                                .style(Style::default().fg(app.colors.text.accent_1))
-                                // If you want some space between the header and the rest of the rows, you can always
-                                // specify some margin at the bottom.
-                                .bottom_margin(1),
-                        )
-                        .widths(&[
-                            Constraint::Percentage(10),
-                            Constraint::Percentage(70),
-                            Constraint::Length(20),
-                        ])
-                        // ...and they can be separated by a fixed spacing.
-                        // .column_spacing(1)
-                        // If you wish to highlight a row in any specific way when it is selected...
-                        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-                        // ...and potentially show a symbol in front of the selection.
-                        //
-                        //
-                        .highlight_symbol(">>");
-                    frame.render_widget(table, inner_layout[1]);
-                }
-                DetailsPane::QueryParams => {
-                    let raw_params = parse_query_params(uri);
-
-                    let mut cloned = raw_params;
-
-                    cloned.sort_by(|a, b| {
-                        let (name_a, _) = a;
-                        let (name_b, _) = b;
-
-                        name_a.cmp(name_b)
-                    });
-
-                    let current_param_selected = cloned.get(app.selected_params_index);
-
-                    let rows = cloned
-                        .iter()
-                        .map(|param| {
-                            let (name, value) = param;
-                            let cloned_name = name.deref().clone();
-                            let cloned_value = value.deref().clone();
-
-                            let is_selected = match current_param_selected {
-                                Some(v) => {
-                                    let (current_name, _) = v;
-
-                                    current_name.deref() == name
-                                }
-                                None => false,
-                            };
-
-                            Row::new(vec![cloned_name, cloned_value]).style(
-                                match (is_selected, active_block) {
-                                    (true, ActiveBlock::RequestDetails) => {
-                                        get_row_style(RowStyle::Selected, app.colors.clone())
-                                    }
-                                    (false, ActiveBlock::RequestDetails) => {
-                                        get_row_style(RowStyle::Active, app.colors.clone())
-                                    }
-                                    (true, _) => {
-                                        get_row_style(RowStyle::Inactive, app.colors.clone())
-                                    }
-                                    (false, _) => {
-                                        get_row_style(RowStyle::Default, app.colors.clone())
-                                    }
-                                },
-                            )
-                        })
-                        .collect::<Vec<Row>>();
-
-                    let table = Table::new(rows)
-                        // You can set the style of the entire Table.
-                        .style(Style::default().fg(app.colors.text.unselected))
-                        // It has an optional header, which is simply a Row always visible at the top.
-                        .header(
-                            Row::new(vec!["Query name", "Query Param value"])
-                                .style(Style::default().fg(app.colors.text.accent_1))
-                                // If you want some space between the header and the rest of the rows, you can always
-                                // specify some margin at the bottom.
-                                .bottom_margin(1),
-                        )
-                        .widths(&[
-                            Constraint::Percentage(10),
-                            Constraint::Percentage(70),
-                            Constraint::Length(20),
-                        ])
-                        // ...and they can be separated by a fixed spacing.
-                        // .column_spacing(1)
-                        // If you wish to highlight a row in any specific way when it is selected...
-                        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-                        // ...and potentially show a symbol in front of the selection.
-                        //
-                        //
-                        .highlight_symbol(">>");
-                    frame.render_widget(table, inner_layout[1]);
-                }
-                DetailsPane::RequestHeaders => {
-                    render_headers(app, frame, inner_layout[1], HeaderType::Request);
-
-                    let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-
-                    let content_length = if let Some(trace) = &app.selected_trace {
-                        trace
-                            .http
-                            .clone()
-                            .unwrap_or_default()
-                            .response_headers
-                            .len()
-                            .clone()
+    if let Some(selected_trace) = &app.selected_trace {
+        let tabs = Tabs::new(vec![
+            "REQUEST DETAILS",
+            "QUERY PARAMS",
+            "REQUEST HEADERS",
+            "RESPONSE DETAILS",
+            "RESPONSE HEADERS",
+            "TIMING",
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(
+                    Style::default().fg(if active_block == ActiveBlock::RequestDetails {
+                        app.colors.surface.selected
                     } else {
-                        0
-                    };
+                        app.colors.surface.unselected
+                    }),
+                )
+                .border_type(BorderType::Plain)
+                .border_set(border::DOUBLE),
+        )
+        .select(app.details_block as usize)
+        .highlight_style(Style::default().fg(app.colors.surface.selected));
 
-                    let viewport_height =
-                        area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+        let inner_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
+            .split(area);
 
-                    if content_length > viewport_height.into() {
-                        frame.render_stateful_widget(
-                            vertical_scroll,
-                            area.inner(&Margin {
-                                horizontal: 0,
-                                vertical: 2,
-                            }),
-                            &mut app.request_details.scroll_state.clone(),
-                        );
-                    }
-                }
-                DetailsPane::ResponseDetails => {
-                    let table = Table::new([]);
-                    frame.render_widget(table, inner_layout[1])
-                }
-                DetailsPane::ResponseHeaders => {
-                    let table = Table::new([]);
-                    frame.render_widget(table, inner_layout[1])
-                }
-                DetailsPane::Timing => {
-                    let table = Table::new([]);
-                    frame.render_widget(table, inner_layout[1])
+        let main = Block::default()
+            .title("  DETAILS  ")
+            .title(
+                Title::from(format!(
+                    "  {} OF {}  ",
+                    app.selected_request_header_index + 1,
+                    selected_trace
+                        .http
+                        .clone()
+                        .unwrap_or_default()
+                        .request_headers
+                        .len()
+                ))
+                .position(Position::Bottom)
+                .alignment(Alignment::Right),
+            )
+            .border_style(get_border_style(
+                app.active_block == ActiveBlock::RequestDetails,
+                app.colors.clone(),
+            ))
+            .border_type(BorderType::Plain)
+            .borders(Borders::ALL);
+
+        frame.render_widget(main, area);
+        frame.render_widget(tabs, inner_layout[0]);
+
+        match app.details_block {
+            DetailsPane::RequestDetails => {
+                let mut rows: Vec<Row> = vec![];
+
+                let path = selected_trace
+                    .http
+                    .clone()
+                    .map_or("".to_string(), |http| http.path);
+                let sent = DateTime::from_timestamp(selected_trace.timestamp, 0)
+                    .unwrap_or_default()
+                    .to_rfc3339();
+                let host = selected_trace.service_name.clone().unwrap_or(format!(""));
+                rows.push(Row::new(vec!["sent", &sent]));
+                rows.push(Row::new(vec!["host", &host]));
+                rows.push(Row::new(vec!["path", &path]));
+
+                let table = Table::new(rows)
+                    .style(Style::default().fg(app.colors.text.unselected))
+                    .widths(&[
+                        Constraint::Percentage(10),
+                        Constraint::Percentage(70),
+                        Constraint::Length(20),
+                    ])
+                    .highlight_style(
+                        get_row_style_borrowed(RowStyle::Active, &app.colors)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .highlight_symbol(">>");
+                frame.render_widget(table, inner_layout[1]);
+            }
+            DetailsPane::QueryParams => {
+                let mut raw_params = parse_query_params(
+                    selected_trace
+                        .http
+                        .clone()
+                        .expect("Missing http from trace")
+                        .uri,
+                );
+
+                raw_params.sort_by(|a, b| {
+                    let (name_a, _) = a;
+                    let (name_b, _) = b;
+
+                    name_a.cmp(name_b)
+                });
+
+                let current_param_selected = raw_params.get(app.selected_params_index);
+
+                let rows = raw_params
+                    .iter()
+                    .map(|param| {
+                        let (name, value) = param;
+                        let cloned_name = name.deref().clone();
+                        let cloned_value = value.deref().clone();
+
+                        let is_selected = match current_param_selected {
+                            Some(v) => {
+                                let (current_name, _) = v;
+
+                                current_name.deref() == name
+                            }
+                            None => false,
+                        };
+
+                        Row::new(vec![cloned_name, cloned_value]).style(
+                            match (is_selected, active_block) {
+                                (true, ActiveBlock::RequestDetails) => {
+                                    get_row_style(RowStyle::Selected, app.colors.clone())
+                                }
+                                (false, ActiveBlock::RequestDetails) => {
+                                    get_row_style(RowStyle::Active, app.colors.clone())
+                                }
+                                (true, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
+                                (false, _) => get_row_style(RowStyle::Default, app.colors.clone()),
+                            },
+                        )
+                    })
+                    .collect::<Vec<Row>>();
+
+                let table = Table::new(rows)
+                    .style(Style::default().fg(app.colors.text.unselected))
+                    .header(
+                        Row::new(vec!["Query name", "Query Param value"])
+                            .style(Style::default().fg(app.colors.text.accent_1))
+                            .bottom_margin(1),
+                    )
+                    .widths(&[
+                        Constraint::Percentage(10),
+                        Constraint::Percentage(70),
+                        Constraint::Length(20),
+                    ])
+                    .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+                    .highlight_symbol(">>");
+                frame.render_widget(table, inner_layout[1]);
+            }
+            DetailsPane::RequestHeaders => {
+                render_headers(app, frame, inner_layout[1], HeaderType::Request);
+
+                let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+                let content_length = if let Some(trace) = &app.selected_trace {
+                    trace
+                        .http
+                        .clone()
+                        .unwrap_or_default()
+                        .response_headers
+                        .len()
+                        .clone()
+                } else {
+                    0
+                };
+
+                let viewport_height = area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                if content_length > viewport_height.into() {
+                    frame.render_stateful_widget(
+                        vertical_scroll,
+                        area.inner(&Margin {
+                            horizontal: 0,
+                            vertical: 2,
+                        }),
+                        &mut app.request_details.scroll_state.clone(),
+                    );
                 }
             }
+            DetailsPane::ResponseDetails => {
+                let table = Table::new([]);
+                frame.render_widget(table, inner_layout[1])
+            }
+            DetailsPane::ResponseHeaders => {
+                let table = Table::new([]);
+                frame.render_widget(table, inner_layout[1])
+            }
+            DetailsPane::Timing => {
+                let table = Table::new([]);
+                frame.render_widget(table, inner_layout[1])
+            }
         }
-        None => (),
-    };
+    }
 }
 
 pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
