@@ -376,8 +376,34 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                 frame.render_widget(table, inner_layout[1])
             }
             DetailsPane::ResponseHeaders => {
-                let table = Table::new([]);
-                frame.render_widget(table, inner_layout[1])
+                render_headers(app, frame, inner_layout[1], HeaderType::Response);
+
+                let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+                let content_length = if let Some(trace) = &app.selected_trace {
+                    trace
+                        .http
+                        .clone()
+                        .unwrap_or_default()
+                        .response_headers
+                        .len()
+                        .clone()
+                } else {
+                    0
+                };
+
+                let viewport_height = area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                if content_length > viewport_height.into() {
+                    frame.render_stateful_widget(
+                        vertical_scroll,
+                        area.inner(&Margin {
+                            horizontal: 0,
+                            vertical: 2,
+                        }),
+                        &mut app.request_details.scroll_state.clone(),
+                    );
+                }
             }
             DetailsPane::Timing => {
                 let table = Table::new([]);
