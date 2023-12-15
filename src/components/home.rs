@@ -419,7 +419,7 @@ impl Component for Home {
 
                     render::render_traces(self, frame, left_column);
 
-                    render::render_request_details(self, frame, right_column_layout[0]);
+                    render::details(self, frame, right_column_layout[0]);
                     self.request_json_viewer.render(frame, body_layout[1])?;
                     self.response_json_viewer.render(frame, body_layout[0])?;
 
@@ -468,14 +468,14 @@ impl Component for Home {
                         )
                         .split(main_layout[3]);
 
-                    render::render_request_details(self, frame, request_layout[0]);
+                    render::details(self, frame, request_layout[0]);
                     self.request_json_viewer.render(frame, request_layout[1])?;
                     self.response_json_viewer
                         .render(frame, response_layout[1])?;
                     render::render_traces(self, frame, main_layout[0]);
 
-                    render::render_request_summary(self, frame, main_layout[1]);
-                    render::render_response_details(self, frame, response_layout[0]);
+                    // render::render_request_summary(self, frame, main_layout[1]);
+                    // render::render_response_details(self, frame, response_layout[0]);
 
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);
