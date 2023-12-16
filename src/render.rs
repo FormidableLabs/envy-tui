@@ -6,15 +6,18 @@ use chrono::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent};
 use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::block::{Position, Title};
-use ratatui::widgets::{
-    Block, BorderType, Borders, Cell, Clear, List, ListItem, Padding, Paragraph, Row, Scrollbar,
-    ScrollbarOrientation, Table, Tabs,
+use ratatui::{
+    buffer::Buffer,
+    style::{Color, Modifier, Style, Stylize},
+    symbols::border,
+    widgets::{
+        block::{Position, Title},
+        Bar, BarChart, BarGroup, Block, BorderType, Borders, Cell, Clear, List, ListItem, Padding,
+        Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Tabs, Widget,
+    },
+    Frame,
 };
-use ratatui::Frame;
 
 use crate::app::{Action, ActiveBlock, DetailsPane};
 use crate::components::home::{FilterSource, Home};
@@ -406,11 +409,31 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                 }
             }
             DetailsPane::Timing => {
-                let table = Table::new([]);
-                frame.render_widget(table, inner_layout[1])
+                render_horizontal_barchart(inner_layout[1], frame.buffer_mut(), &app.colors);
             }
         }
     }
+}
+
+fn render_horizontal_barchart(area: Rect, buf: &mut Buffer, colors: &Colors) {
+    let bg = colors.surface.null;
+    let data = [
+        Bar::default().text_value("DNS".into()).value(51),
+        Bar::default().text_value("connecting".into()).value(65),
+        Bar::default().text_value("TLS setup".into()).value(77),
+        Bar::default().text_value("sending".into()).value(71),
+        Bar::default().text_value("waiting".into()).value(71),
+        Bar::default().text_value("receiving".into()).value(71),
+    ];
+    let group = BarGroup::default().label("GPU".into()).bars(&data);
+    BarChart::default()
+        .block(Block::new().padding(Padding::new(0, 0, 2, 0)))
+        .direction(Direction::Horizontal)
+        .data(group)
+        .bar_gap(1)
+        .bar_style(Style::new().fg(bg))
+        .value_style(Style::new().fg(colors.text.accent_1))
+        .render(area, buf);
 }
 
 pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
@@ -646,32 +669,6 @@ pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
     frame.render_widget(status_bar, area);
 
     frame.render_widget(help_text, area);
-}
-
-pub fn render_request_summary(app: &Home, frame: &mut Frame, area: Rect) {
-    let message = match app.selected_trace.clone() {
-        Some(item) => item.to_string(),
-        None => "No item found".to_string(),
-    };
-
-    let status_bar = Paragraph::new(message)
-        .style(get_text_style(
-            app.active_block == ActiveBlock::RequestSummary,
-            app.colors.clone(),
-        ))
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(
-                    app.active_block == ActiveBlock::RequestSummary,
-                    app.colors.clone(),
-                ))
-                .title("Request summary")
-                .border_type(BorderType::Plain),
-        );
-
-    frame.render_widget(status_bar, area);
 }
 
 pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
