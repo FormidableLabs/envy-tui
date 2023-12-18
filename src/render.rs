@@ -432,8 +432,6 @@ fn render_horizontal_barchart(
     if let Some(trace) = maybe_trace {
         if let Some(http) = &trace.http {
             if let Some(timings) = &http.timings {
-                let bg = colors.surface.null;
-
                 let timings_vec: Vec<f64> = vec![
                     timings.blocked.into(),
                     timings.dns.into(),
@@ -443,23 +441,15 @@ fn render_horizontal_barchart(
                     timings.wait.into(),
                     timings.receive.into(),
                 ];
-
                 let total = timings_vec.clone().into_iter().fold(0.0, |a, b| a + b);
-
-                let x_axis = Axis::default()
-                    .style(Style::default().white())
-                    .bounds([0.0, total]);
-
-                let y_axis = Axis::default()
-                    .style(Style::default().white())
-                    .bounds([0.0, 6.0]);
+                let x_axis = Axis::default().bounds([0.0, total]);
+                let y_axis = Axis::default().bounds([0.0, 6.0]);
 
                 Chart::new(vec![
                     Dataset::default()
                         .name("blocked")
                         .marker(symbols::Marker::Block)
                         .graph_type(GraphType::Line)
-                        .style(Style::default().fg(bg))
                         .data(&[
                             (0.0, 6.0),
                             (timings_vec[0..1].iter().fold(0.0, |a, b| a + b), 6.0),
@@ -468,7 +458,6 @@ fn render_horizontal_barchart(
                         .name("DNS")
                         .marker(symbols::Marker::Block)
                         .graph_type(GraphType::Line)
-                        .style(Style::default().fg(bg))
                         .data(&[
                             (timings_vec[0..1].iter().fold(0.0, |a, b| a + b), 5.0),
                             (timings_vec[0..2].iter().fold(0.0, |a, b| a + b), 5.0),
@@ -477,7 +466,6 @@ fn render_horizontal_barchart(
                         .name("connecting")
                         .marker(symbols::Marker::Block)
                         .graph_type(GraphType::Line)
-                        .style(Style::default().fg(bg))
                         .data(&[
                             (timings_vec[0..2].iter().fold(0.0, |a, b| a + b), 4.0),
                             (timings_vec[0..3].iter().fold(0.0, |a, b| a + b), 4.0),
@@ -486,7 +474,6 @@ fn render_horizontal_barchart(
                         .name("TLS")
                         .marker(symbols::Marker::Block)
                         .graph_type(GraphType::Line)
-                        .style(Style::default().fg(bg))
                         .data(&[
                             (timings_vec[0..3].iter().fold(0.0, |a, b| a + b), 3.0),
                             (timings_vec[0..4].iter().fold(0.0, |a, b| a + b), 3.0),
@@ -495,7 +482,6 @@ fn render_horizontal_barchart(
                         .name("sending")
                         .marker(symbols::Marker::Block)
                         .graph_type(GraphType::Line)
-                        .style(Style::default().fg(bg))
                         .data(&[
                             (timings_vec[0..4].iter().fold(0.0, |a, b| a + b), 2.0),
                             (timings_vec[0..5].iter().fold(0.0, |a, b| a + b), 2.0),
@@ -504,7 +490,6 @@ fn render_horizontal_barchart(
                         .name("waiting")
                         .marker(symbols::Marker::Block)
                         .graph_type(GraphType::Line)
-                        .style(Style::default().fg(bg))
                         .data(&[
                             (timings_vec[0..5].iter().fold(0.0, |a, b| a + b), 1.0),
                             (timings_vec[0..6].iter().fold(0.0, |a, b| a + b), 1.0),
@@ -513,13 +498,13 @@ fn render_horizontal_barchart(
                         .name("receiving")
                         .marker(symbols::Marker::Block)
                         .graph_type(GraphType::Line)
-                        .style(Style::default().fg(bg))
                         .data(&[
                             (timings_vec[0..6].iter().fold(0.0, |a, b| a + b), 0.0),
                             (timings_vec[0..7].iter().fold(0.0, |a, b| a + b), 0.0),
                         ]),
                 ])
-                .hidden_legend_constraints((Constraint::Length(0), Constraint::Ratio(1, 4)))
+                .style(Style::default().fg(colors.surface.null))
+                .hidden_legend_constraints((Constraint::Length(0), Constraint::Length(0)))
                 .x_axis(x_axis)
                 .y_axis(y_axis)
                 .render(area, buf);
