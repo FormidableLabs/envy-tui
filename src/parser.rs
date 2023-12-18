@@ -12,13 +12,13 @@ use crate::services::websocket::{HTTPTrace, State, Trace};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HTTPTimings {
-    blocked: f32,
-    dns: f32,
-    connect: f32,
-    send: f32,
-    wait: f32,
-    receive: f32,
-    ssl: f32,
+    pub blocked: f32,
+    pub dns: f32,
+    pub connect: f32,
+    pub send: f32,
+    pub wait: f32,
+    pub receive: f32,
+    pub ssl: f32,
 }
 
 pub fn populate_header_map(raw_headers: &Map<String, Value>, map: &mut HeaderMap) {

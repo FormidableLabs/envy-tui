@@ -9,12 +9,14 @@ use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::{
     buffer::Buffer,
-    style::{Color, Modifier, Style, Stylize},
+    style::{Modifier, Style, Stylize},
+    symbols,
     symbols::border,
     widgets::{
         block::{Position, Title},
-        Bar, BarChart, BarGroup, Block, BorderType, Borders, Cell, Clear, List, ListItem, Padding,
-        Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Tabs, Widget,
+        Axis, Bar, BarChart, BarGroup, Block, BorderType, Borders, Cell, Chart, Clear, Dataset,
+        GraphType, List, ListItem, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
+        Tabs, Widget,
     },
     Frame,
 };
@@ -25,6 +27,7 @@ use crate::config::Colors;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
+use crate::services::websocket::Trace;
 use crate::utils::{get_rendered_items, parse_query_params, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -409,31 +412,120 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                 }
             }
             DetailsPane::Timing => {
-                render_horizontal_barchart(inner_layout[1], frame.buffer_mut(), &app.colors);
+                render_horizontal_barchart(
+                    inner_layout[1],
+                    frame.buffer_mut(),
+                    &app.colors,
+                    &app.selected_trace,
+                );
             }
         }
     }
 }
 
-fn render_horizontal_barchart(area: Rect, buf: &mut Buffer, colors: &Colors) {
-    let bg = colors.surface.null;
-    let data = [
-        Bar::default().text_value("DNS".into()).value(51),
-        Bar::default().text_value("connecting".into()).value(65),
-        Bar::default().text_value("TLS setup".into()).value(77),
-        Bar::default().text_value("sending".into()).value(71),
-        Bar::default().text_value("waiting".into()).value(71),
-        Bar::default().text_value("receiving".into()).value(71),
-    ];
-    let group = BarGroup::default().label("GPU".into()).bars(&data);
-    BarChart::default()
-        .block(Block::new().padding(Padding::new(0, 0, 2, 0)))
-        .direction(Direction::Horizontal)
-        .data(group)
-        .bar_gap(1)
-        .bar_style(Style::new().fg(bg))
-        .value_style(Style::new().fg(colors.text.accent_1))
-        .render(area, buf);
+fn render_horizontal_barchart(
+    area: Rect,
+    buf: &mut Buffer,
+    colors: &Colors,
+    maybe_trace: &Option<Trace>,
+) {
+    if let Some(trace) = maybe_trace {
+        if let Some(http) = &trace.http {
+            if let Some(timings) = &http.timings {
+                let bg = colors.surface.null;
+
+                let timings_vec: Vec<f64> = vec![
+                    timings.blocked.into(),
+                    timings.dns.into(),
+                    timings.connect.into(),
+                    timings.ssl.into(),
+                    timings.send.into(),
+                    timings.wait.into(),
+                    timings.receive.into(),
+                ];
+
+                let total = timings_vec.clone().into_iter().fold(0.0, |a, b| a + b);
+
+                let x_axis = Axis::default()
+                    .style(Style::default().white())
+                    .bounds([0.0, total]);
+
+                let y_axis = Axis::default()
+                    .style(Style::default().white())
+                    .bounds([0.0, 6.0]);
+
+                Chart::new(vec![
+                    Dataset::default()
+                        .name("blocked")
+                        .marker(symbols::Marker::Block)
+                        .graph_type(GraphType::Line)
+                        .style(Style::default().fg(bg))
+                        .data(&[
+                            (0.0, 6.0),
+                            (timings_vec[0..1].iter().fold(0.0, |a, b| a + b), 6.0),
+                        ]),
+                    Dataset::default()
+                        .name("DNS")
+                        .marker(symbols::Marker::Block)
+                        .graph_type(GraphType::Line)
+                        .style(Style::default().fg(bg))
+                        .data(&[
+                            (timings_vec[0..1].iter().fold(0.0, |a, b| a + b), 5.0),
+                            (timings_vec[0..2].iter().fold(0.0, |a, b| a + b), 5.0),
+                        ]),
+                    Dataset::default()
+                        .name("connecting")
+                        .marker(symbols::Marker::Block)
+                        .graph_type(GraphType::Line)
+                        .style(Style::default().fg(bg))
+                        .data(&[
+                            (timings_vec[0..2].iter().fold(0.0, |a, b| a + b), 4.0),
+                            (timings_vec[0..3].iter().fold(0.0, |a, b| a + b), 4.0),
+                        ]),
+                    Dataset::default()
+                        .name("TLS")
+                        .marker(symbols::Marker::Block)
+                        .graph_type(GraphType::Line)
+                        .style(Style::default().fg(bg))
+                        .data(&[
+                            (timings_vec[0..3].iter().fold(0.0, |a, b| a + b), 3.0),
+                            (timings_vec[0..4].iter().fold(0.0, |a, b| a + b), 3.0),
+                        ]),
+                    Dataset::default()
+                        .name("sending")
+                        .marker(symbols::Marker::Block)
+                        .graph_type(GraphType::Line)
+                        .style(Style::default().fg(bg))
+                        .data(&[
+                            (timings_vec[0..4].iter().fold(0.0, |a, b| a + b), 2.0),
+                            (timings_vec[0..5].iter().fold(0.0, |a, b| a + b), 2.0),
+                        ]),
+                    Dataset::default()
+                        .name("waiting")
+                        .marker(symbols::Marker::Block)
+                        .graph_type(GraphType::Line)
+                        .style(Style::default().fg(bg))
+                        .data(&[
+                            (timings_vec[0..5].iter().fold(0.0, |a, b| a + b), 1.0),
+                            (timings_vec[0..6].iter().fold(0.0, |a, b| a + b), 1.0),
+                        ]),
+                    Dataset::default()
+                        .name("receiving")
+                        .marker(symbols::Marker::Block)
+                        .graph_type(GraphType::Line)
+                        .style(Style::default().fg(bg))
+                        .data(&[
+                            (timings_vec[0..6].iter().fold(0.0, |a, b| a + b), 0.0),
+                            (timings_vec[0..7].iter().fold(0.0, |a, b| a + b), 0.0),
+                        ]),
+                ])
+                .hidden_legend_constraints((Constraint::Length(0), Constraint::Ratio(1, 4)))
+                .x_axis(x_axis)
+                .y_axis(y_axis)
+                .render(area, buf);
+            }
+        }
+    }
 }
 
 pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
