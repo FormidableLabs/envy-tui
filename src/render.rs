@@ -255,17 +255,24 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
             DetailsPane::RequestDetails => {
                 let mut rows: Vec<Row> = vec![];
 
+                let sent = DateTime::from_timestamp(selected_trace.timestamp, 0)
+                    .unwrap_or_default()
+                    .format("%Y-%m-%d @ %H:%M:%S")
+                    .to_string();
+                let host = selected_trace.service_name.clone().unwrap_or(format!(""));
                 let path = selected_trace
                     .http
                     .clone()
                     .map_or("".to_string(), |http| http.path);
-                let sent = DateTime::from_timestamp(selected_trace.timestamp, 0)
-                    .unwrap_or_default()
-                    .to_rfc3339();
-                let host = selected_trace.service_name.clone().unwrap_or(format!(""));
+                let port = selected_trace
+                    .http
+                    .clone()
+                    .map_or("".to_string(), |http| http.port);
+
                 rows.push(Row::new(vec!["sent", &sent]));
                 rows.push(Row::new(vec!["host", &host]));
                 rows.push(Row::new(vec!["path", &path]));
+                rows.push(Row::new(vec!["port", &port]));
 
                 let table = Table::new(rows)
                     .style(Style::default().fg(app.colors.text.unselected))
@@ -377,8 +384,46 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                 }
             }
             DetailsPane::ResponseDetails => {
-                let table = Table::new([]);
-                frame.render_widget(table, inner_layout[1])
+                let mut rows: Vec<Row> = vec![];
+
+                let received = DateTime::from_timestamp(selected_trace.timestamp, 0)
+                    .unwrap_or_default()
+                    .format("%Y-%m-%d @ %H:%M:%S")
+                    .to_string();
+                let status = selected_trace
+                    .http
+                    .clone()
+                    .map_or(None, |http| http.status)
+                    .map_or("".to_string(), |status| {
+                        format!(
+                            "{} {}",
+                            status.as_str(),
+                            status.canonical_reason().unwrap_or_default()
+                        )
+                    });
+                let duration = selected_trace
+                    .http
+                    .clone()
+                    .map_or(None, |http| http.duration)
+                    .map_or("".to_string(), |duration| format!("{}ms", duration));
+
+                rows.push(Row::new(vec!["received", &received]));
+                rows.push(Row::new(vec!["status", &status]));
+                rows.push(Row::new(vec!["duration", &duration]));
+
+                let table = Table::new(rows)
+                    .style(Style::default().fg(app.colors.text.unselected))
+                    .widths(&[
+                        Constraint::Percentage(10),
+                        Constraint::Percentage(70),
+                        Constraint::Length(20),
+                    ])
+                    .highlight_style(
+                        get_row_style_borrowed(RowStyle::Active, &app.colors)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .highlight_symbol(">>");
+                frame.render_widget(table, inner_layout[1]);
             }
             DetailsPane::ResponseHeaders => {
                 render_headers(app, frame, inner_layout[1], HeaderType::Response);

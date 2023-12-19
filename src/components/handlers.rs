@@ -574,13 +574,13 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
         ActiveBlock::ResponseBody => ActiveBlock::Details,
         _ => app.active_block,
     };
-        if next_block != app.active_block {
-            app.active_block = next_block;
+    if next_block != app.active_block {
+        app.active_block = next_block;
 
-            Some(Action::ActivateBlock(next_block))
-        } else {
-            None
-        }
+        Some(Action::ActivateBlock(next_block))
+    } else {
+        None
+    }
 }
 
 pub fn handle_pane_next(app: &mut Home) -> Option<Action> {
