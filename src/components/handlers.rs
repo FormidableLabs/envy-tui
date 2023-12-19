@@ -98,8 +98,8 @@ pub fn handle_up(
 ) -> Option<Action> {
     match key.modifiers {
         KeyModifiers::CONTROL => match app.active_block {
-            ActiveBlock::ResponseDetails => {
-                app.active_block = ActiveBlock::RequestDetails;
+            ActiveBlock::Details => {
+                app.active_block = ActiveBlock::Traces;
 
                 None
             }
@@ -122,7 +122,7 @@ pub fn handle_up(
                 }
                 _ => None,
             },
-            (ActiveBlock::TracesBlock, _) => {
+            (ActiveBlock::Traces, _) => {
                 if app.main.index > 0 {
                     app.main.index -= 1;
 
@@ -162,7 +162,7 @@ pub fn handle_up(
                     Some(Action::SelectTrace(get_currently_selected_trace(app)))
                 }
             }
-            (ActiveBlock::RequestDetails, DetailsPane::QueryParams) => {
+            (ActiveBlock::Details, DetailsPane::QueryParams) => {
                 let next_index = if app.selected_params_index == 0 {
                     0
                 } else {
@@ -173,7 +173,7 @@ pub fn handle_up(
 
                 None
             }
-            (ActiveBlock::RequestDetails, DetailsPane::RequestHeaders) => {
+            (ActiveBlock::Details, DetailsPane::RequestHeaders) => {
                 let next_index = if app.selected_request_header_index == 0 {
                     0
                 } else {
@@ -215,7 +215,7 @@ pub fn handle_up(
 
                 None
             }
-            (ActiveBlock::ResponseDetails, _) => {
+            (ActiveBlock::Details, _) => {
                 let next_index = if app.selected_response_header_index == 0 {
                     0
                 } else {
@@ -302,8 +302,8 @@ pub fn handle_down(
 ) -> Option<Action> {
     match key.modifiers {
         KeyModifiers::CONTROL => match app.active_block {
-            ActiveBlock::RequestDetails => {
-                app.active_block = ActiveBlock::ResponseDetails;
+            ActiveBlock::Details => {
+                app.active_block = ActiveBlock::Traces;
 
                 None
             }
@@ -345,7 +345,7 @@ pub fn handle_down(
 
                 None
             }
-            (ActiveBlock::TracesBlock, _) => {
+            (ActiveBlock::Traces, _) => {
                 let length = get_rendered_items(app).len();
 
                 let number_of_lines: u16 = length.try_into().unwrap();
@@ -393,7 +393,7 @@ pub fn handle_down(
 
                 Some(Action::SelectTrace(get_currently_selected_trace(app)))
             }
-            (ActiveBlock::RequestDetails, DetailsPane::QueryParams) => {
+            (ActiveBlock::Details, DetailsPane::QueryParams) => {
                 let item = app.selected_trace.as_ref().unwrap();
 
                 let params = parse_query_params(item.http.clone().unwrap_or_default().uri);
@@ -406,7 +406,7 @@ pub fn handle_down(
 
                 None
             }
-            (ActiveBlock::RequestDetails, DetailsPane::RequestHeaders) => {
+            (ActiveBlock::Details, DetailsPane::RequestHeaders) => {
                 let item = app.selected_trace.as_ref().unwrap();
 
                 let item_length = item.http.clone().unwrap_or_default().request_headers.len();
@@ -451,7 +451,7 @@ pub fn handle_down(
 
                 None
             }
-            (ActiveBlock::ResponseDetails, _) => {
+            (ActiveBlock::Details, _) => {
                 let item = app.selected_trace.as_ref().unwrap();
 
                 if item.http.clone().unwrap_or_default().duration.is_some() {
@@ -507,15 +507,15 @@ pub fn handle_down(
 }
 
 pub fn handle_enter(app: &mut Home) -> Option<Action> {
-    if app.active_block == ActiveBlock::TracesBlock {
-        app.active_block = ActiveBlock::RequestDetails
+    if app.active_block == ActiveBlock::Traces {
+        app.active_block = ActiveBlock::Details;
     }
 
     None
 }
 
 pub fn handle_esc(app: &mut Home) -> Option<Action> {
-    app.active_block = ActiveBlock::TracesBlock;
+    app.active_block = ActiveBlock::Traces;
 
     None
 }
@@ -543,19 +543,17 @@ pub fn handle_search_pop(app: &mut Home) -> Option<Action> {
 }
 
 pub fn handle_search_exit(app: &mut Home) -> Option<Action> {
-    app.active_block = ActiveBlock::TracesBlock;
+    app.active_block = ActiveBlock::Traces;
 
     None
 }
 
 pub fn handle_tab(app: &mut Home) -> Option<Action> {
     let next_block = match app.active_block {
-        ActiveBlock::TracesBlock => ActiveBlock::RequestSummary,
-        ActiveBlock::RequestSummary => ActiveBlock::RequestDetails,
-        ActiveBlock::RequestDetails => ActiveBlock::RequestBody,
-        ActiveBlock::RequestBody => ActiveBlock::ResponseDetails,
-        ActiveBlock::ResponseDetails => ActiveBlock::ResponseBody,
-        ActiveBlock::ResponseBody => ActiveBlock::TracesBlock,
+        ActiveBlock::Traces => ActiveBlock::Details,
+        ActiveBlock::Details => ActiveBlock::ResponseBody,
+        ActiveBlock::ResponseBody => ActiveBlock::RequestBody,
+        ActiveBlock::RequestBody => ActiveBlock::Traces,
         _ => app.active_block,
     };
 
@@ -570,22 +568,19 @@ pub fn handle_tab(app: &mut Home) -> Option<Action> {
 
 pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
     let next_block = match app.active_block {
-        ActiveBlock::TracesBlock => ActiveBlock::ResponseBody,
-        ActiveBlock::RequestSummary => ActiveBlock::TracesBlock,
-        ActiveBlock::RequestDetails => ActiveBlock::RequestSummary,
-        ActiveBlock::RequestBody => ActiveBlock::RequestDetails,
-        ActiveBlock::ResponseDetails => ActiveBlock::RequestBody,
-        ActiveBlock::ResponseBody => ActiveBlock::ResponseDetails,
+        ActiveBlock::Traces => ActiveBlock::RequestBody,
+        ActiveBlock::Details => ActiveBlock::Traces,
+        ActiveBlock::RequestBody => ActiveBlock::ResponseBody,
+        ActiveBlock::ResponseBody => ActiveBlock::Details,
         _ => app.active_block,
     };
+        if next_block != app.active_block {
+            app.active_block = next_block;
 
-    if next_block != app.active_block {
-        app.active_block = next_block;
-
-        Some(Action::ActivateBlock(next_block))
-    } else {
-        None
-    }
+            Some(Action::ActivateBlock(next_block))
+        } else {
+            None
+        }
 }
 
 pub fn handle_pane_next(app: &mut Home) -> Option<Action> {
@@ -621,7 +616,7 @@ pub fn handle_pane_prev(app: &mut Home) -> Option<Action> {
 pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) -> Option<Action> {
     if let Some(trace) = app.selected_trace.clone() {
         match app.active_block {
-            ActiveBlock::TracesBlock => {
+            ActiveBlock::Traces => {
                 let cmd = generate_curl_command(&trace);
 
                 match clippers::Clipboard::get().write_text(cmd) {
@@ -675,7 +670,7 @@ pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) -> O
 
 pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) -> Option<Action> {
     match app.active_block {
-        ActiveBlock::TracesBlock => {
+        ActiveBlock::Traces => {
             let number_of_lines: u16 = app.items.len().try_into().unwrap();
 
             let usubale_rect_space =
@@ -758,105 +753,109 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
             None
         }
-        ActiveBlock::RequestDetails => {
-            let content = get_content_length(app);
+        ActiveBlock::Details => match app.details_block {
+            DetailsPane::RequestDetails => {
+                let content = get_content_length(app);
 
-            if let Some(item) = app.selected_trace.clone() {
-                if item.http.clone().unwrap_or_default().duration.is_some() {
-                    let item_length = item.http.unwrap_or_default().request_headers.len();
+                if let Some(item) = app.selected_trace.clone() {
+                    if item.http.clone().unwrap_or_default().duration.is_some() {
+                        let item_length = item.http.unwrap_or_default().request_headers.len();
 
-                    let usable_height = additional_metadata
-                        .request_body_rectangle_height
-                        .checked_sub(REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
-                        .unwrap_or_default();
+                        let usable_height = additional_metadata
+                            .request_body_rectangle_height
+                            .checked_sub(REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                            .unwrap_or_default();
 
-                    let requires_scrollbar = item_length as u16 >= usable_height;
+                        let requires_scrollbar = item_length as u16 >= usable_height;
 
-                    app.selected_request_header_index =
-                        content.request_headers.vertical as usize - 1;
+                        app.selected_request_header_index =
+                            content.request_headers.vertical as usize - 1;
 
-                    if requires_scrollbar {
-                        let current_index_hit_viewport_end =
-                            app.selected_request_header_index >= { usable_height as usize };
+                        if requires_scrollbar {
+                            let current_index_hit_viewport_end =
+                                app.selected_request_header_index >= { usable_height as usize };
 
-                        let offset_does_not_intersects_bottom_of_rect =
-                            (app.request_details.offset as u16 + usable_height)
-                                < item_length as u16;
+                            let offset_does_not_intersects_bottom_of_rect =
+                                (app.request_details.offset as u16 + usable_height)
+                                    < item_length as u16;
 
-                        if current_index_hit_viewport_end
-                            && offset_does_not_intersects_bottom_of_rect
-                        {
-                            app.request_details.offset = item_length - usable_height as usize;
+                            if current_index_hit_viewport_end
+                                && offset_does_not_intersects_bottom_of_rect
+                            {
+                                app.request_details.offset = item_length - usable_height as usize;
+                            }
+
+                            let next_position = calculate_scrollbar_position(
+                                item_length as u16,
+                                app.request_details.offset,
+                                item_length as u16 - (usable_height),
+                            );
+
+                            app.request_details.scroll_state = app
+                                .request_details
+                                .scroll_state
+                                .position(next_position.into());
                         }
-
-                        let next_position = calculate_scrollbar_position(
-                            item_length as u16,
-                            app.request_details.offset,
-                            item_length as u16 - (usable_height),
-                        );
-
-                        app.request_details.scroll_state = app
-                            .request_details
-                            .scroll_state
-                            .position(next_position.into());
                     }
                 }
+
+                None
             }
+            DetailsPane::ResponseDetails => {
+                let content = get_content_length(app);
 
-            None
-        }
-        ActiveBlock::ResponseDetails => {
-            let content = get_content_length(app);
+                if let Some(item) = &app.selected_trace {
+                    if item.http.clone().unwrap_or_default().duration.is_some() {
+                        let item_length =
+                            item.http.clone().unwrap_or_default().response_headers.len();
 
-            if let Some(item) = &app.selected_trace {
-                if item.http.clone().unwrap_or_default().duration.is_some() {
-                    let item_length = item.http.clone().unwrap_or_default().response_headers.len();
+                        let usable_height = additional_metadata.response_body_rectangle_height
+                            - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
 
-                    let usable_height = additional_metadata.response_body_rectangle_height
-                        - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                        let requires_scrollbar = item_length as u16 >= usable_height;
 
-                    let requires_scrollbar = item_length as u16 >= usable_height;
+                        app.selected_response_header_index =
+                            content.response_headers.unwrap().vertical as usize - 1;
 
-                    app.selected_response_header_index =
-                        content.response_headers.unwrap().vertical as usize - 1;
+                        if requires_scrollbar {
+                            let current_index_hit_viewport_end =
+                                app.selected_response_header_index >= { usable_height as usize };
 
-                    if requires_scrollbar {
-                        let current_index_hit_viewport_end =
-                            app.selected_response_header_index >= { usable_height as usize };
+                            let offset_does_not_intersects_bottom_of_rect =
+                                (app.response_details.offset as u16 + usable_height)
+                                    < item_length as u16;
 
-                        let offset_does_not_intersects_bottom_of_rect =
-                            (app.response_details.offset as u16 + usable_height)
-                                < item_length as u16;
+                            if current_index_hit_viewport_end
+                                && offset_does_not_intersects_bottom_of_rect
+                            {
+                                app.response_details.offset = item_length - usable_height as usize;
+                            }
 
-                        if current_index_hit_viewport_end
-                            && offset_does_not_intersects_bottom_of_rect
-                        {
-                            app.response_details.offset = item_length - usable_height as usize;
+                            let next_position = calculate_scrollbar_position(
+                                item_length as u16,
+                                app.response_details.offset,
+                                item_length as u16 - (usable_height),
+                            );
+
+                            app.response_details.scroll_state = app
+                                .response_details
+                                .scroll_state
+                                .position(next_position.into());
                         }
-
-                        let next_position = calculate_scrollbar_position(
-                            item_length as u16,
-                            app.response_details.offset,
-                            item_length as u16 - (usable_height),
-                        );
-
-                        app.response_details.scroll_state = app
-                            .response_details
-                            .scroll_state
-                            .position(next_position.into());
                     }
                 }
-            }
 
-            None
-        }
+                None
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
 
 pub fn handle_go_to_start(app: &mut Home) -> Option<Action> {
     match app.active_block {
-        ActiveBlock::TracesBlock => {
+        ActiveBlock::Traces => {
             app.main.index = 0;
 
             app.main.offset = 0;
@@ -889,26 +888,30 @@ pub fn handle_go_to_start(app: &mut Home) -> Option<Action> {
 
             None
         }
-        ActiveBlock::RequestDetails => {
-            app.request_details.offset = 0;
-            app.selected_request_header_index = 0;
+        ActiveBlock::Details => match app.details_block {
+            DetailsPane::RequestDetails => {
+                app.request_details.offset = 0;
+                app.selected_request_header_index = 0;
 
-            app.request_details.scroll_state = app.request_details.scroll_state.position(0);
+                app.request_details.scroll_state = app.request_details.scroll_state.position(0);
 
-            None
-        }
-        ActiveBlock::ResponseDetails => {
-            let c = get_content_length(app);
-
-            if c.response_headers.is_some() {
-                app.response_details.offset = 0;
-                app.selected_response_header_index = 0;
-
-                app.response_details.scroll_state = app.response_details.scroll_state.position(0);
+                None
             }
+            DetailsPane::ResponseDetails => {
+                let c = get_content_length(app);
 
-            None
-        }
+                if c.response_headers.is_some() {
+                    app.response_details.offset = 0;
+                    app.selected_response_header_index = 0;
+
+                    app.response_details.scroll_state =
+                        app.response_details.scroll_state.position(0);
+                }
+
+                None
+            }
+            _ => None,
+        },
         _ => None,
     }
 }

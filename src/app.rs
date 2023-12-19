@@ -18,7 +18,7 @@ use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
 use crate::wss::client;
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, EnumIter)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
 #[repr(u8)]
 pub enum DetailsPane {
     #[default]
@@ -55,17 +55,15 @@ impl Display for FilterScreen {
 #[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ActiveBlock {
     #[default]
-    TracesBlock,
-    RequestDetails,
+    Traces,
+    Details,
     RequestBody,
-    ResponseDetails,
     ResponseBody,
-    RequestSummary,
-    SearchQuery,
     Help,
     Debug,
     Filter(FilterScreen),
     Sort,
+    SearchQuery,
 }
 
 #[derive(Default, Clone)]

@@ -9,14 +9,13 @@ use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::{
     buffer::Buffer,
-    style::{Modifier, Style, Stylize},
+    style::{Modifier, Style},
     symbols,
     symbols::border,
     widgets::{
         block::{Position, Title},
-        Axis, Bar, BarChart, BarGroup, Block, BorderType, Borders, Cell, Chart, Clear, Dataset,
-        GraphType, List, ListItem, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table,
-        Tabs, Widget,
+        Axis, Block, BorderType, Borders, Cell, Chart, Clear, Dataset, GraphType, List, ListItem,
+        Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Tabs, Widget,
     },
     Frame,
 };
@@ -154,16 +153,16 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
 
                     Row::new(vec![String::from(header_name), String::from(header_value)]).style(
                         match (is_active_header, active_block, header_type) {
-                            (true, ActiveBlock::RequestDetails, HeaderType::Request) => {
+                            (true, ActiveBlock::Details, HeaderType::Request) => {
                                 get_row_style(RowStyle::Selected, app.colors.clone())
                             }
-                            (true, ActiveBlock::ResponseDetails, HeaderType::Response) => {
+                            (true, ActiveBlock::Details, HeaderType::Response) => {
                                 get_row_style(RowStyle::Selected, app.colors.clone())
                             }
-                            (false, ActiveBlock::RequestDetails, HeaderType::Request) => {
+                            (false, ActiveBlock::Details, HeaderType::Request) => {
                                 get_row_style(RowStyle::Active, app.colors.clone())
                             }
-                            (false, ActiveBlock::ResponseDetails, HeaderType::Response) => {
+                            (false, ActiveBlock::Details, HeaderType::Response) => {
                                 get_row_style(RowStyle::Active, app.colors.clone())
                             }
                             (true, _, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
@@ -208,7 +207,7 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
             Block::default()
                 .borders(Borders::BOTTOM)
                 .border_style(
-                    Style::default().fg(if active_block == ActiveBlock::RequestDetails {
+                    Style::default().fg(if active_block == ActiveBlock::Details {
                         app.colors.surface.selected
                     } else {
                         app.colors.surface.unselected
@@ -243,7 +242,7 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                 .alignment(Alignment::Right),
             )
             .border_style(get_border_style(
-                app.active_block == ActiveBlock::RequestDetails,
+                app.active_block == ActiveBlock::Details,
                 app.colors.clone(),
             ))
             .border_type(BorderType::Plain)
@@ -318,10 +317,10 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
 
                         Row::new(vec![cloned_name, cloned_value]).style(
                             match (is_selected, active_block) {
-                                (true, ActiveBlock::RequestDetails) => {
+                                (true, ActiveBlock::Details) => {
                                     get_row_style(RowStyle::Selected, app.colors.clone())
                                 }
-                                (false, ActiveBlock::RequestDetails) => {
+                                (false, ActiveBlock::Details) => {
                                     get_row_style(RowStyle::Active, app.colors.clone())
                                 }
                                 (true, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
@@ -616,12 +615,10 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
                 .clone();
 
             Row::new(str_vec).style(match (*selected, active_block) {
-                (true, ActiveBlock::TracesBlock) => {
+                (true, ActiveBlock::Traces) => {
                     get_row_style(RowStyle::Selected, app.colors.clone())
                 }
-                (false, ActiveBlock::TracesBlock) => {
-                    get_row_style(RowStyle::Active, app.colors.clone())
-                }
+                (false, ActiveBlock::Traces) => get_row_style(RowStyle::Active, app.colors.clone()),
                 (true, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
                 (false, _) => get_row_style(RowStyle::Default, app.colors.clone()),
             })
@@ -641,7 +638,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(get_border_style(
-                    app.active_block == ActiveBlock::TracesBlock,
+                    app.active_block == ActiveBlock::Traces,
                     app.colors.clone(),
                 ))
                 .title(title)
