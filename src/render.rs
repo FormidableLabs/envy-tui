@@ -179,11 +179,6 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
 
     let table = Table::new(rows)
         .style(Style::default().fg(app.colors.text.default))
-        .header(
-            Row::new(vec!["Header name", "Header value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
         .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol(">>");
@@ -217,11 +212,25 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                 .border_set(border::DOUBLE),
         )
         .select(app.details_block as usize)
-        .highlight_style(Style::default().fg(app.colors.surface.selected));
+        .style(
+            Style::default().fg(if active_block == ActiveBlock::Details {
+                app.colors.text.accent_1
+            } else {
+                app.colors.text.unselected
+            }),
+        )
+        .highlight_style(
+            Style::default().fg(if active_block == ActiveBlock::Details {
+                app.colors.text.accent_2
+            } else {
+                app.colors.text.unselected
+            }),
+        );
 
         let inner_layout = Layout::default()
+            .vertical_margin(2)
+            .horizontal_margin(3)
             .direction(Direction::Vertical)
-            .margin(1)
             .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
             .split(area);
 
@@ -308,21 +317,16 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
 
                 let rows = raw_params
                     .iter()
-                    .map(|param| {
-                        let (name, value) = param;
-                        let cloned_name = name.deref().clone();
-                        let cloned_value = value.deref().clone();
-
+                    .map(|(name, value)| {
                         let is_selected = match current_param_selected {
                             Some(v) => {
                                 let (current_name, _) = v;
-
                                 current_name.deref() == name
                             }
                             None => false,
                         };
 
-                        Row::new(vec![cloned_name, cloned_value]).style(
+                        Row::new(vec![name.to_string(), value.to_string()]).style(
                             match (is_selected, active_block) {
                                 (true, ActiveBlock::Details) => {
                                     get_row_style(RowStyle::Selected, app.colors.clone())
@@ -338,19 +342,17 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                     .collect::<Vec<Row>>();
 
                 let table = Table::new(rows)
-                    .style(Style::default().fg(app.colors.text.unselected))
-                    .header(
-                        Row::new(vec!["Query name", "Query Param value"])
-                            .style(Style::default().fg(app.colors.text.accent_1))
-                            .bottom_margin(1),
+                    .style(
+                        Style::default().fg(if active_block == ActiveBlock::Details {
+                            app.colors.text.accent_1
+                        } else {
+                            app.colors.text.unselected
+                        }),
                     )
-                    .widths(&[
-                        Constraint::Percentage(10),
-                        Constraint::Percentage(70),
-                        Constraint::Length(20),
-                    ])
+                    .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
                     .highlight_style(Style::default().add_modifier(Modifier::BOLD))
                     .highlight_symbol(">>");
+
                 frame.render_widget(table, inner_layout[1]);
             }
             DetailsPane::RequestHeaders => {
