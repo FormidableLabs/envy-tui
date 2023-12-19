@@ -398,11 +398,13 @@ pub fn handle_down(
 
                 let params = parse_query_params(item.http.clone().unwrap_or_default().uri);
 
-                if app.selected_params_index + 1 >= params.len() {
+                let next_index = if app.selected_params_index + 1 >= params.len() {
                     params.len() - 1
                 } else {
                     app.selected_params_index + 1
                 };
+
+                app.selected_params_index = next_index;
 
                 None
             }
