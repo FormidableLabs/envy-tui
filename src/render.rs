@@ -8,14 +8,13 @@ use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::{
-    buffer::Buffer,
     style::{Modifier, Style},
     symbols,
     symbols::border,
     widgets::{
         block::{Position, Title},
-        Axis, Block, BorderType, Borders, Cell, Chart, Clear, Dataset, GraphType, List, ListItem,
-        Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Tabs, Widget,
+        canvas, Axis, Block, BorderType, Borders, Cell, Chart, Clear, Dataset, GraphType, List,
+        ListItem, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Tabs, Widget,
     },
     Frame,
 };
@@ -26,7 +25,6 @@ use crate::config::Colors;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::services::websocket::Trace;
 use crate::utils::{get_rendered_items, parse_query_params, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -295,6 +293,7 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                             .add_modifier(Modifier::BOLD),
                     )
                     .highlight_symbol(">>");
+
                 frame.render_widget(table, inner_layout[1]);
             }
             DetailsPane::QueryParams => {
@@ -425,6 +424,7 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                             .add_modifier(Modifier::BOLD),
                     )
                     .highlight_symbol(">>");
+
                 frame.render_widget(table, inner_layout[1]);
             }
             DetailsPane::ResponseHeaders => {
@@ -458,26 +458,42 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
                 }
             }
             DetailsPane::Timing => {
-                render_horizontal_barchart(
-                    inner_layout[1],
-                    frame.buffer_mut(),
-                    &app.colors,
-                    &app.selected_trace,
-                );
+                render_timing_chart(&app, inner_layout[1], frame);
             }
         }
     }
 }
 
-fn render_horizontal_barchart(
-    area: Rect,
-    buf: &mut Buffer,
-    colors: &Colors,
-    maybe_trace: &Option<Trace>,
-) {
-    if let Some(trace) = maybe_trace {
+fn render_timing_chart(app: &Home, area: Rect, frame: &mut Frame) {
+    if let Some(trace) = &app.selected_trace {
         if let Some(http) = &trace.http {
             if let Some(timings) = &http.timings {
+                let layout = Layout::default()
+                    .vertical_margin(2)
+                    .horizontal_margin(3)
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
+                    .split(area);
+
+                let lines = vec![
+                    Line::raw("blocked"),
+                    Line::raw("DNS"),
+                    Line::raw("connecting"),
+                    Line::raw("TLS"),
+                    Line::raw("sending"),
+                    Line::raw("waiting"),
+                    Line::raw("receiving"),
+                ];
+                let table = Paragraph::new(lines).style(Style::default().fg(
+                    if app.active_block == ActiveBlock::Details {
+                        app.colors.text.accent_1
+                    } else {
+                        app.colors.text.unselected
+                    },
+                ));
+
+                frame.render_widget(table, layout[0]);
+
                 let timings_vec: Vec<f64> = vec![
                     timings.blocked.into(),
                     timings.dns.into(),
@@ -487,73 +503,48 @@ fn render_horizontal_barchart(
                     timings.wait.into(),
                     timings.receive.into(),
                 ];
-                let total = timings_vec.clone().into_iter().fold(0.0, |a, b| a + b);
-                let x_axis = Axis::default().bounds([0.0, total]);
-                let y_axis = Axis::default().bounds([0.0, 6.0]);
+                let total = timings_vec.clone().iter().fold(0.0, |a, b| a + b);
 
-                Chart::new(vec![
-                    Dataset::default()
-                        .name("blocked")
-                        .marker(symbols::Marker::Block)
-                        .graph_type(GraphType::Line)
-                        .data(&[
-                            (0.0, 6.0),
-                            (timings_vec[0..1].iter().fold(0.0, |a, b| a + b), 6.0),
-                        ]),
-                    Dataset::default()
-                        .name("DNS")
-                        .marker(symbols::Marker::Block)
-                        .graph_type(GraphType::Line)
-                        .data(&[
-                            (timings_vec[0..1].iter().fold(0.0, |a, b| a + b), 5.0),
-                            (timings_vec[0..2].iter().fold(0.0, |a, b| a + b), 5.0),
-                        ]),
-                    Dataset::default()
-                        .name("connecting")
-                        .marker(symbols::Marker::Block)
-                        .graph_type(GraphType::Line)
-                        .data(&[
-                            (timings_vec[0..2].iter().fold(0.0, |a, b| a + b), 4.0),
-                            (timings_vec[0..3].iter().fold(0.0, |a, b| a + b), 4.0),
-                        ]),
-                    Dataset::default()
-                        .name("TLS")
-                        .marker(symbols::Marker::Block)
-                        .graph_type(GraphType::Line)
-                        .data(&[
-                            (timings_vec[0..3].iter().fold(0.0, |a, b| a + b), 3.0),
-                            (timings_vec[0..4].iter().fold(0.0, |a, b| a + b), 3.0),
-                        ]),
-                    Dataset::default()
-                        .name("sending")
-                        .marker(symbols::Marker::Block)
-                        .graph_type(GraphType::Line)
-                        .data(&[
-                            (timings_vec[0..4].iter().fold(0.0, |a, b| a + b), 2.0),
-                            (timings_vec[0..5].iter().fold(0.0, |a, b| a + b), 2.0),
-                        ]),
-                    Dataset::default()
-                        .name("waiting")
-                        .marker(symbols::Marker::Block)
-                        .graph_type(GraphType::Line)
-                        .data(&[
-                            (timings_vec[0..5].iter().fold(0.0, |a, b| a + b), 1.0),
-                            (timings_vec[0..6].iter().fold(0.0, |a, b| a + b), 1.0),
-                        ]),
-                    Dataset::default()
-                        .name("receiving")
-                        .marker(symbols::Marker::Block)
-                        .graph_type(GraphType::Line)
-                        .data(&[
-                            (timings_vec[0..6].iter().fold(0.0, |a, b| a + b), 0.0),
-                            (timings_vec[0..7].iter().fold(0.0, |a, b| a + b), 0.0),
-                        ]),
-                ])
-                .style(Style::default().fg(colors.surface.null))
-                .hidden_legend_constraints((Constraint::Length(0), Constraint::Length(0)))
-                .x_axis(x_axis)
-                .y_axis(y_axis)
-                .render(area, buf);
+                let chart_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(8), Constraint::Min(0)].as_ref())
+                    .split(layout[1]);
+
+                canvas::Canvas::default()
+                    .marker(symbols::Marker::HalfBlock)
+                    .x_bounds([0.0, total + 4.0])
+                    .y_bounds([timings_vec.len() as f64 * -1.0, 1.0])
+                    .paint(|ctx| {
+                        for (i, &v) in timings_vec.iter().enumerate() {
+                            let float_i = i as f64;
+                            ctx.draw(&canvas::Rectangle {
+                                x: timings_vec[0..i].iter().fold(0.0, |a, b| a + b),
+                                y: -float_i,
+                                width: v,
+                                height: 0.5,
+                                color: if app.active_block == ActiveBlock::Details {
+                                    app.colors.surface.null
+                                } else {
+                                    app.colors.surface.unselected
+                                },
+                            });
+                            ctx.print(
+                                v + timings_vec[0..i].iter().fold(0.0, |a, b| a + b) + 1.0,
+                                -float_i,
+                                Line::styled(
+                                    format!("{:.2}", v),
+                                    Style::default().fg(
+                                        if app.active_block == ActiveBlock::Details {
+                                            app.colors.text.accent_1
+                                        } else {
+                                            app.colors.text.unselected
+                                        },
+                                    ),
+                                ),
+                            )
+                        }
+                    })
+                    .render(chart_layout[0], frame.buffer_mut());
             }
         }
     }
