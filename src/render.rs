@@ -185,43 +185,130 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
 }
 
 pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
-    let row_constraints: Vec<Constraint> = if app.details_panes.len() > 3 {
-        vec![Constraint::Ratio(3, 3)]
-    } else {
-        vec![Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)]
-    };
-
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(row_constraints.as_ref())
-        .split(area);
-
     let mut cells: Vec<Rect> = vec![];
 
-    for _row in rows.iter() {
-        let columns = Layout::default()
-            .vertical_margin(2)
-            .horizontal_margin(3)
-            .direction(Direction::Vertical)
-            .constraints(
-                [
-                    Constraint::Ratio(1, 3),
-                    Constraint::Ratio(1, 3),
-                    Constraint::Ratio(1, 3),
-                ]
-                .as_ref(),
-            )
-            .split(area);
+    match app.details_panes.len() {
+        0 => cells.push(area),
+        1 => cells.extend(
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)].as_ref())
+                .split(area)
+                .iter(),
+        ),
+        2 => {
+            let columns = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)].as_ref())
+                .split(area);
 
-        for column in columns.iter() {
-            cells.push(*column);
+            cells.push(columns[0]);
+            cells.extend(
+                Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)].as_ref())
+                    .split(columns[1])
+                    .iter(),
+            )
         }
-    }
+        3 => {
+            let rows = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)].as_ref())
+                .split(area);
+
+            let top_row_columns = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)].as_ref())
+                .split(rows[0]);
+
+            cells.push(top_row_columns[0]);
+            cells.extend(
+                Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)].as_ref())
+                    .split(top_row_columns[1])
+                    .iter(),
+            );
+
+            // add bottom row
+            cells.push(rows[1]);
+        }
+        4 => {
+            let rows = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)].as_ref())
+                .split(area);
+
+            let top_row_columns = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)].as_ref())
+                .split(rows[0]);
+
+            cells.push(top_row_columns[0]);
+            cells.extend(
+                Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)].as_ref())
+                    .split(top_row_columns[1])
+                    .iter(),
+            );
+
+            // split bottom row
+            cells.extend(
+                Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)].as_ref())
+                    .split(rows[1])
+                    .iter(),
+            );
+        }
+        5 => {
+            let rows = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)].as_ref())
+                .split(area);
+
+            let top_row_columns = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)].as_ref())
+                .split(rows[0]);
+
+            cells.push(top_row_columns[0]);
+            cells.extend(
+                Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)].as_ref())
+                    .split(top_row_columns[1])
+                    .iter(),
+            );
+
+            // split bottom row
+            cells.extend(
+                Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)].as_ref())
+                    .constraints(
+                        [
+                            Constraint::Ratio(1, 3),
+                            Constraint::Ratio(1, 3),
+                            Constraint::Ratio(1, 3),
+                        ]
+                        .as_ref(),
+                    )
+                    .split(rows[1])
+                    .iter(),
+            );
+        }
+        _ => cells.push(area),
+    };
 
     details_tabs(app, frame, cells[0]);
 
-    for pane in &app.details_panes {
-        details_pane(app, frame, cells[1], pane);
+    for (idx, &cell) in cells[1..].iter().enumerate() {
+        if let Some(pane) = app.details_panes.get(idx) {
+            details_pane(app, frame, cell, pane);
+        }
     }
 }
 

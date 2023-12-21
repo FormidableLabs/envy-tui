@@ -399,7 +399,7 @@ pub fn handle_down(
                 let params = parse_query_params(item.http.clone().unwrap_or_default().uri);
 
                 let next_index = if app.selected_params_index + 1 >= params.len() {
-                    params.len() - 1
+                    params.len().saturating_sub(1)
                 } else {
                     app.selected_params_index + 1
                 };
@@ -414,7 +414,7 @@ pub fn handle_down(
                 let item_length = item.http.clone().unwrap_or_default().request_headers.len();
 
                 let next_index = if app.selected_request_header_index + 1 >= item_length {
-                    item_length - 1
+                    item_length.saturating_sub(1)
                 } else {
                     app.selected_request_header_index + 1
                 };
@@ -460,7 +460,7 @@ pub fn handle_down(
                     let item_length = item.http.clone().unwrap_or_default().response_headers.len();
 
                     let next_index = if app.selected_response_header_index + 1 >= item_length {
-                        item_length - 1
+                        item_length.saturating_sub(1)
                     } else {
                         app.selected_response_header_index + 1
                     };
@@ -615,7 +615,7 @@ pub fn handle_details_tab_prev(app: &mut Home) -> Option<Action> {
     iter.find(|&&v| app.details_block == v);
 
     if let Some(next_pane) = iter.next() {
-            app.details_block = *next_pane;
+        app.details_block = *next_pane;
     } else {
         // fallback to selecting the first tab
         app.details_block = *app
