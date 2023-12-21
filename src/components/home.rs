@@ -8,7 +8,6 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
-use strum::IntoEnumIterator;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
@@ -60,7 +59,6 @@ pub struct Home {
     pub active_block: ActiveBlock,
     pub action_tx: Option<UnboundedSender<Action>>,
     pub previous_blocks: Vec<ActiveBlock>,
-    pub details_block: DetailsPane,
     pub items: BTreeSet<Trace>,
     pub selected_request_header_index: usize,
     pub selected_response_header_index: usize,
@@ -92,6 +90,7 @@ pub struct Home {
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub order: TraceSort,
+    pub details_block: DetailsPane,
     pub details_tabs: Vec<DetailsPane>,
     pub details_panes: Vec<DetailsPane>,
 }

@@ -27,6 +27,7 @@ mapping:
   "[": PreviousPane
   e: ExpandAll
   E: CollapseAll
+  enter: ShowTraceDetails
 colors:
   surface:
     bg: !Indexed 235

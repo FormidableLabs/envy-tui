@@ -511,9 +511,12 @@ pub fn handle_down(
 pub fn handle_enter(app: &mut Home) -> Option<Action> {
     if app.active_block == ActiveBlock::Traces {
         app.active_block = ActiveBlock::Details;
+        None
+    } else if app.active_block == ActiveBlock::Details {
+        Some(Action::PopOutDetailsTab(app.details_block))
+    } else {
+        None
     }
-
-    None
 }
 
 pub fn handle_esc(app: &mut Home) -> Option<Action> {
