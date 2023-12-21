@@ -185,6 +185,47 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
 }
 
 pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
+    let row_constraints: Vec<Constraint> = if app.details_panes.len() > 3 {
+        vec![Constraint::Ratio(3, 3)]
+    } else {
+        vec![Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)]
+    };
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(row_constraints.as_ref())
+        .split(area);
+
+    let mut cells: Vec<Rect> = vec![];
+
+    for _row in rows.iter() {
+        let columns = Layout::default()
+            .vertical_margin(2)
+            .horizontal_margin(3)
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Ratio(1, 3),
+                    Constraint::Ratio(1, 3),
+                    Constraint::Ratio(1, 3),
+                ]
+                .as_ref(),
+            )
+            .split(area);
+
+        for column in columns.iter() {
+            cells.push(*column);
+        }
+    }
+
+    for _row in rows.iter() {
+        // details_pane(app, frame, columns[0])
+    }
+
+    details_tabs(app, frame, cells[0])
+}
+
+pub fn details_tabs(app: &Home, frame: &mut Frame, area: Rect) {
     let active_block = app.active_block;
 
     if let Some(selected_trace) = &app.selected_trace {
@@ -232,7 +273,7 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
             .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
             .split(area);
 
-        let main = Block::default()
+        let details_block = Block::default()
             .title("  DETAILS  ")
             .title(
                 Title::from(format!(
@@ -255,7 +296,7 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
             .border_type(BorderType::Plain)
             .borders(Borders::ALL);
 
-        frame.render_widget(main, area);
+        frame.render_widget(details_block, area);
         frame.render_widget(tabs, inner_layout[0]);
 
         match app.details_block {

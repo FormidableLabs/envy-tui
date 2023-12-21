@@ -133,6 +133,8 @@ pub enum Action {
     ExpandAll,
     CollapseAll,
     ActivateBlock(ActiveBlock),
+    PopOutDetailsTab(DetailsPane),
+    CloseDetailsPane(DetailsPane),
 }
 
 #[derive(Default)]

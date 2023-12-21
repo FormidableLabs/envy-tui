@@ -8,6 +8,7 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
+use strum::IntoEnumIterator;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
@@ -91,6 +92,8 @@ pub struct Home {
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub order: TraceSort,
+    pub details_tabs: Vec<DetailsPane>,
+    pub details_panes: Vec<DetailsPane>,
 }
 
 impl Home {
@@ -311,6 +314,16 @@ impl Component for Home {
             }
             Action::SelectTrace(trace) => {
                 self.selected_trace = trace;
+                Ok(None)
+            }
+            Action::PopOutDetailsTab(pane) => {
+                self.details_panes.push(pane);
+                self.details_tabs.retain(|d| pane != *d);
+                Ok(None)
+            }
+            Action::CloseDetailsPane(pane) => {
+                self.details_panes.retain(|d| pane != *d);
+                self.details_tabs.push(pane);
                 Ok(None)
             }
             _ => Ok(None),
