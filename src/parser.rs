@@ -10,15 +10,15 @@ use regex::Regex;
 
 use crate::services::websocket::{HTTPTrace, State, Trace};
 
-#[derive(Serialize, Deserialize, Debug)]
-struct HTTPTimings {
-    blocked: f32,
-    dns: f32,
-    connect: f32,
-    send: f32,
-    wait: f32,
-    receive: f32,
-    ssl: f32,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HTTPTimings {
+    pub blocked: f32,
+    pub dns: f32,
+    pub connect: f32,
+    pub send: f32,
+    pub wait: f32,
+    pub receive: f32,
+    pub ssl: f32,
 }
 
 pub fn populate_header_map(raw_headers: &Map<String, Value>, map: &mut HeaderMap) {
@@ -101,8 +101,8 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
             let timestamp = &data["timestamp"];
 
             let timestamp = match timestamp {
-                Value::String(v) => u64::from_str(v.as_str()).map_err(|_| "".to_string()),
-                Value::Number(v) => Ok(v.as_u64().unwrap()),
+                Value::String(v) => i64::from_str(v.as_str()).map_err(|_| "".to_string()),
+                Value::Number(v) => Ok(v.as_i64().unwrap()),
                 _ => Err("Must be a number.".to_string()),
             }
             .ok()
@@ -207,21 +207,18 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
                     .ok()
                     .expect("Url is mandatory");
 
-                    let port = &http["port"];
+                    let port = http["port"].to_string();
 
-                    let port = match port {
-                        Value::String(k) => Ok(k.to_string()),
-                        _ => Err("".to_string()),
-                    }
-                    .ok();
+                    let path = http["path"].to_string();
 
-                    let timinggs = match http.get("timings") {
+                    let timings = match http.get("timings") {
                         Some(d) => serde_json::from_value::<HTTPTimings>(d.clone()).ok(),
                         _ => None,
                     };
 
                     let mut http_trace = HTTPTrace {
                         port,
+                        path,
                         duration,
                         uri,
                         response_headers: http::HeaderMap::new(),
@@ -236,6 +233,7 @@ pub fn parse_raw_trace(stringified_json: &str) -> Result<Payload, Box<dyn std::e
                         pretty_request_body: None,
                         pretty_request_body_lines: None,
                         state,
+                        timings,
                         raw: pretty_parse_body(stringified_json)?,
                     };
 

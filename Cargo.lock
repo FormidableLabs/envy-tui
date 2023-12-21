@@ -210,6 +210,8 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "strum",
+ "strum_macros",
  "tokio",
  "tokio-tungstenite",
  "tungstenite",
