@@ -588,31 +588,40 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
     }
 }
 
-pub fn handle_pane_next(app: &mut Home) -> Option<Action> {
-    // cycle so the last pane advances to the first
-    let mut iter = DetailsPane::iter().cycle();
+pub fn handle_details_tab_next(app: &mut Home) -> Option<Action> {
+    let mut iter = app.details_tabs.iter();
 
     // advance iterator to the current block
-    iter.find(|&v| app.details_block == v);
+    iter.find(|&&v| app.details_block == v);
 
-    // set current to the next item
     if let Some(next_pane) = iter.next() {
-        app.details_block = next_pane;
+        app.details_block = *next_pane;
+    } else {
+        // fallback to selecting the first tab
+        app.details_block = *app
+            .details_tabs
+            .first()
+            .unwrap_or(&DetailsPane::RequestDetails);
     }
 
     None
 }
 
-pub fn handle_pane_prev(app: &mut Home) -> Option<Action> {
-    // cycle so the last pane advances to the first
-    let mut iter = DetailsPane::iter().rev().cycle();
+pub fn handle_details_tab_prev(app: &mut Home) -> Option<Action> {
+    // reverse the tabs ordering
+    let mut iter = app.details_tabs.iter().rev();
 
     // advance iterator to the current block
-    iter.find(|&v| app.details_block == v);
+    iter.find(|&&v| app.details_block == v);
 
-    // set current to the next item
     if let Some(next_pane) = iter.next() {
-        app.details_block = next_pane;
+            app.details_block = *next_pane;
+    } else {
+        // fallback to selecting the first tab
+        app.details_block = *app
+            .details_tabs
+            .last()
+            .unwrap_or(&DetailsPane::RequestDetails);
     }
 
     None

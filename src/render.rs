@@ -261,7 +261,7 @@ pub fn details_pane(app: &Home, frame: &mut Frame, area: Rect, pane: &DetailsPan
 
         frame.render_widget(details_block, area);
 
-        match app.details_block {
+        match pane {
             DetailsPane::RequestDetails => {
                 let mut rows: Vec<Row> = vec![];
 
@@ -471,42 +471,40 @@ pub fn details_tabs(app: &Home, frame: &mut Frame, area: Rect) {
     let active_block = app.active_block;
 
     if let Some(selected_trace) = &app.selected_trace {
-        let tabs = Tabs::new(vec![
-            "REQUEST DETAILS",
-            "QUERY PARAMS",
-            "REQUEST HEADERS",
-            "RESPONSE DETAILS",
-            "RESPONSE HEADERS",
-            "TIMING",
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::BOTTOM)
-                .border_style(
-                    Style::default().fg(if active_block == ActiveBlock::Details {
-                        app.colors.surface.selected
-                    } else {
-                        app.colors.surface.unselected
-                    }),
-                )
-                .border_type(BorderType::Plain)
-                .border_set(border::DOUBLE),
-        )
-        .select(app.details_block as usize)
-        .style(
-            Style::default().fg(if active_block == ActiveBlock::Details {
-                app.colors.text.accent_1
-            } else {
-                app.colors.text.unselected
-            }),
-        )
-        .highlight_style(
-            Style::default().fg(if active_block == ActiveBlock::Details {
-                app.colors.text.accent_2
-            } else {
-                app.colors.text.unselected
-            }),
-        );
+        let tabs = Tabs::new(app.details_tabs.iter().map(|t| t.to_string()).collect())
+            .block(
+                Block::default()
+                    .borders(Borders::BOTTOM)
+                    .border_style(
+                        Style::default().fg(if active_block == ActiveBlock::Details {
+                            app.colors.surface.selected
+                        } else {
+                            app.colors.surface.unselected
+                        }),
+                    )
+                    .border_type(BorderType::Plain)
+                    .border_set(border::DOUBLE),
+            )
+            .select(
+                app.details_tabs
+                    .iter()
+                    .position(|&t| app.details_block == t)
+                    .unwrap_or_default(),
+            )
+            .style(
+                Style::default().fg(if active_block == ActiveBlock::Details {
+                    app.colors.text.accent_1
+                } else {
+                    app.colors.text.unselected
+                }),
+            )
+            .highlight_style(
+                Style::default().fg(if active_block == ActiveBlock::Details {
+                    app.colors.text.accent_2
+                } else {
+                    app.colors.text.unselected
+                }),
+            );
 
         let inner_layout = Layout::default()
             .vertical_margin(2)
@@ -1097,8 +1095,8 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
                 Action::ToggleDebug => "Toggle Debug Window",
                 Action::DeleteItem => "Delete Trace",
                 Action::ShowTraceDetails => "Focus On Trace",
-                Action::NextPane => "Focus On Next Pane",
-                Action::PreviousPane => "Go To Previous Pane",
+                Action::NextDetailsTab => "Focus On Next Tab",
+                Action::PreviousDetailsTab => "Go To Previous Tab",
                 Action::StartWebSocketServer => "Start the Collector Server",
                 Action::StopWebSocketServer => "Stop the Collector Server",
                 _ => "",

@@ -1,13 +1,15 @@
-use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    layout::Layout,
-    prelude::{Constraint, Direction, Rect},
-};
 use std::error::Error;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
+
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::{
+    layout::Layout,
+    prelude::{Constraint, Direction, Rect},
+};
+use strum::IntoEnumIterator;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
@@ -113,6 +115,8 @@ impl Home {
                 "Response body",
                 config.colors.clone(),
             )?,
+            details_tabs: DetailsPane::iter().collect(),
+            details_panes: vec![],
             ..Self::default()
         };
 
@@ -271,8 +275,8 @@ impl Component for Home {
             Action::GoToEnd => Ok(handlers::handle_go_to_end(self, metadata)),
             Action::GoToStart => Ok(handlers::handle_go_to_start(self)),
             Action::PreviousSection => Ok(handlers::handle_back_tab(self)),
-            Action::NextPane => Ok(handlers::handle_pane_next(self)),
-            Action::PreviousPane => Ok(handlers::handle_pane_prev(self)),
+            Action::NextDetailsTab => Ok(handlers::handle_details_tab_next(self)),
+            Action::PreviousDetailsTab => Ok(handlers::handle_details_tab_prev(self)),
             Action::NewSearch => Ok(handlers::handle_new_search(self)),
             Action::UpdateSearchQuery(c) => Ok(handlers::handle_search_push(self, c)),
             Action::DeleteSearchQuery => Ok(handlers::handle_search_pop(self)),
@@ -316,13 +320,21 @@ impl Component for Home {
                 Ok(None)
             }
             Action::PopOutDetailsTab(pane) => {
-                self.details_panes.push(pane);
-                self.details_tabs.retain(|d| pane != *d);
+                if self.details_tabs.len() > 1 {
+                    handlers::handle_details_tab_next(self);
+
+                    self.details_panes.push(pane);
+                    self.details_tabs.retain(|&d| pane != d);
+                }
+
                 Ok(None)
             }
             Action::CloseDetailsPane(pane) => {
-                self.details_panes.retain(|d| pane != *d);
+                handlers::handle_details_tab_prev(self);
+
+                self.details_panes.retain(|&d| pane != d);
                 self.details_tabs.push(pane);
+
                 Ok(None)
             }
             _ => Ok(None),
@@ -485,10 +497,6 @@ impl Component for Home {
                     self.response_json_viewer
                         .render(frame, response_layout[1])?;
                     render::render_traces(self, frame, main_layout[0]);
-
-                    // render::render_request_summary(self, frame, main_layout[1]);
-                    // render::render_response_details(self, frame, response_layout[0]);
-
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);
 
