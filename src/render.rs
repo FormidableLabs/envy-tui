@@ -266,7 +266,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 DetailsPane::Timing => &mut app.timing_list,
             };
 
-            if app.details_block == DetailsPane::Timing {
+            if pane == &&DetailsPane::Timing {
                 render_timing_chart(
                     selected_trace,
                     actionable_list,
@@ -510,6 +510,30 @@ fn render_timing_chart(
                     }
                 })
                 .render(chart_layout[0], frame.buffer_mut());
+        } else {
+            let items: Vec<ListItem> = actionable_list
+                .items
+                .iter()
+                .map(|((label, name), _action)| {
+                    ListItem::new(Line::from(vec![
+                        Span::raw(format!("{:<9}", label)),
+                        " ".into(),
+                        Span::raw(name.to_string()),
+                    ]))
+                })
+                .collect();
+
+            let list = List::new(items)
+                .style(
+                    Style::default().fg(if active_block == ActiveBlock::Details {
+                        colors.text.accent_1
+                    } else {
+                        colors.text.unselected
+                    }),
+                )
+                .highlight_style(get_row_style_borrowed(RowStyle::Selected, colors));
+
+            frame.render_stateful_widget(list, area, &mut actionable_list.state);
         }
     }
 }
