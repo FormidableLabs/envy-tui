@@ -15,6 +15,7 @@ use tokio::task::AbortHandle;
 
 use crate::{
     app::{Action, ActiveBlock, DetailsPane, Mode, UIState},
+    components::actionable_list::{ActionableList, ActionableListItem},
     components::component::Component,
     components::handlers,
     components::jsonviewer,
@@ -22,7 +23,7 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::TraceSort,
+    utils::{parse_query_params, TraceSort},
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -95,6 +96,7 @@ pub struct Home {
     pub details_block: DetailsPane,
     pub details_tabs: Vec<DetailsPane>,
     pub details_panes: Vec<DetailsPane>,
+    pub query_params_list: ActionableList,
 }
 
 impl Home {
@@ -315,8 +317,49 @@ impl Component for Home {
                 self.mark_trace_as_timed_out(id);
                 Ok(Some(Action::SelectTrace(self.selected_trace.clone())))
             }
-            Action::SelectTrace(trace) => {
-                self.selected_trace = trace;
+            Action::SelectTrace(maybe_trace) => {
+                self.selected_trace = maybe_trace;
+
+                if let Some(trace) = &self.selected_trace {
+                    let mut raw_params = parse_query_params(
+                        trace
+                            .http
+                            .clone()
+                            .expect("Missing http from trace")
+                            .uri
+                            .to_string(),
+                    );
+
+                    raw_params.sort_by(|a, b| {
+                        let (name_a, _) = a;
+                        let (name_b, _) = b;
+
+                        name_a.cmp(name_b)
+                    });
+
+                    let next_items: Vec<ActionableListItem> = raw_params
+                        .into_iter()
+                        .map(|(label, name)| ((label, name), None))
+                        .to_owned()
+                        .collect();
+
+                    // add available actions to the item list
+                    let next_actions: Vec<ActionableListItem> =
+                        if self.details_tabs.contains(&DetailsPane::QueryParams) {
+                            vec![(
+                                ("actions".to_string(), "pop-out".to_string()),
+                                Some(Action::PopOutDetailsTab(DetailsPane::QueryParams)),
+                            )]
+                        } else {
+                            vec![(
+                                ("actions".to_string(), "close".to_string()),
+                                Some(Action::CloseDetailsPane(DetailsPane::QueryParams)),
+                            )]
+                        };
+
+                    self.query_params_list = ActionableList::with_items(next_items, next_actions);
+                }
+
                 Ok(None)
             }
             Action::PopOutDetailsTab(pane) => {
@@ -341,7 +384,7 @@ impl Component for Home {
         }
     }
 
-    fn render(&self, frame: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
+    fn render(&mut self, frame: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
         match self.active_block {
             ActiveBlock::Help => {
                 let main_layout = Layout::default()
@@ -446,10 +489,6 @@ impl Component for Home {
                     render::details(self, frame, right_column_layout[0]);
                     self.request_json_viewer.render(frame, body_layout[1])?;
                     self.response_json_viewer.render(frame, body_layout[0])?;
-
-                    // render::render_request_summary(self, frame, details_layout[0]);
-                    // render::render_response_details(self, frame, response_layout[0]);
-
                     render::render_footer(self, frame, main_layout[1]);
                     render::render_search(self, frame);
 

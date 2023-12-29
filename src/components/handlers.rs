@@ -9,13 +9,12 @@ use crate::render::get_services_from_traces;
 use crate::services::websocket::Trace;
 use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
-    get_rendered_items, parse_query_params, set_content_length, Ordering, TraceSort,
+    get_rendered_items, set_content_length, Ordering, TraceSort,
 };
 use crossterm::event::{KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::time::Duration;
-use strum::IntoEnumIterator;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
@@ -163,13 +162,7 @@ pub fn handle_up(
                 }
             }
             (ActiveBlock::Details, DetailsPane::QueryParams) => {
-                let next_index = if app.selected_params_index == 0 {
-                    0
-                } else {
-                    app.selected_params_index - 1
-                };
-
-                app.selected_params_index = next_index;
+                app.query_params_list.previous();
 
                 None
             }
@@ -394,17 +387,7 @@ pub fn handle_down(
                 Some(Action::SelectTrace(get_currently_selected_trace(app)))
             }
             (ActiveBlock::Details, DetailsPane::QueryParams) => {
-                let item = app.selected_trace.as_ref().unwrap();
-
-                let params = parse_query_params(item.http.clone().unwrap_or_default().uri);
-
-                let next_index = if app.selected_params_index + 1 >= params.len() {
-                    params.len().saturating_sub(1)
-                } else {
-                    app.selected_params_index + 1
-                };
-
-                app.selected_params_index = next_index;
+                app.query_params_list.next();
 
                 None
             }
@@ -513,7 +496,7 @@ pub fn handle_enter(app: &mut Home) -> Option<Action> {
         app.active_block = ActiveBlock::Details;
         None
     } else if app.active_block == ActiveBlock::Details {
-        Some(Action::PopOutDetailsTab(app.details_block))
+        app.query_params_list.select()
     } else {
         None
     }

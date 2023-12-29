@@ -83,10 +83,11 @@ pub struct UIState {
     pub horizontal_scroll_state: ScrollbarState,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Action {
     #[serde(skip)]
     Error(String),
+    #[default]
     CopyToClipBoard,
     NavigateLeft(Option<KeyEvent>),
     NavigateDown(Option<KeyEvent>),
@@ -229,7 +230,7 @@ impl App {
 
             if let Some(Event::Render) = event {
                 for component in self.components.iter() {
-                    let c = component.lock().await;
+                    let mut c = component.lock().await;
                     t.terminal.draw(|frame| {
                         let r = c.render(frame, frame.size());
                         if let Err(e) = r {

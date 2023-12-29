@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::ops::Deref;
-use std::usize;
 
 use chrono::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -25,7 +24,7 @@ use crate::config::Colors;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::utils::{get_rendered_items, parse_query_params, truncate, TraceSort};
+use crate::utils::{get_rendered_items, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 pub enum RowStyle {
@@ -184,7 +183,7 @@ fn render_headers(app: &Home, frame: &mut Frame, area: Rect, header_type: Header
     frame.render_widget(table, area);
 }
 
-pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
+pub fn details(app: &mut Home, frame: &mut Frame, area: Rect) {
     let mut cells: Vec<Rect> = vec![];
 
     match app.details_panes.len() {
@@ -306,255 +305,230 @@ pub fn details(app: &Home, frame: &mut Frame, area: Rect) {
     details_tabs(app, frame, cells[0]);
 
     for (idx, &cell) in cells[1..].iter().enumerate() {
-        if let Some(pane) = app.details_panes.get(idx) {
-            details_pane(app, frame, cell, pane);
-        }
+        details_pane(app, frame, cell, idx);
     }
 }
 
-pub fn details_pane(app: &Home, frame: &mut Frame, area: Rect, pane: &DetailsPane) {
+pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usize) {
     if let Some(selected_trace) = &app.selected_trace {
-        let active_block = app.active_block;
+        if let Some(pane) = &app.details_panes.get(pane_idx) {
+            let active_block = app.active_block;
 
-        let inner_layout = Layout::default()
-            .vertical_margin(2)
-            .horizontal_margin(3)
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
-            .split(area);
+            let inner_layout = Layout::default()
+                .vertical_margin(2)
+                .horizontal_margin(3)
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
+                .split(area);
 
-        let details_block = Block::default()
-            .title(format!("  {}  ", pane))
-            .title(
-                Title::from(format!(
-                    "  {} OF {}  ",
-                    app.selected_request_header_index + 1,
-                    selected_trace
-                        .http
-                        .clone()
-                        .unwrap_or_default()
-                        .request_headers
-                        .len()
+            let details_block = Block::default()
+                .title(format!("  {}  ", pane))
+                .title(
+                    Title::from(format!(
+                        "  {} OF {}  ",
+                        app.selected_request_header_index + 1,
+                        selected_trace
+                            .http
+                            .clone()
+                            .unwrap_or_default()
+                            .request_headers
+                            .len()
+                    ))
+                    .position(Position::Bottom)
+                    .alignment(Alignment::Right),
+                )
+                .border_style(get_border_style(
+                    app.active_block == ActiveBlock::Details,
+                    app.colors.clone(),
                 ))
-                .position(Position::Bottom)
-                .alignment(Alignment::Right),
-            )
-            .border_style(get_border_style(
-                app.active_block == ActiveBlock::Details,
-                app.colors.clone(),
-            ))
-            .border_type(BorderType::Plain)
-            .borders(Borders::ALL);
+                .border_type(BorderType::Plain)
+                .borders(Borders::ALL);
 
-        frame.render_widget(details_block, area);
+            frame.render_widget(details_block, area);
 
-        match pane {
-            DetailsPane::RequestDetails => {
-                let mut rows: Vec<Row> = vec![];
+            match pane {
+                DetailsPane::RequestDetails => {
+                    let mut rows: Vec<Row> = vec![];
 
-                let sent = DateTime::from_timestamp(selected_trace.timestamp, 0)
-                    .unwrap_or_default()
-                    .format("%Y-%m-%d @ %H:%M:%S")
-                    .to_string();
-                let host = selected_trace.service_name.clone().unwrap_or(format!(""));
-                let path = selected_trace
-                    .http
-                    .clone()
-                    .map_or("".to_string(), |http| http.path);
-                let port = selected_trace
-                    .http
-                    .clone()
-                    .map_or("".to_string(), |http| http.port);
-
-                rows.push(Row::new(vec!["sent", &sent]));
-                rows.push(Row::new(vec!["host", &host]));
-                rows.push(Row::new(vec!["path", &path]));
-                rows.push(Row::new(vec!["port", &port]));
-
-                let table = Table::new(rows)
-                    .style(Style::default().fg(app.colors.text.unselected))
-                    .widths(&[
-                        Constraint::Percentage(10),
-                        Constraint::Percentage(70),
-                        Constraint::Length(20),
-                    ])
-                    .highlight_style(
-                        get_row_style_borrowed(RowStyle::Active, &app.colors)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .highlight_symbol(">>");
-
-                frame.render_widget(table, inner_layout[1]);
-            }
-            DetailsPane::QueryParams => {
-                let mut raw_params = parse_query_params(
-                    selected_trace
-                        .http
-                        .clone()
-                        .expect("Missing http from trace")
-                        .uri,
-                );
-
-                raw_params.sort_by(|a, b| {
-                    let (name_a, _) = a;
-                    let (name_b, _) = b;
-
-                    name_a.cmp(name_b)
-                });
-
-                let current_param_selected = raw_params.get(app.selected_params_index);
-
-                let rows = raw_params
-                    .iter()
-                    .map(|(name, value)| {
-                        let is_selected = match current_param_selected {
-                            Some(v) => {
-                                let (current_name, _) = v;
-                                current_name.deref() == name
-                            }
-                            None => false,
-                        };
-
-                        Row::new(vec![name.to_string(), value.to_string()]).style(
-                            match (is_selected, active_block) {
-                                (true, ActiveBlock::Details) => {
-                                    get_row_style(RowStyle::Selected, app.colors.clone())
-                                }
-                                (false, ActiveBlock::Details) => {
-                                    get_row_style(RowStyle::Active, app.colors.clone())
-                                }
-                                (true, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
-                                (false, _) => get_row_style(RowStyle::Default, app.colors.clone()),
-                            },
-                        )
-                    })
-                    .collect::<Vec<Row>>();
-
-                let table = Table::new(rows)
-                    .style(
-                        Style::default().fg(if active_block == ActiveBlock::Details {
-                            app.colors.text.accent_1
-                        } else {
-                            app.colors.text.unselected
-                        }),
-                    )
-                    .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
-                    .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-                    .highlight_symbol(">>");
-
-                frame.render_widget(table, inner_layout[1]);
-            }
-            DetailsPane::RequestHeaders => {
-                render_headers(app, frame, inner_layout[1], HeaderType::Request);
-
-                let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-
-                let content_length = if let Some(trace) = &app.selected_trace {
-                    trace
-                        .http
-                        .clone()
+                    let sent = DateTime::from_timestamp(selected_trace.timestamp, 0)
                         .unwrap_or_default()
-                        .response_headers
-                        .len()
+                        .format("%Y-%m-%d @ %H:%M:%S")
+                        .to_string();
+                    let host = selected_trace.service_name.clone().unwrap_or(format!(""));
+                    let path = selected_trace
+                        .http
                         .clone()
-                } else {
-                    0
-                };
+                        .map_or("".to_string(), |http| http.path);
+                    let port = selected_trace
+                        .http
+                        .clone()
+                        .map_or("".to_string(), |http| http.port);
 
-                let viewport_height = area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                    rows.push(Row::new(vec!["sent", &sent]));
+                    rows.push(Row::new(vec!["host", &host]));
+                    rows.push(Row::new(vec!["path", &path]));
+                    rows.push(Row::new(vec!["port", &port]).bottom_margin(1));
 
-                if content_length > viewport_height.into() {
+                    let table = Table::new(rows)
+                        .style(Style::default().fg(app.colors.text.unselected))
+                        .widths(&[
+                            Constraint::Percentage(10),
+                            Constraint::Percentage(70),
+                            Constraint::Length(20),
+                        ])
+                        .highlight_style(
+                            get_row_style_borrowed(RowStyle::Active, &app.colors)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .highlight_symbol(">>");
+
+                    frame.render_widget(table, inner_layout[1]);
+                }
+                DetailsPane::QueryParams => {
+                    let items: Vec<ListItem> = app
+                        .query_params_list
+                        .items
+                        .iter()
+                        .map(|((label, name), _action)| {
+                            ListItem::new(Line::from(vec![
+                                Span::raw(format!("{:<9}", label)),
+                                " ".into(),
+                                Span::raw(name.to_string()),
+                            ]))
+                        })
+                        .collect();
+
+                    let list = List::new(items)
+                        .style(
+                            Style::default().fg(if active_block == ActiveBlock::Details {
+                                app.colors.text.accent_1
+                            } else {
+                                app.colors.text.unselected
+                            }),
+                        )
+                        .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()))
+                        .highlight_symbol(">>");
+
                     frame.render_stateful_widget(
-                        vertical_scroll,
-                        area.inner(&Margin {
-                            horizontal: 0,
-                            vertical: 2,
-                        }),
-                        &mut app.request_details.scroll_state.clone(),
+                        list,
+                        inner_layout[1],
+                        &mut app.query_params_list.state,
                     );
                 }
-            }
-            DetailsPane::ResponseDetails => {
-                let mut rows: Vec<Row> = vec![];
+                DetailsPane::RequestHeaders => {
+                    render_headers(app, frame, inner_layout[1], HeaderType::Request);
 
-                let received = DateTime::from_timestamp(selected_trace.timestamp, 0)
-                    .unwrap_or_default()
-                    .format("%Y-%m-%d @ %H:%M:%S")
-                    .to_string();
-                let status = selected_trace
-                    .http
-                    .clone()
-                    .map_or(None, |http| http.status)
-                    .map_or("".to_string(), |status| {
-                        format!(
-                            "{} {}",
-                            status.as_str(),
-                            status.canonical_reason().unwrap_or_default()
-                        )
-                    });
-                let duration = selected_trace
-                    .http
-                    .clone()
-                    .map_or(None, |http| http.duration)
-                    .map_or("".to_string(), |duration| format!("{}ms", duration));
+                    let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
-                rows.push(Row::new(vec!["received", &received]));
-                rows.push(Row::new(vec!["status", &status]));
-                rows.push(Row::new(vec!["duration", &duration]));
+                    let content_length = if let Some(trace) = &app.selected_trace {
+                        trace
+                            .http
+                            .clone()
+                            .unwrap_or_default()
+                            .response_headers
+                            .len()
+                            .clone()
+                    } else {
+                        0
+                    };
 
-                let table = Table::new(rows)
-                    .style(Style::default().fg(app.colors.text.unselected))
-                    .widths(&[
-                        Constraint::Percentage(10),
-                        Constraint::Percentage(70),
-                        Constraint::Length(20),
-                    ])
-                    .highlight_style(
-                        get_row_style_borrowed(RowStyle::Active, &app.colors)
-                            .add_modifier(Modifier::BOLD),
-                    )
-                    .highlight_symbol(">>");
+                    let viewport_height =
+                        area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
 
-                frame.render_widget(table, inner_layout[1]);
-            }
-            DetailsPane::ResponseHeaders => {
-                render_headers(app, frame, inner_layout[1], HeaderType::Response);
+                    if content_length > viewport_height.into() {
+                        frame.render_stateful_widget(
+                            vertical_scroll,
+                            area.inner(&Margin {
+                                horizontal: 0,
+                                vertical: 2,
+                            }),
+                            &mut app.request_details.scroll_state.clone(),
+                        );
+                    }
+                }
+                DetailsPane::ResponseDetails => {
+                    let mut rows: Vec<Row> = vec![];
 
-                let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-
-                let content_length = if let Some(trace) = &app.selected_trace {
-                    trace
+                    let received = DateTime::from_timestamp(selected_trace.timestamp, 0)
+                        .unwrap_or_default()
+                        .format("%Y-%m-%d @ %H:%M:%S")
+                        .to_string();
+                    let status = selected_trace
                         .http
                         .clone()
-                        .unwrap_or_default()
-                        .response_headers
-                        .len()
+                        .map_or(None, |http| http.status)
+                        .map_or("".to_string(), |status| {
+                            format!(
+                                "{} {}",
+                                status.as_str(),
+                                status.canonical_reason().unwrap_or_default()
+                            )
+                        });
+                    let duration = selected_trace
+                        .http
                         .clone()
-                } else {
-                    0
-                };
+                        .map_or(None, |http| http.duration)
+                        .map_or("".to_string(), |duration| format!("{}ms", duration));
 
-                let viewport_height = area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                    rows.push(Row::new(vec!["received", &received]));
+                    rows.push(Row::new(vec!["status", &status]));
+                    rows.push(Row::new(vec!["duration", &duration]));
 
-                if content_length > viewport_height.into() {
-                    frame.render_stateful_widget(
-                        vertical_scroll,
-                        area.inner(&Margin {
-                            horizontal: 0,
-                            vertical: 2,
-                        }),
-                        &mut app.request_details.scroll_state.clone(),
-                    );
+                    let table = Table::new(rows)
+                        .style(Style::default().fg(app.colors.text.unselected))
+                        .widths(&[
+                            Constraint::Percentage(10),
+                            Constraint::Percentage(70),
+                            Constraint::Length(20),
+                        ])
+                        .highlight_style(
+                            get_row_style_borrowed(RowStyle::Active, &app.colors)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .highlight_symbol(">>");
+
+                    frame.render_widget(table, inner_layout[1]);
                 }
-            }
-            DetailsPane::Timing => {
-                render_timing_chart(&app, inner_layout[1], frame);
+                DetailsPane::ResponseHeaders => {
+                    render_headers(app, frame, inner_layout[1], HeaderType::Response);
+
+                    let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+
+                    let content_length = if let Some(trace) = &app.selected_trace {
+                        trace
+                            .http
+                            .clone()
+                            .unwrap_or_default()
+                            .response_headers
+                            .len()
+                            .clone()
+                    } else {
+                        0
+                    };
+
+                    let viewport_height =
+                        area.height - REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+
+                    if content_length > viewport_height.into() {
+                        frame.render_stateful_widget(
+                            vertical_scroll,
+                            area.inner(&Margin {
+                                horizontal: 0,
+                                vertical: 2,
+                            }),
+                            &mut app.request_details.scroll_state.clone(),
+                        );
+                    }
+                }
+                DetailsPane::Timing => {
+                    render_timing_chart(&app, inner_layout[1], frame);
+                }
             }
         }
     }
 }
 
-pub fn details_tabs(app: &Home, frame: &mut Frame, area: Rect) {
+pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
     let active_block = app.active_block;
 
     if let Some(selected_trace) = &app.selected_trace {
@@ -647,7 +621,8 @@ pub fn details_tabs(app: &Home, frame: &mut Frame, area: Rect) {
                 rows.push(Row::new(vec!["sent", &sent]));
                 rows.push(Row::new(vec!["host", &host]));
                 rows.push(Row::new(vec!["path", &path]));
-                rows.push(Row::new(vec!["port", &port]));
+                rows.push(Row::new(vec!["port", &port]).bottom_margin(1));
+                rows.push(Row::new(vec!["actions", "pop-out"]));
 
                 let table = Table::new(rows)
                     .style(Style::default().fg(app.colors.text.unselected))
@@ -665,50 +640,20 @@ pub fn details_tabs(app: &Home, frame: &mut Frame, area: Rect) {
                 frame.render_widget(table, inner_layout[1]);
             }
             DetailsPane::QueryParams => {
-                let mut raw_params = parse_query_params(
-                    selected_trace
-                        .http
-                        .clone()
-                        .expect("Missing http from trace")
-                        .uri,
-                );
-
-                raw_params.sort_by(|a, b| {
-                    let (name_a, _) = a;
-                    let (name_b, _) = b;
-
-                    name_a.cmp(name_b)
-                });
-
-                let current_param_selected = raw_params.get(app.selected_params_index);
-
-                let rows = raw_params
+                let items: Vec<ListItem> = app
+                    .query_params_list
+                    .items
                     .iter()
-                    .map(|(name, value)| {
-                        let is_selected = match current_param_selected {
-                            Some(v) => {
-                                let (current_name, _) = v;
-                                current_name.deref() == name
-                            }
-                            None => false,
-                        };
-
-                        Row::new(vec![name.to_string(), value.to_string()]).style(
-                            match (is_selected, active_block) {
-                                (true, ActiveBlock::Details) => {
-                                    get_row_style(RowStyle::Selected, app.colors.clone())
-                                }
-                                (false, ActiveBlock::Details) => {
-                                    get_row_style(RowStyle::Active, app.colors.clone())
-                                }
-                                (true, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
-                                (false, _) => get_row_style(RowStyle::Default, app.colors.clone()),
-                            },
-                        )
+                    .map(|((label, name), _action)| {
+                        ListItem::new(Line::from(vec![
+                            Span::raw(format!("{:<9}", label)),
+                            " ".into(),
+                            Span::raw(name.to_string()),
+                        ]))
                     })
-                    .collect::<Vec<Row>>();
+                    .collect();
 
-                let table = Table::new(rows)
+                let list = List::new(items)
                     .style(
                         Style::default().fg(if active_block == ActiveBlock::Details {
                             app.colors.text.accent_1
@@ -716,11 +661,14 @@ pub fn details_tabs(app: &Home, frame: &mut Frame, area: Rect) {
                             app.colors.text.unselected
                         }),
                     )
-                    .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
-                    .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+                    .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()))
                     .highlight_symbol(">>");
 
-                frame.render_widget(table, inner_layout[1]);
+                frame.render_stateful_widget(
+                    list,
+                    inner_layout[1],
+                    &mut app.query_params_list.state,
+                );
             }
             DetailsPane::RequestHeaders => {
                 render_headers(app, frame, inner_layout[1], HeaderType::Request);
