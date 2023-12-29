@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::ops::Deref;
 
 use crossterm::event::{KeyCode, KeyEvent};
-use http::{HeaderName, HeaderValue};
 use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::{
@@ -18,11 +17,10 @@ use ratatui::{
 };
 
 use crate::app::{Action, ActiveBlock, DetailsPane};
+use crate::components::actionable_list::ActionableList;
 use crate::components::home::{FilterSource, Home};
 use crate::config::Colors;
-use crate::consts::{
-    NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
-};
+use crate::consts::NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE;
 use crate::utils::{get_rendered_items, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -226,8 +224,6 @@ pub fn details(app: &mut Home, frame: &mut Frame, area: Rect) {
 pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usize) {
     if let Some(selected_trace) = &app.selected_trace {
         if let Some(pane) = &app.details_panes.get(pane_idx) {
-            let active_block = app.active_block;
-
             let inner_layout = Layout::default()
                 .vertical_margin(2)
                 .horizontal_margin(3)
@@ -262,153 +258,48 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
 
             match pane {
                 DetailsPane::RequestDetails => {
-                    let items: Vec<ListItem> = app
-                        .request_details_list
-                        .items
-                        .iter()
-                        .map(|((label, name), _action)| {
-                            ListItem::new(Line::from(vec![
-                                Span::raw(format!("{:<9}", label)),
-                                " ".into(),
-                                Span::raw(name.to_string()),
-                            ]))
-                        })
-                        .collect();
-
-                    let list = List::new(items)
-                        .style(
-                            Style::default().fg(if active_block == ActiveBlock::Details {
-                                app.colors.text.accent_1
-                            } else {
-                                app.colors.text.unselected
-                            }),
-                        )
-                        .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                    frame.render_stateful_widget(
-                        list,
+                    render_actionable_list(
+                        &mut app.request_details_list,
+                        frame,
                         inner_layout[1],
-                        &mut app.request_details_list.state,
+                        &app.colors,
+                        app.active_block,
                     );
                 }
                 DetailsPane::QueryParams => {
-                    let items: Vec<ListItem> = app
-                        .query_params_list
-                        .items
-                        .iter()
-                        .map(|((label, name), _action)| {
-                            ListItem::new(Line::from(vec![
-                                Span::raw(format!("{:<9}", label)),
-                                " ".into(),
-                                Span::raw(name.to_string()),
-                            ]))
-                        })
-                        .collect();
-
-                    let list = List::new(items)
-                        .style(
-                            Style::default().fg(if active_block == ActiveBlock::Details {
-                                app.colors.text.accent_1
-                            } else {
-                                app.colors.text.unselected
-                            }),
-                        )
-                        .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                    frame.render_stateful_widget(
-                        list,
+                    render_actionable_list(
+                        &mut app.query_params_list,
+                        frame,
                         inner_layout[1],
-                        &mut app.query_params_list.state,
+                        &app.colors,
+                        app.active_block,
                     );
                 }
                 DetailsPane::RequestHeaders => {
-                    let items: Vec<ListItem> = app
-                        .request_headers_list
-                        .items
-                        .iter()
-                        .map(|((label, name), _action)| {
-                            ListItem::new(Line::from(vec![
-                                Span::raw(format!("{:<9}", label)),
-                                " ".into(),
-                                Span::raw(name.to_string()),
-                            ]))
-                        })
-                        .collect();
-
-                    let list = List::new(items)
-                        .style(
-                            Style::default().fg(if active_block == ActiveBlock::Details {
-                                app.colors.text.accent_1
-                            } else {
-                                app.colors.text.unselected
-                            }),
-                        )
-                        .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                    frame.render_stateful_widget(
-                        list,
+                    render_actionable_list(
+                        &mut app.request_headers_list,
+                        frame,
                         inner_layout[1],
-                        &mut app.request_headers_list.state,
+                        &app.colors,
+                        app.active_block,
                     );
                 }
                 DetailsPane::ResponseDetails => {
-                    let items: Vec<ListItem> = app
-                        .response_details_list
-                        .items
-                        .iter()
-                        .map(|((label, name), _action)| {
-                            ListItem::new(Line::from(vec![
-                                Span::raw(format!("{:<9}", label)),
-                                " ".into(),
-                                Span::raw(name.to_string()),
-                            ]))
-                        })
-                        .collect();
-
-                    let list = List::new(items)
-                        .style(
-                            Style::default().fg(if active_block == ActiveBlock::Details {
-                                app.colors.text.accent_1
-                            } else {
-                                app.colors.text.unselected
-                            }),
-                        )
-                        .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                    frame.render_stateful_widget(
-                        list,
+                    render_actionable_list(
+                        &mut app.response_details_list,
+                        frame,
                         inner_layout[1],
-                        &mut app.response_details_list.state,
+                        &app.colors,
+                        app.active_block,
                     );
                 }
                 DetailsPane::ResponseHeaders => {
-                    let items: Vec<ListItem> = app
-                        .response_headers_list
-                        .items
-                        .iter()
-                        .map(|((label, name), _action)| {
-                            ListItem::new(Line::from(vec![
-                                Span::raw(format!("{:<9}", label)),
-                                " ".into(),
-                                Span::raw(name.to_string()),
-                            ]))
-                        })
-                        .collect();
-
-                    let list = List::new(items)
-                        .style(
-                            Style::default().fg(if active_block == ActiveBlock::Details {
-                                app.colors.text.accent_1
-                            } else {
-                                app.colors.text.unselected
-                            }),
-                        )
-                        .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                    frame.render_stateful_widget(
-                        list,
+                    render_actionable_list(
+                        &mut app.response_headers_list,
+                        frame,
                         inner_layout[1],
-                        &mut app.response_headers_list.state,
+                        &app.colors,
+                        app.active_block,
                     );
                 }
                 DetailsPane::Timing => {
@@ -493,161 +384,87 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
 
         match app.details_block {
             DetailsPane::RequestDetails => {
-                let items: Vec<ListItem> = app
-                    .request_details_list
-                    .items
-                    .iter()
-                    .map(|((label, name), _action)| {
-                        ListItem::new(Line::from(vec![
-                            Span::raw(format!("{:<9}", label)),
-                            " ".into(),
-                            Span::raw(name.to_string()),
-                        ]))
-                    })
-                    .collect();
-
-                let list = List::new(items)
-                    .style(
-                        Style::default().fg(if active_block == ActiveBlock::Details {
-                            app.colors.text.accent_1
-                        } else {
-                            app.colors.text.unselected
-                        }),
-                    )
-                    .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                frame.render_stateful_widget(
-                    list,
+                render_actionable_list(
+                    &mut app.request_details_list,
+                    frame,
                     inner_layout[1],
-                    &mut app.request_details_list.state,
+                    &app.colors,
+                    app.active_block,
                 );
             }
             DetailsPane::QueryParams => {
-                let items: Vec<ListItem> = app
-                    .query_params_list
-                    .items
-                    .iter()
-                    .map(|((label, name), _action)| {
-                        ListItem::new(Line::from(vec![
-                            Span::raw(format!("{:<9}", label)),
-                            " ".into(),
-                            Span::raw(name.to_string()),
-                        ]))
-                    })
-                    .collect();
-
-                let list = List::new(items)
-                    .style(
-                        Style::default().fg(if active_block == ActiveBlock::Details {
-                            app.colors.text.accent_1
-                        } else {
-                            app.colors.text.unselected
-                        }),
-                    )
-                    .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()))
-                    .highlight_symbol(">>");
-
-                frame.render_stateful_widget(
-                    list,
+                render_actionable_list(
+                    &mut app.query_params_list,
+                    frame,
                     inner_layout[1],
-                    &mut app.query_params_list.state,
+                    &app.colors,
+                    app.active_block,
                 );
             }
             DetailsPane::RequestHeaders => {
-                let items: Vec<ListItem> = app
-                    .request_headers_list
-                    .items
-                    .iter()
-                    .map(|((label, name), _action)| {
-                        ListItem::new(Line::from(vec![
-                            Span::raw(format!("{:<9}", label)),
-                            " ".into(),
-                            Span::raw(name.to_string()),
-                        ]))
-                    })
-                    .collect();
-
-                let list = List::new(items)
-                    .style(
-                        Style::default().fg(if active_block == ActiveBlock::Details {
-                            app.colors.text.accent_1
-                        } else {
-                            app.colors.text.unselected
-                        }),
-                    )
-                    .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                frame.render_stateful_widget(
-                    list,
+                render_actionable_list(
+                    &mut app.request_headers_list,
+                    frame,
                     inner_layout[1],
-                    &mut app.request_headers_list.state,
+                    &app.colors,
+                    app.active_block,
                 );
             }
             DetailsPane::ResponseDetails => {
-                let items: Vec<ListItem> = app
-                    .response_details_list
-                    .items
-                    .iter()
-                    .map(|((label, name), _action)| {
-                        ListItem::new(Line::from(vec![
-                            Span::raw(format!("{:<9}", label)),
-                            " ".into(),
-                            Span::raw(name.to_string()),
-                        ]))
-                    })
-                    .collect();
-
-                let list = List::new(items)
-                    .style(
-                        Style::default().fg(if active_block == ActiveBlock::Details {
-                            app.colors.text.accent_1
-                        } else {
-                            app.colors.text.unselected
-                        }),
-                    )
-                    .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                frame.render_stateful_widget(
-                    list,
+                render_actionable_list(
+                    &mut app.response_details_list,
+                    frame,
                     inner_layout[1],
-                    &mut app.response_details_list.state,
+                    &app.colors,
+                    app.active_block,
                 );
             }
             DetailsPane::ResponseHeaders => {
-                let items: Vec<ListItem> = app
-                    .response_headers_list
-                    .items
-                    .iter()
-                    .map(|((label, name), _action)| {
-                        ListItem::new(Line::from(vec![
-                            Span::raw(format!("{:<9}", label)),
-                            " ".into(),
-                            Span::raw(name.to_string()),
-                        ]))
-                    })
-                    .collect();
-
-                let list = List::new(items)
-                    .style(
-                        Style::default().fg(if active_block == ActiveBlock::Details {
-                            app.colors.text.accent_1
-                        } else {
-                            app.colors.text.unselected
-                        }),
-                    )
-                    .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
-
-                frame.render_stateful_widget(
-                    list,
+                render_actionable_list(
+                    &mut app.response_headers_list,
+                    frame,
                     inner_layout[1],
-                    &mut app.response_headers_list.state,
-                )
+                    &app.colors,
+                    app.active_block,
+                );
             }
             DetailsPane::Timing => {
                 render_timing_chart(app, inner_layout[1], frame);
             }
         }
     }
+}
+
+fn render_actionable_list(
+    actionable_list: &mut ActionableList,
+    frame: &mut Frame,
+    area: Rect,
+    colors: &Colors,
+    active_block: ActiveBlock,
+) {
+    let items: Vec<ListItem> = actionable_list
+        .items
+        .iter()
+        .map(|((label, name), _action)| {
+            ListItem::new(Line::from(vec![
+                Span::raw(format!("{:<15}", label)),
+                " ".into(),
+                Span::raw(name.to_string()),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .style(
+            Style::default().fg(if active_block == ActiveBlock::Details {
+                colors.text.accent_1
+            } else {
+                colors.text.unselected
+            }),
+        )
+        .highlight_style(get_row_style_borrowed(RowStyle::Selected, colors));
+
+    frame.render_stateful_widget(list, area, &mut actionable_list.state)
 }
 
 fn render_timing_chart(app: &mut Home, area: Rect, frame: &mut Frame) {
