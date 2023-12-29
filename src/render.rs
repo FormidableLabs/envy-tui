@@ -21,6 +21,7 @@ use crate::components::actionable_list::ActionableList;
 use crate::components::home::{FilterSource, Home};
 use crate::config::Colors;
 use crate::consts::NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE;
+use crate::services::websocket::Trace;
 use crate::utils::{get_rendered_items, truncate, TraceSort};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
@@ -256,55 +257,32 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
 
             frame.render_widget(details_block, area);
 
-            match pane {
-                DetailsPane::RequestDetails => {
-                    render_actionable_list(
-                        &mut app.request_details_list,
-                        frame,
-                        inner_layout[1],
-                        &app.colors,
-                        app.active_block,
-                    );
-                }
-                DetailsPane::QueryParams => {
-                    render_actionable_list(
-                        &mut app.query_params_list,
-                        frame,
-                        inner_layout[1],
-                        &app.colors,
-                        app.active_block,
-                    );
-                }
-                DetailsPane::RequestHeaders => {
-                    render_actionable_list(
-                        &mut app.request_headers_list,
-                        frame,
-                        inner_layout[1],
-                        &app.colors,
-                        app.active_block,
-                    );
-                }
-                DetailsPane::ResponseDetails => {
-                    render_actionable_list(
-                        &mut app.response_details_list,
-                        frame,
-                        inner_layout[1],
-                        &app.colors,
-                        app.active_block,
-                    );
-                }
-                DetailsPane::ResponseHeaders => {
-                    render_actionable_list(
-                        &mut app.response_headers_list,
-                        frame,
-                        inner_layout[1],
-                        &app.colors,
-                        app.active_block,
-                    );
-                }
-                DetailsPane::Timing => {
-                    render_timing_chart(app, inner_layout[1], frame);
-                }
+            let actionable_list = match pane {
+                DetailsPane::RequestDetails => &mut app.request_details_list,
+                DetailsPane::QueryParams => &mut app.query_params_list,
+                DetailsPane::RequestHeaders => &mut app.request_headers_list,
+                DetailsPane::ResponseDetails => &mut app.response_details_list,
+                DetailsPane::ResponseHeaders => &mut app.response_headers_list,
+                DetailsPane::Timing => &mut app.timing_list,
+            };
+
+            if app.details_block == DetailsPane::Timing {
+                render_timing_chart(
+                    selected_trace,
+                    actionable_list,
+                    inner_layout[1],
+                    frame,
+                    &app.colors,
+                    app.active_block,
+                );
+            } else {
+                render_actionable_list(
+                    actionable_list,
+                    frame,
+                    inner_layout[1],
+                    &app.colors,
+                    app.active_block,
+                );
             }
         }
     }
@@ -382,55 +360,32 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
         frame.render_widget(details_block, area);
         frame.render_widget(tabs, inner_layout[0]);
 
-        match app.details_block {
-            DetailsPane::RequestDetails => {
-                render_actionable_list(
-                    &mut app.request_details_list,
-                    frame,
-                    inner_layout[1],
-                    &app.colors,
-                    app.active_block,
-                );
-            }
-            DetailsPane::QueryParams => {
-                render_actionable_list(
-                    &mut app.query_params_list,
-                    frame,
-                    inner_layout[1],
-                    &app.colors,
-                    app.active_block,
-                );
-            }
-            DetailsPane::RequestHeaders => {
-                render_actionable_list(
-                    &mut app.request_headers_list,
-                    frame,
-                    inner_layout[1],
-                    &app.colors,
-                    app.active_block,
-                );
-            }
-            DetailsPane::ResponseDetails => {
-                render_actionable_list(
-                    &mut app.response_details_list,
-                    frame,
-                    inner_layout[1],
-                    &app.colors,
-                    app.active_block,
-                );
-            }
-            DetailsPane::ResponseHeaders => {
-                render_actionable_list(
-                    &mut app.response_headers_list,
-                    frame,
-                    inner_layout[1],
-                    &app.colors,
-                    app.active_block,
-                );
-            }
-            DetailsPane::Timing => {
-                render_timing_chart(app, inner_layout[1], frame);
-            }
+        let actionable_list = match app.details_block {
+            DetailsPane::RequestDetails => &mut app.request_details_list,
+            DetailsPane::QueryParams => &mut app.query_params_list,
+            DetailsPane::RequestHeaders => &mut app.request_headers_list,
+            DetailsPane::ResponseDetails => &mut app.response_details_list,
+            DetailsPane::ResponseHeaders => &mut app.response_headers_list,
+            DetailsPane::Timing => &mut app.timing_list,
+        };
+
+        if app.details_block == DetailsPane::Timing {
+            render_timing_chart(
+                selected_trace,
+                actionable_list,
+                inner_layout[1],
+                frame,
+                &app.colors,
+                app.active_block,
+            );
+        } else {
+            render_actionable_list(
+                actionable_list,
+                frame,
+                inner_layout[1],
+                &app.colors,
+                app.active_block,
+            );
         }
     }
 }
@@ -467,92 +422,94 @@ fn render_actionable_list(
     frame.render_stateful_widget(list, area, &mut actionable_list.state)
 }
 
-fn render_timing_chart(app: &mut Home, area: Rect, frame: &mut Frame) {
-    if let Some(trace) = &app.selected_trace {
-        if let Some(http) = &trace.http {
-            if let Some(timings) = &http.timings {
-                let layout = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
-                    .split(area);
+fn render_timing_chart(
+    trace: &Trace,
+    actionable_list: &mut ActionableList,
+    area: Rect,
+    frame: &mut Frame,
+    colors: &Colors,
+    active_block: ActiveBlock,
+) {
+    if let Some(http) = &trace.http {
+        if let Some(timings) = &http.timings {
+            let layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
+                .split(area);
 
-                let items: Vec<ListItem> = app
-                    .timing_list
-                    .items
-                    .iter()
-                    .map(|((label, name), _action)| {
-                        ListItem::new(Line::from(vec![
-                            Span::raw(format!("{:<9}", label)),
-                            " ".into(),
-                            Span::raw(name.to_string()),
-                        ]))
-                    })
-                    .collect();
+            let items: Vec<ListItem> = actionable_list
+                .items
+                .iter()
+                .map(|((label, name), _action)| {
+                    ListItem::new(Line::from(vec![
+                        Span::raw(format!("{:<9}", label)),
+                        " ".into(),
+                        Span::raw(name.to_string()),
+                    ]))
+                })
+                .collect();
 
-                let list = List::new(items)
-                    .style(
-                        Style::default().fg(if app.active_block == ActiveBlock::Details {
-                            app.colors.text.accent_1
-                        } else {
-                            app.colors.text.unselected
-                        }),
-                    )
-                    .highlight_style(get_row_style(RowStyle::Selected, app.colors.clone()));
+            let list = List::new(items)
+                .style(
+                    Style::default().fg(if active_block == ActiveBlock::Details {
+                        colors.text.accent_1
+                    } else {
+                        colors.text.unselected
+                    }),
+                )
+                .highlight_style(get_row_style_borrowed(RowStyle::Selected, colors));
 
-                frame.render_stateful_widget(list, layout[0], &mut app.timing_list.state);
+            frame.render_stateful_widget(list, layout[0], &mut actionable_list.state);
 
-                let timings_vec: Vec<f64> = vec![
-                    timings.blocked.into(),
-                    timings.dns.into(),
-                    timings.connect.into(),
-                    timings.ssl.into(),
-                    timings.send.into(),
-                    timings.wait.into(),
-                    timings.receive.into(),
-                ];
-                let total = timings_vec.clone().iter().fold(0.0, |a, b| a + b);
+            let timings_vec: Vec<f64> = vec![
+                timings.blocked.into(),
+                timings.dns.into(),
+                timings.connect.into(),
+                timings.ssl.into(),
+                timings.send.into(),
+                timings.wait.into(),
+                timings.receive.into(),
+            ];
+            let total = timings_vec.clone().iter().fold(0.0, |a, b| a + b);
 
-                let chart_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(8), Constraint::Min(0)].as_ref())
-                    .split(layout[1]);
+            let chart_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(8), Constraint::Min(0)].as_ref())
+                .split(layout[1]);
 
-                canvas::Canvas::default()
-                    .marker(symbols::Marker::HalfBlock)
-                    .x_bounds([0.0, total + 4.0])
-                    .y_bounds([timings_vec.len() as f64 * -1.0, 1.0])
-                    .paint(|ctx| {
-                        for (i, &v) in timings_vec.iter().enumerate() {
-                            let float_i = i as f64;
-                            ctx.draw(&canvas::Rectangle {
-                                x: timings_vec[0..i].iter().fold(0.0, |a, b| a + b),
-                                y: -float_i,
-                                width: v,
-                                height: 0.5,
-                                color: if app.active_block == ActiveBlock::Details {
-                                    app.colors.surface.null
+            canvas::Canvas::default()
+                .marker(symbols::Marker::HalfBlock)
+                .x_bounds([0.0, total + 4.0])
+                .y_bounds([timings_vec.len() as f64 * -1.0, 1.0])
+                .paint(|ctx| {
+                    for (i, &v) in timings_vec.iter().enumerate() {
+                        let float_i = i as f64;
+                        ctx.draw(&canvas::Rectangle {
+                            x: timings_vec[0..i].iter().fold(0.0, |a, b| a + b),
+                            y: -float_i,
+                            width: v,
+                            height: 0.5,
+                            color: if active_block == ActiveBlock::Details {
+                                colors.surface.null
+                            } else {
+                                colors.surface.unselected
+                            },
+                        });
+                        ctx.print(
+                            v + timings_vec[0..i].iter().fold(0.0, |a, b| a + b) + 1.0,
+                            -float_i,
+                            Line::styled(
+                                format!("{:.2}", v),
+                                Style::default().fg(if active_block == ActiveBlock::Details {
+                                    colors.text.accent_1
                                 } else {
-                                    app.colors.surface.unselected
-                                },
-                            });
-                            ctx.print(
-                                v + timings_vec[0..i].iter().fold(0.0, |a, b| a + b) + 1.0,
-                                -float_i,
-                                Line::styled(
-                                    format!("{:.2}", v),
-                                    Style::default().fg(
-                                        if app.active_block == ActiveBlock::Details {
-                                            app.colors.text.accent_1
-                                        } else {
-                                            app.colors.text.unselected
-                                        },
-                                    ),
-                                ),
-                            )
-                        }
-                    })
-                    .render(chart_layout[0], frame.buffer_mut());
-            }
+                                    colors.text.unselected
+                                }),
+                            ),
+                        )
+                    }
+                })
+                .render(chart_layout[0], frame.buffer_mut());
         }
     }
 }

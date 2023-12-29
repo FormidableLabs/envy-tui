@@ -172,84 +172,22 @@ pub fn handle_up(
                 None
             }
             (ActiveBlock::Details, DetailsPane::RequestHeaders) => {
-                let next_index = if app.selected_request_header_index == 0 {
-                    0
-                } else {
-                    app.selected_request_header_index - 1
-                };
-
-                let item_length = app
-                    .selected_trace
-                    .clone()
-                    .unwrap_or_default()
-                    .http
-                    .unwrap_or_default()
-                    .request_headers
-                    .len();
-
-                let usable_height = additinal_metadata
-                    .request_body_rectangle_height
-                    .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
-                    .unwrap_or_default();
-
-                if item_length > usable_height as usize {
-                    if next_index < app.request_details.offset {
-                        app.request_details.offset -= 1;
-                    }
-
-                    let next_position = calculate_scrollbar_position(
-                        item_length as u16,
-                        app.request_details.offset,
-                        item_length as u16 - (usable_height),
-                    );
-
-                    app.request_details.scroll_state = app
-                        .request_details
-                        .scroll_state
-                        .position(next_position.into());
-                }
-
-                app.selected_request_header_index = next_index;
+                app.request_headers_list.previous();
 
                 None
             }
-            (ActiveBlock::Details, _) => {
-                let next_index = if app.selected_response_header_index == 0 {
-                    0
-                } else {
-                    app.selected_response_header_index - 1
-                };
+            (ActiveBlock::Details, DetailsPane::ResponseDetails) => {
+                app.response_details_list.previous();
 
-                let item_length = app
-                    .selected_trace
-                    .clone()
-                    .unwrap_or_default()
-                    .http
-                    .unwrap_or_default()
-                    .request_headers
-                    .len();
+                None
+            }
+            (ActiveBlock::Details, DetailsPane::ResponseHeaders) => {
+                app.response_headers_list.previous();
 
-                let usable_height = additinal_metadata.response_body_rectangle_height
-                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
-
-                if item_length > usable_height as usize {
-                    if next_index < app.response_details.offset {
-                        app.response_details.offset -= 1;
-                    }
-
-                    let next_position = calculate_scrollbar_position(
-                        item_length as u16,
-                        app.response_details.offset,
-                        item_length as u16 - (usable_height),
-                    );
-
-                    app.response_details.scroll_state = app
-                        .response_details
-                        .scroll_state
-                        .position(next_position.into());
-                }
-
-                app.selected_response_header_index = next_index;
+                None
+            }
+            (ActiveBlock::Details, DetailsPane::Timing) => {
+                app.timing_list.previous();
 
                 None
             }
@@ -391,13 +329,13 @@ pub fn handle_down(
 
                 Some(Action::SelectTrace(get_currently_selected_trace(app)))
             }
-            (ActiveBlock::Details, DetailsPane::QueryParams) => {
-                app.query_params_list.next();
+            (ActiveBlock::Details, DetailsPane::RequestDetails) => {
+                app.request_details_list.next();
 
                 None
             }
-            (ActiveBlock::Details, DetailsPane::RequestDetails) => {
-                app.request_details_list.next();
+            (ActiveBlock::Details, DetailsPane::QueryParams) => {
+                app.query_params_list.next();
 
                 None
             }
