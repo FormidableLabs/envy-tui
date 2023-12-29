@@ -161,6 +161,11 @@ pub fn handle_up(
                     Some(Action::SelectTrace(get_currently_selected_trace(app)))
                 }
             }
+            (ActiveBlock::Details, DetailsPane::RequestDetails) => {
+                app.request_details_list.previous();
+
+                None
+            }
             (ActiveBlock::Details, DetailsPane::QueryParams) => {
                 app.query_params_list.previous();
 
@@ -391,98 +396,28 @@ pub fn handle_down(
 
                 None
             }
-            (ActiveBlock::Details, DetailsPane::RequestHeaders) => {
-                let item = app.selected_trace.as_ref().unwrap();
-
-                let item_length = item.http.clone().unwrap_or_default().request_headers.len();
-
-                let next_index = if app.selected_request_header_index + 1 >= item_length {
-                    item_length.saturating_sub(1)
-                } else {
-                    app.selected_request_header_index + 1
-                };
-
-                app.selected_request_header_index = next_index;
-
-                let usable_height = additinal_metadata
-                    .request_body_rectangle_height
-                    .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
-                    .unwrap_or_default();
-
-                let requires_scrollbar = item_length as u16 >= usable_height;
-
-                if requires_scrollbar {
-                    let current_index_hit_viewport_end =
-                        app.selected_request_header_index >= { usable_height as usize };
-
-                    let offset_does_not_intersects_bottom_of_rect =
-                        (app.request_details.offset as u16 + usable_height) < item_length as u16;
-
-                    if current_index_hit_viewport_end && offset_does_not_intersects_bottom_of_rect {
-                        app.request_details.offset += 1;
-                    }
-
-                    let next_position = calculate_scrollbar_position(
-                        item_length as u16,
-                        app.request_details.offset,
-                        item_length as u16 - (usable_height),
-                    );
-
-                    app.request_details.scroll_state = app
-                        .request_details
-                        .scroll_state
-                        .position(next_position.into());
-                }
+            (ActiveBlock::Details, DetailsPane::RequestDetails) => {
+                app.request_details_list.next();
 
                 None
             }
-            (ActiveBlock::Details, _) => {
-                let item = app.selected_trace.as_ref().unwrap();
+            (ActiveBlock::Details, DetailsPane::RequestHeaders) => {
+                app.request_headers_list.next();
 
-                if item.http.clone().unwrap_or_default().duration.is_some() {
-                    let item_length = item.http.clone().unwrap_or_default().response_headers.len();
+                None
+            }
+            (ActiveBlock::Details, DetailsPane::ResponseDetails) => {
+                app.response_details_list.next();
 
-                    let next_index = if app.selected_response_header_index + 1 >= item_length {
-                        item_length.saturating_sub(1)
-                    } else {
-                        app.selected_response_header_index + 1
-                    };
+                None
+            }
+            (ActiveBlock::Details, DetailsPane::ResponseHeaders) => {
+                app.response_headers_list.next();
 
-                    app.selected_response_header_index = next_index;
-
-                    let usable_height = additinal_metadata
-                        .response_body_rectangle_height
-                        .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
-                        .unwrap_or_default();
-
-                    let requires_scrollbar = item_length as u16 >= usable_height;
-
-                    if requires_scrollbar {
-                        let current_index_hit_viewport_end =
-                            app.selected_response_header_index >= { usable_height as usize };
-
-                        let offset_does_not_intersects_bottom_of_rect =
-                            (app.response_details.offset as u16 + usable_height)
-                                < item_length as u16;
-
-                        if current_index_hit_viewport_end
-                            && offset_does_not_intersects_bottom_of_rect
-                        {
-                            app.response_details.offset += 1;
-                        }
-
-                        let next_position = calculate_scrollbar_position(
-                            item_length as u16,
-                            app.response_details.offset,
-                            item_length as u16 - (usable_height),
-                        );
-
-                        app.response_details.scroll_state = app
-                            .response_details
-                            .scroll_state
-                            .position(next_position.into());
-                    }
-                }
+                None
+            }
+            (ActiveBlock::Details, DetailsPane::Timing) => {
+                app.timing_list.next();
 
                 None
             }
@@ -496,7 +431,14 @@ pub fn handle_enter(app: &mut Home) -> Option<Action> {
         app.active_block = ActiveBlock::Details;
         None
     } else if app.active_block == ActiveBlock::Details {
-        app.query_params_list.select()
+        match app.details_block {
+            DetailsPane::RequestDetails => app.request_details_list.select(),
+            DetailsPane::QueryParams => app.query_params_list.select(),
+            DetailsPane::RequestHeaders => app.request_headers_list.select(),
+            DetailsPane::ResponseDetails => app.response_details_list.select(),
+            DetailsPane::ResponseHeaders => app.response_headers_list.select(),
+            DetailsPane::Timing => app.timing_list.select(),
+        }
     } else {
         None
     }
@@ -537,6 +479,10 @@ pub fn handle_search_exit(app: &mut Home) -> Option<Action> {
 }
 
 pub fn handle_tab(app: &mut Home) -> Option<Action> {
+    if app.active_block == ActiveBlock::Details {
+        return handle_details_pane_next(app);
+    }
+
     let next_block = match app.active_block {
         ActiveBlock::Traces => ActiveBlock::Details,
         ActiveBlock::Details => ActiveBlock::ResponseBody,
@@ -568,6 +514,31 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
         Some(Action::ActivateBlock(next_block))
     } else {
         None
+    }
+}
+
+pub fn handle_details_pane_next(app: &mut Home) -> Option<Action> {
+    if app.details_panes.len() == 0 {
+        app.active_block = ActiveBlock::ResponseBody;
+        return Some(Action::ActivateBlock(ActiveBlock::ResponseBody));
+    }
+
+    if app.details_tabs.contains(&app.details_block) {
+        app.details_block = app.details_panes[0];
+        return None
+    }
+
+    let mut iter = app.details_panes.iter();
+
+    // advance iterator to the current block
+    iter.find(|&&v| app.details_block == v);
+
+    if let Some(next_pane) = iter.next() {
+        app.details_block = *next_pane;
+        None
+    } else {
+        app.active_block = ActiveBlock::ResponseBody;
+        Some(Action::ActivateBlock(ActiveBlock::ResponseBody))
     }
 }
 
