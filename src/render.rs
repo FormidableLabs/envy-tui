@@ -273,7 +273,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                     inner_layout[1],
                     frame,
                     &app.colors,
-                    app.active_block,
+                    app.active_block == ActiveBlock::Details,
                 );
             } else {
                 render_actionable_list(
@@ -281,7 +281,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                     frame,
                     inner_layout[1],
                     &app.colors,
-                    app.active_block,
+                    app.active_block == ActiveBlock::Details && app.details_block == **pane,
                 );
             }
         }
@@ -360,7 +360,13 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
         frame.render_widget(details_block, area);
         frame.render_widget(tabs, inner_layout[0]);
 
-        let actionable_list = match app.details_block {
+        let tab_block = if app.details_tabs.contains(&app.details_block) {
+            app.details_block
+        } else {
+            app.details_tabs[0]
+        };
+
+        let actionable_list = match tab_block {
             DetailsPane::RequestDetails => &mut app.request_details_list,
             DetailsPane::QueryParams => &mut app.query_params_list,
             DetailsPane::RequestHeaders => &mut app.request_headers_list,
@@ -369,14 +375,14 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             DetailsPane::Timing => &mut app.timing_list,
         };
 
-        if app.details_block == DetailsPane::Timing {
+        if tab_block == DetailsPane::Timing {
             render_timing_chart(
                 selected_trace,
                 actionable_list,
                 inner_layout[1],
                 frame,
                 &app.colors,
-                app.active_block,
+                app.active_block == ActiveBlock::Details,
             );
         } else {
             render_actionable_list(
@@ -384,7 +390,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
                 frame,
                 inner_layout[1],
                 &app.colors,
-                app.active_block,
+                app.active_block == ActiveBlock::Details && app.details_block == tab_block,
             );
         }
     }
@@ -395,7 +401,7 @@ fn render_actionable_list(
     frame: &mut Frame,
     area: Rect,
     colors: &Colors,
-    active_block: ActiveBlock,
+    active: bool,
 ) {
     let items: Vec<ListItem> = actionable_list
         .items
@@ -410,14 +416,16 @@ fn render_actionable_list(
         .collect();
 
     let list = List::new(items)
-        .style(
-            Style::default().fg(if active_block == ActiveBlock::Details {
-                colors.text.accent_1
-            } else {
-                colors.text.unselected
-            }),
-        )
-        .highlight_style(get_row_style_borrowed(RowStyle::Selected, colors));
+        .style(Style::default().fg(if active {
+            colors.text.accent_1
+        } else {
+            colors.text.unselected
+        }))
+        .highlight_style(if active {
+            get_row_style_borrowed(RowStyle::Selected, colors)
+        } else {
+            get_row_style_borrowed(RowStyle::Inactive, colors)
+        });
 
     frame.render_stateful_widget(list, area, &mut actionable_list.state)
 }
@@ -428,7 +436,7 @@ fn render_timing_chart(
     area: Rect,
     frame: &mut Frame,
     colors: &Colors,
-    active_block: ActiveBlock,
+    active: bool,
 ) {
     if let Some(http) = &trace.http {
         if let Some(timings) = &http.timings {
@@ -450,14 +458,16 @@ fn render_timing_chart(
                 .collect();
 
             let list = List::new(items)
-                .style(
-                    Style::default().fg(if active_block == ActiveBlock::Details {
-                        colors.text.accent_1
-                    } else {
-                        colors.text.unselected
-                    }),
-                )
-                .highlight_style(get_row_style_borrowed(RowStyle::Selected, colors));
+                .style(Style::default().fg(if active {
+                    colors.text.accent_1
+                } else {
+                    colors.text.unselected
+                }))
+                .highlight_style(if active {
+                    get_row_style_borrowed(RowStyle::Selected, colors)
+                } else {
+                    get_row_style_borrowed(RowStyle::Inactive, colors)
+                });
 
             frame.render_stateful_widget(list, layout[0], &mut actionable_list.state);
 
@@ -489,7 +499,7 @@ fn render_timing_chart(
                             y: -float_i,
                             width: v,
                             height: 0.5,
-                            color: if active_block == ActiveBlock::Details {
+                            color: if active {
                                 colors.surface.null
                             } else {
                                 colors.surface.unselected
@@ -500,7 +510,7 @@ fn render_timing_chart(
                             -float_i,
                             Line::styled(
                                 format!("{:.2}", v),
-                                Style::default().fg(if active_block == ActiveBlock::Details {
+                                Style::default().fg(if active {
                                     colors.text.accent_1
                                 } else {
                                     colors.text.unselected
@@ -524,13 +534,11 @@ fn render_timing_chart(
                 .collect();
 
             let list = List::new(items)
-                .style(
-                    Style::default().fg(if active_block == ActiveBlock::Details {
-                        colors.text.accent_1
-                    } else {
-                        colors.text.unselected
-                    }),
-                )
+                .style(Style::default().fg(if active {
+                    colors.text.accent_1
+                } else {
+                    colors.text.unselected
+                }))
                 .highlight_style(get_row_style_borrowed(RowStyle::Selected, colors));
 
             frame.render_stateful_widget(list, area, &mut actionable_list.state);

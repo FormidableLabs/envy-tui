@@ -439,6 +439,10 @@ pub fn handle_tab(app: &mut Home) -> Option<Action> {
 }
 
 pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
+    if app.active_block == ActiveBlock::Details {
+        return handle_details_pane_prev(app);
+    }
+
     let next_block = match app.active_block {
         ActiveBlock::Traces => ActiveBlock::RequestBody,
         ActiveBlock::Details => ActiveBlock::Traces,
@@ -446,6 +450,7 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
         ActiveBlock::ResponseBody => ActiveBlock::Details,
         _ => app.active_block,
     };
+
     if next_block != app.active_block {
         app.active_block = next_block;
 
@@ -456,14 +461,17 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
 }
 
 pub fn handle_details_pane_next(app: &mut Home) -> Option<Action> {
-    if app.details_panes.len() == 0 {
-        app.active_block = ActiveBlock::ResponseBody;
-        return Some(Action::ActivateBlock(ActiveBlock::ResponseBody));
-    }
-
+    // the tabs are selected, so advance to the first pane
     if app.details_tabs.contains(&app.details_block) {
-        app.details_block = app.details_panes[0];
-        return None
+        if let Some(first_pane) = app.details_panes.first() {
+            app.details_block = *first_pane;
+
+            return None;
+        } else {
+            app.active_block = ActiveBlock::ResponseBody;
+
+            return Some(Action::ActivateBlock(ActiveBlock::ResponseBody));
+        }
     }
 
     let mut iter = app.details_panes.iter();
@@ -473,10 +481,41 @@ pub fn handle_details_pane_next(app: &mut Home) -> Option<Action> {
 
     if let Some(next_pane) = iter.next() {
         app.details_block = *next_pane;
+
         None
     } else {
         app.active_block = ActiveBlock::ResponseBody;
+
         Some(Action::ActivateBlock(ActiveBlock::ResponseBody))
+    }
+}
+
+pub fn handle_details_pane_prev(app: &mut Home) -> Option<Action> {
+    if app.details_panes.len() == 0 {
+        app.active_block = ActiveBlock::Traces;
+
+        return Some(Action::ActivateBlock(ActiveBlock::Traces));
+    }
+
+    if app.details_tabs.contains(&app.details_block) {
+        app.active_block = ActiveBlock::Traces;
+
+        return Some(Action::ActivateBlock(ActiveBlock::Traces));
+    }
+
+    let mut iter = app.details_panes.iter().rev();
+
+    // advance iterator to the current block
+    iter.find(|&&v| app.details_block == v);
+
+    if let Some(next_pane) = iter.next() {
+        app.details_block = *next_pane;
+
+        None
+    } else {
+        app.details_block = app.details_tabs[0];
+
+        None
     }
 }
 
@@ -490,10 +529,9 @@ pub fn handle_details_tab_next(app: &mut Home) -> Option<Action> {
         app.details_block = *next_pane;
     } else {
         // fallback to selecting the first tab
-        app.details_block = *app
-            .details_tabs
-            .first()
-            .unwrap_or(&DetailsPane::RequestDetails);
+        if let Some(first_tab) = app.details_tabs.first() {
+            app.details_block = *first_tab
+        }
     }
 
     None
@@ -509,11 +547,10 @@ pub fn handle_details_tab_prev(app: &mut Home) -> Option<Action> {
     if let Some(next_pane) = iter.next() {
         app.details_block = *next_pane;
     } else {
-        // fallback to selecting the first tab
-        app.details_block = *app
-            .details_tabs
-            .last()
-            .unwrap_or(&DetailsPane::RequestDetails);
+        // fallback to selecting the last tab
+        if let Some(last_tab) = app.details_tabs.last() {
+            app.details_block = *last_tab
+        }
     }
 
     None
