@@ -199,7 +199,7 @@ impl JSONViewer {
         let outer_block = Block::default()
             .borders(Borders::ALL)
             .padding(padding)
-            .border_style(get_border_style(self.is_active, self.colors.clone()))
+            .border_style(get_border_style(self.is_active, &self.colors))
             .title(self.title.to_string())
             .border_type(BorderType::Plain);
 

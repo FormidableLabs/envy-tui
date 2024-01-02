@@ -59,7 +59,7 @@ pub fn get_row_style(row_style: RowStyle, colors: &Colors) -> Style {
     }
 }
 
-pub fn get_border_style(active: bool, colors: Colors) -> Style {
+pub fn get_border_style(active: bool, colors: &Colors) -> Style {
     if active {
         Style::default().fg(colors.surface.selected)
     } else {
@@ -204,6 +204,8 @@ pub fn details(app: &mut Home, frame: &mut Frame, area: Rect) {
 pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usize) {
     if let Some(selected_trace) = &app.selected_trace {
         if let Some(pane) = &app.details_panes.get(pane_idx) {
+            let is_active = app.active_block == ActiveBlock::Details && app.details_block == **pane;
+
             let inner_layout = Layout::default()
                 .vertical_margin(2)
                 .horizontal_margin(3)
@@ -227,10 +229,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                     .position(Position::Bottom)
                     .alignment(Alignment::Right),
                 )
-                .border_style(get_border_style(
-                    app.active_block == ActiveBlock::Details,
-                    app.colors.clone(),
-                ))
+                .border_style(get_border_style(is_active, &app.colors))
                 .border_type(BorderType::Plain)
                 .borders(Borders::ALL);
 
@@ -252,7 +251,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                     inner_layout[1],
                     frame,
                     &app.colors,
-                    app.active_block == ActiveBlock::Details,
+                    is_active,
                 );
             } else {
                 render_actionable_list(
@@ -260,7 +259,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                     frame,
                     inner_layout[1],
                     &app.colors,
-                    app.active_block == ActiveBlock::Details && app.details_block == **pane,
+                    is_active,
                 );
             }
         }
@@ -268,20 +267,15 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
 }
 
 pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
-    let active_block = app.active_block;
-
     if let Some(selected_trace) = &app.selected_trace {
+        let is_active = app.active_block == ActiveBlock::Details
+            && app.details_tabs.contains(&app.details_block);
+
         let tabs = Tabs::new(app.details_tabs.iter().map(|t| t.to_string()).collect())
             .block(
                 Block::default()
                     .borders(Borders::BOTTOM)
-                    .border_style(
-                        Style::default().fg(if active_block == ActiveBlock::Details {
-                            app.colors.surface.selected
-                        } else {
-                            app.colors.surface.unselected
-                        }),
-                    )
+                    .border_style(get_border_style(is_active, &app.colors))
                     .border_type(BorderType::Plain)
                     .border_set(border::DOUBLE),
             )
@@ -291,20 +285,16 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
                     .position(|&t| app.details_block == t)
                     .unwrap_or_default(),
             )
-            .style(
-                Style::default().fg(if active_block == ActiveBlock::Details {
-                    app.colors.text.accent_1
-                } else {
-                    app.colors.text.unselected
-                }),
-            )
-            .highlight_style(
-                Style::default().fg(if active_block == ActiveBlock::Details {
-                    app.colors.text.accent_2
-                } else {
-                    app.colors.text.unselected
-                }),
-            );
+            .style(Style::default().fg(if is_active {
+                app.colors.text.accent_1
+            } else {
+                app.colors.text.unselected
+            }))
+            .highlight_style(Style::default().fg(if is_active {
+                app.colors.text.accent_2
+            } else {
+                app.colors.text.unselected
+            }));
 
         let inner_layout = Layout::default()
             .vertical_margin(2)
@@ -329,10 +319,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
                 .position(Position::Bottom)
                 .alignment(Alignment::Right),
             )
-            .border_style(get_border_style(
-                app.active_block == ActiveBlock::Details,
-                app.colors.clone(),
-            ))
+            .border_style(get_border_style(is_active, &app.colors))
             .border_type(BorderType::Plain)
             .borders(Borders::ALL);
 
@@ -342,6 +329,8 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
         let tab_block = if app.details_tabs.contains(&app.details_block) {
             app.details_block
         } else {
+            // TODO: track the tab index separately to avoid losing placement when a details pane
+            // is focused
             app.details_tabs[0]
         };
 
@@ -361,7 +350,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
                 inner_layout[1],
                 frame,
                 &app.colors,
-                app.active_block == ActiveBlock::Details,
+                app.active_block == ActiveBlock::Details && app.details_block == tab_block,
             );
         } else {
             render_actionable_list(
@@ -417,39 +406,15 @@ fn render_timing_chart(
     colors: &Colors,
     active: bool,
 ) {
+    let layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
+        .split(area);
+
+    render_actionable_list(actionable_list, frame, layout[0], colors, active);
+
     if let Some(http) = &trace.http {
         if let Some(timings) = &http.timings {
-            let layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
-                .split(area);
-
-            let items: Vec<ListItem> = actionable_list
-                .items
-                .iter()
-                .map(|((label, name), _action)| {
-                    ListItem::new(Line::from(vec![
-                        Span::raw(format!("{:<9}", label)),
-                        " ".into(),
-                        Span::raw(name.to_string()),
-                    ]))
-                })
-                .collect();
-
-            let list = List::new(items)
-                .style(Style::default().fg(if active {
-                    colors.text.accent_1
-                } else {
-                    colors.text.unselected
-                }))
-                .highlight_style(if active {
-                    get_row_style(RowStyle::Selected, colors)
-                } else {
-                    get_row_style(RowStyle::Inactive, colors)
-                });
-
-            frame.render_stateful_widget(list, layout[0], &mut actionable_list.state);
-
             let timings_vec: Vec<f64> = vec![
                 timings.blocked.into(),
                 timings.dns.into(),
@@ -499,28 +464,6 @@ fn render_timing_chart(
                     }
                 })
                 .render(chart_layout[0], frame.buffer_mut());
-        } else {
-            let items: Vec<ListItem> = actionable_list
-                .items
-                .iter()
-                .map(|((label, name), _action)| {
-                    ListItem::new(Line::from(vec![
-                        Span::raw(format!("{:<9}", label)),
-                        " ".into(),
-                        Span::raw(name.to_string()),
-                    ]))
-                })
-                .collect();
-
-            let list = List::new(items)
-                .style(Style::default().fg(if active {
-                    colors.text.accent_1
-                } else {
-                    colors.text.unselected
-                }))
-                .highlight_style(get_row_style(RowStyle::Selected, colors));
-
-            frame.render_stateful_widget(list, area, &mut actionable_list.state);
         }
     }
 }
@@ -650,7 +593,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
                 .borders(Borders::ALL)
                 .border_style(get_border_style(
                     app.active_block == ActiveBlock::Traces,
-                    app.colors.clone(),
+                    &app.colors,
                 ))
                 .title(title)
                 .title(
@@ -851,7 +794,7 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, &app.colors))
                 .title("Key Mappings")
                 .border_type(BorderType::Plain),
         )
@@ -874,7 +817,7 @@ pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, &app.colors))
                 .title("Debug logs")
                 .border_type(BorderType::Plain),
         );
@@ -993,7 +936,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, &app.colors))
                 .title("[Filters - Sources]")
                 .border_type(BorderType::Plain),
         )
@@ -1055,7 +998,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, &app.colors))
                 .title("[Filters - Status]")
                 .border_type(BorderType::Plain),
         )
@@ -1120,7 +1063,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, &app.colors))
                 .title("[Filters - Method]")
                 .border_type(BorderType::Plain),
         )
@@ -1175,7 +1118,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, &app.colors))
                 .title("[Filters]")
                 .border_type(BorderType::Plain),
         )
@@ -1312,7 +1255,7 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
+                .border_style(get_border_style(true, &app.colors))
                 .title("[Sort traces by]")
                 .border_type(BorderType::Plain),
         )
