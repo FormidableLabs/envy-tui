@@ -218,10 +218,10 @@ impl JSONViewer {
 
         for (idx, line) in lines.iter_mut().enumerate() {
             let style = match (self.is_active, idx == self.cursor_position) {
-                (true, true) => get_row_style(RowStyle::Selected, self.colors.clone()),
-                (true, false) => get_row_style(RowStyle::Active, self.colors.clone()),
-                (false, true) => get_row_style(RowStyle::Inactive, self.colors.clone()),
-                (false, false) => get_row_style(RowStyle::Default, self.colors.clone()),
+                (true, true) => get_row_style(RowStyle::Selected, &self.colors),
+                (true, false) => get_row_style(RowStyle::Active, &self.colors),
+                (false, true) => get_row_style(RowStyle::Inactive, &self.colors),
+                (false, false) => get_row_style(RowStyle::Default, &self.colors),
             };
             line.patch_style(style);
         }

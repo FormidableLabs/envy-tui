@@ -38,28 +38,7 @@ enum HeaderType {
     Response,
 }
 
-pub fn get_row_style(row_style: RowStyle, colors: Colors) -> Style {
-    let default_style = Style::default().fg(colors.text.unselected);
-
-    let active_style = Style::default().fg(colors.text.default);
-
-    let selected_style = Style::default()
-        .fg(colors.text.selected)
-        .bg(colors.surface.selected);
-
-    let inactive_style = Style::default()
-        .fg(colors.text.selected)
-        .bg(colors.surface.unselected);
-
-    match row_style {
-        RowStyle::Default => default_style,
-        RowStyle::Active => active_style,
-        RowStyle::Inactive => inactive_style,
-        RowStyle::Selected => selected_style,
-    }
-}
-
-pub fn get_row_style_borrowed(row_style: RowStyle, colors: &Colors) -> Style {
+pub fn get_row_style(row_style: RowStyle, colors: &Colors) -> Style {
     let default_style = Style::default().fg(colors.text.unselected);
 
     let active_style = Style::default().fg(colors.text.default);
@@ -422,9 +401,9 @@ fn render_actionable_list(
             colors.text.unselected
         }))
         .highlight_style(if active {
-            get_row_style_borrowed(RowStyle::Selected, colors)
+            get_row_style(RowStyle::Selected, colors)
         } else {
-            get_row_style_borrowed(RowStyle::Inactive, colors)
+            get_row_style(RowStyle::Inactive, colors)
         });
 
     frame.render_stateful_widget(list, area, &mut actionable_list.state)
@@ -464,9 +443,9 @@ fn render_timing_chart(
                     colors.text.unselected
                 }))
                 .highlight_style(if active {
-                    get_row_style_borrowed(RowStyle::Selected, colors)
+                    get_row_style(RowStyle::Selected, colors)
                 } else {
-                    get_row_style_borrowed(RowStyle::Inactive, colors)
+                    get_row_style(RowStyle::Inactive, colors)
                 });
 
             frame.render_stateful_widget(list, layout[0], &mut actionable_list.state);
@@ -539,7 +518,7 @@ fn render_timing_chart(
                 } else {
                     colors.text.unselected
                 }))
-                .highlight_style(get_row_style_borrowed(RowStyle::Selected, colors));
+                .highlight_style(get_row_style(RowStyle::Selected, colors));
 
             frame.render_stateful_widget(list, area, &mut actionable_list.state);
         }
@@ -649,12 +628,10 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
                 .clone();
 
             Row::new(str_vec).style(match (*selected, active_block) {
-                (true, ActiveBlock::Traces) => {
-                    get_row_style(RowStyle::Selected, app.colors.clone())
-                }
-                (false, ActiveBlock::Traces) => get_row_style(RowStyle::Active, app.colors.clone()),
-                (true, _) => get_row_style(RowStyle::Inactive, app.colors.clone()),
-                (false, _) => get_row_style(RowStyle::Default, app.colors.clone()),
+                (true, ActiveBlock::Traces) => get_row_style(RowStyle::Selected, &app.colors),
+                (false, ActiveBlock::Traces) => get_row_style(RowStyle::Active, &app.colors),
+                (true, _) => get_row_style(RowStyle::Inactive, &app.colors),
+                (false, _) => get_row_style(RowStyle::Default, &app.colors),
             })
         })
         .collect();
@@ -860,8 +837,7 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
                 Cell::from(Line::from(vec![Span::raw(description)]).alignment(Alignment::Right));
             let column_b = Cell::from(key_code.join(", "));
 
-            Row::new(vec![column_a, column_b])
-                .style(get_row_style(RowStyle::Default, app.colors.clone()))
+            Row::new(vec![column_a, column_b]).style(get_row_style(RowStyle::Default, &app.colors))
         })
         .collect::<Vec<_>>();
 
@@ -971,7 +947,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                     );
 
                     return Row::new(vec![column_b, middle, column_a])
-                        .style(get_row_style(row_style, app.colors.clone()));
+                        .style(get_row_style(row_style, &app.colors));
                 }
                 FilterSource::Applied(applied) => {
                     // let column_b = if applied.contains(current_service.as_ref().unwrap()) {
@@ -1001,7 +977,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                     );
 
                     return Row::new(vec![column_b, middle, column_a])
-                        .style(get_row_style(row_style, app.colors.clone()));
+                        .style(get_row_style(row_style, &app.colors));
                 }
             };
         })
@@ -1065,8 +1041,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
                 Line::from(vec![Span::raw("Status".to_string())]).alignment(Alignment::Left),
             );
 
-            Row::new(vec![column_b, h, column_a])
-                .style(get_row_style(row_style, app.colors.clone()))
+            Row::new(vec![column_b, h, column_a]).style(get_row_style(row_style, &app.colors))
         })
         .collect::<Vec<_>>();
 
@@ -1131,8 +1106,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
                 Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
             );
 
-            Row::new(vec![column_b, h, column_a])
-                .style(get_row_style(row_style, app.colors.clone()))
+            Row::new(vec![column_b, h, column_a]).style(get_row_style(row_style, &app.colors))
         })
         .collect::<Vec<_>>();
 
@@ -1187,8 +1161,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect) {
                 Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
             );
 
-            Row::new(vec![column_b, middle, column_a])
-                .style(get_row_style(row_style, app.colors.clone()))
+            Row::new(vec![column_b, middle, column_a]).style(get_row_style(row_style, &app.colors))
         })
         .collect::<Vec<_>>();
 
@@ -1325,7 +1298,7 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
                 column_a.clone(),
                 order1,
             ])
-            .style(get_row_style(row_style, app.colors.clone()))
+            .style(get_row_style(row_style, &app.colors))
         })
         .collect::<Vec<_>>();
 
