@@ -24,6 +24,11 @@ pretty_assertions = "1.4.0"
 chrono = "0.4.31"
 strum = "0.25.0"
 strum_macros = "0.25.3"
+log = "0.4.20"
+structured-logger = { version = "1.0.3", optional = true }
 
 [profile.release]
 debug = true
+
+[features]
+logger = ["dep:structured-logger"]
