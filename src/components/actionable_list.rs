@@ -10,11 +10,8 @@ pub struct ActionableList {
 }
 
 impl ActionableList {
-    pub fn with_items(items: Vec<ActionableListItem>) -> ActionableList {
-        ActionableList {
-            state: ListState::default(),
-            items,
-        }
+    pub fn new(items: Vec<ActionableListItem>, state: ListState) -> ActionableList {
+        ActionableList { state, items }
     }
 
     pub fn next(&mut self) {

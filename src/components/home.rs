@@ -216,7 +216,8 @@ impl Home {
                 ))
             };
 
-            self.request_details_list = ActionableList::with_items(rows);
+            self.request_details_list =
+                ActionableList::new(rows, self.request_details_list.state.clone());
 
             // QUERY PARAMS PANE
             let mut raw_params = parse_query_params(
@@ -253,7 +254,8 @@ impl Home {
                 ))
             };
 
-            self.query_params_list = ActionableList::with_items(next_items);
+            self.query_params_list =
+                ActionableList::new(next_items, self.query_params_list.state.clone());
 
             // RESPONSE DETAILS PANE
             let mut items: Vec<ActionableListItem> = vec![];
@@ -294,7 +296,8 @@ impl Home {
                 ))
             };
 
-            self.response_details_list = ActionableList::with_items(items);
+            self.response_details_list =
+                ActionableList::new(items, self.response_details_list.state.clone());
 
             // REQUEST HEADERS PANE
             let headers = trace.http.clone().unwrap_or_default().request_headers;
@@ -331,7 +334,8 @@ impl Home {
                 ))
             };
 
-            self.request_headers_list = ActionableList::with_items(next_items);
+            self.request_headers_list =
+                ActionableList::new(next_items, self.request_headers_list.state.clone());
 
             // RESPONSE HEADERS PANE
             let headers = trace.http.clone().unwrap_or_default().response_headers;
@@ -369,7 +373,8 @@ impl Home {
                 ))
             };
 
-            self.response_headers_list = ActionableList::with_items(next_items);
+            self.response_headers_list =
+                ActionableList::new(next_items, self.response_headers_list.state.clone());
 
             // TIMING PANE
             let next_items: Vec<ActionableListItem> = vec![
@@ -382,7 +387,7 @@ impl Home {
                 (("receiving".to_string(), "".to_string()), None),
             ];
 
-            self.timing_list = ActionableList::with_items(next_items);
+            self.timing_list = ActionableList::new(next_items, self.timing_list.state.clone());
         }
     }
 }
