@@ -467,10 +467,6 @@ pub fn handle_details_pane_next(app: &mut Home) -> Option<Action> {
             app.details_block = *first_pane;
 
             return None;
-        } else {
-            app.active_block = ActiveBlock::ResponseBody;
-
-            return Some(Action::ActivateBlock(ActiveBlock::ResponseBody));
         }
     }
 

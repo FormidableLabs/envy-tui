@@ -210,7 +210,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 .vertical_margin(2)
                 .horizontal_margin(3)
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
+                .constraints([Constraint::Min(1)].as_ref())
                 .split(area);
 
             let details_block = Block::default()
@@ -248,7 +248,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 render_timing_chart(
                     selected_trace,
                     actionable_list,
-                    inner_layout[1],
+                    inner_layout[0],
                     frame,
                     &app.colors,
                     is_active,
@@ -257,7 +257,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 render_actionable_list(
                     actionable_list,
                     frame,
-                    inner_layout[1],
+                    inner_layout[0],
                     &app.colors,
                     is_active,
                 );
@@ -374,11 +374,20 @@ fn render_actionable_list(
     let items: Vec<ListItem> = actionable_list
         .items
         .iter()
-        .map(|((label, name), _action)| {
+        .map(|((label, name), action)| {
             ListItem::new(Line::from(vec![
                 Span::raw(format!("{:<15}", label)),
                 " ".into(),
-                Span::raw(name.to_string()),
+                Span::styled(
+                    name.to_string(),
+                    if active && action.is_some() {
+                        Style::default().fg(colors.text.accent_2)
+                    } else if active {
+                        get_row_style(RowStyle::Active, colors)
+                    } else {
+                        get_row_style(RowStyle::Default, colors)
+                    },
+                ),
             ]))
         })
         .collect();

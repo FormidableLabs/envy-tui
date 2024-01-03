@@ -185,6 +185,212 @@ impl Home {
             };
         }
     }
+
+    fn update_details_lists(&mut self) {
+        if let Some(trace) = &self.selected_trace {
+            // REQUEST DETAILS PANE
+            let mut rows: Vec<ActionableListItem> = vec![];
+
+            let sent = DateTime::from_timestamp(trace.timestamp, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d @ %H:%M:%S")
+                .to_string();
+            let host = trace.service_name.clone().unwrap_or(format!(""));
+            let path = trace.http.clone().map_or("".to_string(), |http| http.path);
+            let port = trace.http.clone().map_or("".to_string(), |http| http.port);
+
+            rows.push((("sent".into(), sent), None));
+            rows.push((("host".into(), host), None));
+            rows.push((("path".into(), path), None));
+            rows.push((("port".into(), port), None));
+            // add available actions to the item list
+            let actions = if self.details_tabs.contains(&DetailsPane::RequestDetails) {
+                vec![(
+                    ("actions".to_string(), "pop-out [↗]".to_string()),
+                    Some(Action::PopOutDetailsTab(DetailsPane::RequestDetails)),
+                )]
+            } else {
+                vec![(
+                    ("actions".to_string(), "close [x]".to_string()),
+                    Some(Action::CloseDetailsPane(DetailsPane::RequestDetails)),
+                )]
+            };
+
+            self.request_details_list = ActionableList::with_items(rows, actions);
+
+            // QUERY PARAMS PANE
+            let mut raw_params = parse_query_params(
+                trace
+                    .http
+                    .clone()
+                    .expect("Missing http from trace")
+                    .uri
+                    .to_string(),
+            );
+
+            raw_params.sort_by(|a, b| {
+                let (name_a, _) = a;
+                let (name_b, _) = b;
+
+                name_a.cmp(name_b)
+            });
+
+            let next_items: Vec<ActionableListItem> = raw_params
+                .into_iter()
+                .map(|(label, name)| ((label, name), None))
+                .to_owned()
+                .collect();
+
+            // add available actions to the item list
+            let next_actions: Vec<ActionableListItem> =
+                if self.details_tabs.contains(&DetailsPane::QueryParams) {
+                    vec![(
+                        ("actions".to_string(), "pop-out [↗]".to_string()),
+                        Some(Action::PopOutDetailsTab(DetailsPane::QueryParams)),
+                    )]
+                } else {
+                    vec![(
+                        ("actions".to_string(), "close [x]".to_string()),
+                        Some(Action::CloseDetailsPane(DetailsPane::QueryParams)),
+                    )]
+                };
+
+            self.query_params_list = ActionableList::with_items(next_items, next_actions);
+
+            // RESPONSE DETAILS PANE
+            let mut items: Vec<ActionableListItem> = vec![];
+
+            let received = DateTime::from_timestamp(trace.timestamp, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d @ %H:%M:%S")
+                .to_string();
+            let status = trace.http.clone().map_or(None, |http| http.status).map_or(
+                "".to_string(),
+                |status| {
+                    format!(
+                        "{} {}",
+                        status.as_str(),
+                        status.canonical_reason().unwrap_or_default()
+                    )
+                },
+            );
+            let duration = trace
+                .http
+                .clone()
+                .map_or(None, |http| http.duration)
+                .map_or("".to_string(), |duration| format!("{}ms", duration));
+
+            items.push((("received".into(), received), None));
+            items.push((("status".into(), status), None));
+            items.push((("duration".into(), duration), None));
+
+            let actions: Vec<ActionableListItem> =
+                if self.details_tabs.contains(&DetailsPane::ResponseDetails) {
+                    vec![(
+                        ("actions".to_string(), "pop-out [↗]".to_string()),
+                        Some(Action::PopOutDetailsTab(DetailsPane::ResponseDetails)),
+                    )]
+                } else {
+                    vec![(
+                        ("actions".to_string(), "close [x]".to_string()),
+                        Some(Action::CloseDetailsPane(DetailsPane::ResponseDetails)),
+                    )]
+                };
+
+            self.response_details_list = ActionableList::with_items(items, actions);
+
+            // REQUEST HEADERS PANE
+            let headers = trace.http.clone().unwrap_or_default().request_headers;
+            let mut parsed_headers = headers.iter().collect::<Vec<(&HeaderName, &HeaderValue)>>();
+            parsed_headers.sort_by(|a, b| {
+                let (name_a, _) = a;
+                let (name_b, _) = b;
+
+                name_a.to_string().cmp(&name_b.to_string())
+            });
+            let next_items: Vec<ActionableListItem> = parsed_headers
+                .into_iter()
+                .map(|(label, name)| {
+                    (
+                        (
+                            label.as_str().to_string(),
+                            name.to_str().unwrap_or("Unknown header value").to_string(),
+                        ),
+                        None,
+                    )
+                })
+                .to_owned()
+                .collect();
+            // add available actions to the item list
+            let next_actions: Vec<ActionableListItem> =
+                if self.details_tabs.contains(&DetailsPane::RequestHeaders) {
+                    vec![(
+                        ("actions".to_string(), "pop-out [↗]".to_string()),
+                        Some(Action::PopOutDetailsTab(DetailsPane::RequestHeaders)),
+                    )]
+                } else {
+                    vec![(
+                        ("actions".to_string(), "close [x]".to_string()),
+                        Some(Action::CloseDetailsPane(DetailsPane::RequestHeaders)),
+                    )]
+                };
+
+            self.request_headers_list = ActionableList::with_items(next_items, next_actions);
+
+            // RESPONSE HEADERS PANE
+            let headers = trace.http.clone().unwrap_or_default().response_headers;
+            let mut parsed_headers = headers.iter().collect::<Vec<(&HeaderName, &HeaderValue)>>();
+            parsed_headers.sort_by(|a, b| {
+                let (name_a, _) = a;
+                let (name_b, _) = b;
+
+                name_a.to_string().cmp(&name_b.to_string())
+            });
+            let next_items: Vec<ActionableListItem> = parsed_headers
+                .into_iter()
+                .map(|(label, name)| {
+                    (
+                        (
+                            label.as_str().to_string(),
+                            name.to_str().unwrap_or("Unknown header value").to_string(),
+                        ),
+                        None,
+                    )
+                })
+                .to_owned()
+                .collect();
+            // add available actions to the item list
+            let next_actions: Vec<ActionableListItem> =
+                if self.details_tabs.contains(&DetailsPane::ResponseHeaders) {
+                    vec![(
+                        ("actions".to_string(), "pop-out [↗]".to_string()),
+                        Some(Action::PopOutDetailsTab(DetailsPane::ResponseHeaders)),
+                    )]
+                } else {
+                    vec![(
+                        ("actions".to_string(), "close [x]".to_string()),
+                        Some(Action::CloseDetailsPane(DetailsPane::ResponseHeaders)),
+                    )]
+                };
+
+            self.response_headers_list = ActionableList::with_items(next_items, next_actions);
+
+            // TIMING PANE
+            let next_items: Vec<ActionableListItem> = vec![
+                (("blocked".to_string(), "".to_string()), None),
+                (("DNS".to_string(), "".to_string()), None),
+                (("connecting".to_string(), "".to_string()), None),
+                (("TLS".to_string(), "".to_string()), None),
+                (("sending".to_string(), "".to_string()), None),
+                (("waiting".to_string(), "".to_string()), None),
+                (("receiving".to_string(), "".to_string()), None),
+            ];
+            // Timing tab cannot be moved
+            let actions = vec![];
+
+            self.timing_list = ActionableList::with_items(next_items, actions);
+        }
+    }
 }
 
 impl Component for Home {
@@ -327,222 +533,7 @@ impl Component for Home {
             Action::SelectTrace(maybe_trace) => {
                 self.selected_trace = maybe_trace;
 
-                if let Some(trace) = &self.selected_trace {
-                    // REQUEST DETAILS PANE
-                    let mut rows: Vec<ActionableListItem> = vec![];
-
-                    let sent = DateTime::from_timestamp(trace.timestamp, 0)
-                        .unwrap_or_default()
-                        .format("%Y-%m-%d @ %H:%M:%S")
-                        .to_string();
-                    let host = trace.service_name.clone().unwrap_or(format!(""));
-                    let path = trace.http.clone().map_or("".to_string(), |http| http.path);
-                    let port = trace.http.clone().map_or("".to_string(), |http| http.port);
-
-                    rows.push((("sent".into(), sent), None));
-                    rows.push((("host".into(), host), None));
-                    rows.push((("path".into(), path), None));
-                    rows.push((("port".into(), port), None));
-                    // add available actions to the item list
-                    let actions = if self.details_tabs.contains(&DetailsPane::RequestDetails) {
-                        vec![(
-                            ("actions".to_string(), "pop-out".to_string()),
-                            Some(Action::PopOutDetailsTab(DetailsPane::RequestDetails)),
-                        )]
-                    } else {
-                        vec![(
-                            ("actions".to_string(), "close".to_string()),
-                            Some(Action::CloseDetailsPane(DetailsPane::RequestDetails)),
-                        )]
-                    };
-
-                    self.request_details_list = ActionableList::with_items(rows, actions);
-
-                    // QUERY PARAMS PANE
-                    let mut raw_params = parse_query_params(
-                        trace
-                            .http
-                            .clone()
-                            .expect("Missing http from trace")
-                            .uri
-                            .to_string(),
-                    );
-
-                    raw_params.sort_by(|a, b| {
-                        let (name_a, _) = a;
-                        let (name_b, _) = b;
-
-                        name_a.cmp(name_b)
-                    });
-
-                    let next_items: Vec<ActionableListItem> = raw_params
-                        .into_iter()
-                        .map(|(label, name)| ((label, name), None))
-                        .to_owned()
-                        .collect();
-
-                    // add available actions to the item list
-                    let next_actions: Vec<ActionableListItem> =
-                        if self.details_tabs.contains(&DetailsPane::QueryParams) {
-                            vec![(
-                                ("actions".to_string(), "pop-out".to_string()),
-                                Some(Action::PopOutDetailsTab(DetailsPane::QueryParams)),
-                            )]
-                        } else {
-                            vec![(
-                                ("actions".to_string(), "close".to_string()),
-                                Some(Action::CloseDetailsPane(DetailsPane::QueryParams)),
-                            )]
-                        };
-
-                    self.query_params_list = ActionableList::with_items(next_items, next_actions);
-
-                    // RESPONSE DETAILS PANE
-                    let mut items: Vec<ActionableListItem> = vec![];
-
-                    let received = DateTime::from_timestamp(trace.timestamp, 0)
-                        .unwrap_or_default()
-                        .format("%Y-%m-%d @ %H:%M:%S")
-                        .to_string();
-                    let status = trace.http.clone().map_or(None, |http| http.status).map_or(
-                        "".to_string(),
-                        |status| {
-                            format!(
-                                "{} {}",
-                                status.as_str(),
-                                status.canonical_reason().unwrap_or_default()
-                            )
-                        },
-                    );
-                    let duration = trace
-                        .http
-                        .clone()
-                        .map_or(None, |http| http.duration)
-                        .map_or("".to_string(), |duration| format!("{}ms", duration));
-
-                    items.push((("received".into(), received), None));
-                    items.push((("status".into(), status), None));
-                    items.push((("duration".into(), duration), None));
-
-                    let actions: Vec<ActionableListItem> =
-                        if self.details_tabs.contains(&DetailsPane::ResponseDetails) {
-                            vec![(
-                                ("actions".to_string(), "pop-out".to_string()),
-                                Some(Action::PopOutDetailsTab(DetailsPane::ResponseDetails)),
-                            )]
-                        } else {
-                            vec![(
-                                ("actions".to_string(), "close".to_string()),
-                                Some(Action::CloseDetailsPane(DetailsPane::ResponseDetails)),
-                            )]
-                        };
-
-                    self.response_details_list = ActionableList::with_items(items, actions);
-
-                    // REQUEST HEADERS PANE
-                    let headers = trace.http.clone().unwrap_or_default().request_headers;
-                    let mut parsed_headers =
-                        headers.iter().collect::<Vec<(&HeaderName, &HeaderValue)>>();
-                    parsed_headers.sort_by(|a, b| {
-                        let (name_a, _) = a;
-                        let (name_b, _) = b;
-
-                        name_a.to_string().cmp(&name_b.to_string())
-                    });
-                    let next_items: Vec<ActionableListItem> = parsed_headers
-                        .into_iter()
-                        .map(|(label, name)| {
-                            (
-                                (
-                                    label.as_str().to_string(),
-                                    name.to_str().unwrap_or("Unknown header value").to_string(),
-                                ),
-                                None,
-                            )
-                        })
-                        .to_owned()
-                        .collect();
-                    // add available actions to the item list
-                    let next_actions: Vec<ActionableListItem> =
-                        if self.details_tabs.contains(&DetailsPane::RequestHeaders) {
-                            vec![(
-                                ("actions".to_string(), "pop-out".to_string()),
-                                Some(Action::PopOutDetailsTab(DetailsPane::RequestHeaders)),
-                            )]
-                        } else {
-                            vec![(
-                                ("actions".to_string(), "close".to_string()),
-                                Some(Action::CloseDetailsPane(DetailsPane::RequestHeaders)),
-                            )]
-                        };
-
-                    self.request_headers_list =
-                        ActionableList::with_items(next_items, next_actions);
-
-                    // RESPONSE HEADERS PANE
-                    let headers = trace.http.clone().unwrap_or_default().response_headers;
-                    let mut parsed_headers =
-                        headers.iter().collect::<Vec<(&HeaderName, &HeaderValue)>>();
-                    parsed_headers.sort_by(|a, b| {
-                        let (name_a, _) = a;
-                        let (name_b, _) = b;
-
-                        name_a.to_string().cmp(&name_b.to_string())
-                    });
-                    let next_items: Vec<ActionableListItem> = parsed_headers
-                        .into_iter()
-                        .map(|(label, name)| {
-                            (
-                                (
-                                    label.as_str().to_string(),
-                                    name.to_str().unwrap_or("Unknown header value").to_string(),
-                                ),
-                                None,
-                            )
-                        })
-                        .to_owned()
-                        .collect();
-                    // add available actions to the item list
-                    let next_actions: Vec<ActionableListItem> =
-                        if self.details_tabs.contains(&DetailsPane::ResponseHeaders) {
-                            vec![(
-                                ("actions".to_string(), "pop-out".to_string()),
-                                Some(Action::PopOutDetailsTab(DetailsPane::ResponseHeaders)),
-                            )]
-                        } else {
-                            vec![(
-                                ("actions".to_string(), "close".to_string()),
-                                Some(Action::CloseDetailsPane(DetailsPane::ResponseHeaders)),
-                            )]
-                        };
-
-                    self.response_headers_list =
-                        ActionableList::with_items(next_items, next_actions);
-
-                    // TIMING PANE
-                    let next_items: Vec<ActionableListItem> = vec![
-                        (("blocked".to_string(), "".to_string()), None),
-                        (("DNS".to_string(), "".to_string()), None),
-                        (("connecting".to_string(), "".to_string()), None),
-                        (("TLS".to_string(), "".to_string()), None),
-                        (("sending".to_string(), "".to_string()), None),
-                        (("waiting".to_string(), "".to_string()), None),
-                        (("receiving".to_string(), "".to_string()), None),
-                    ];
-                    let actions = if self.details_tabs.contains(&DetailsPane::Timing) {
-                        vec![(
-                            ("pop-out".to_string(), "".to_string()),
-                            Some(Action::PopOutDetailsTab(DetailsPane::Timing)),
-                        )]
-                    } else {
-                        vec![(
-                            ("close".to_string(), "".to_string()),
-                            Some(Action::CloseDetailsPane(DetailsPane::Timing)),
-                        )]
-                    };
-
-                    self.timing_list = ActionableList::with_items(next_items, actions);
-                }
+                self.update_details_lists();
 
                 Ok(None)
             }
@@ -554,6 +545,8 @@ impl Component for Home {
                     self.details_tabs.retain(|&d| pane != d);
                 }
 
+                self.update_details_lists();
+
                 Ok(None)
             }
             Action::CloseDetailsPane(pane) => {
@@ -561,6 +554,8 @@ impl Component for Home {
 
                 self.details_panes.retain(|&d| pane != d);
                 self.details_tabs.push(pane);
+
+                self.update_details_lists();
 
                 Ok(None)
             }
