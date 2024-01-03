@@ -97,6 +97,7 @@ pub struct Home {
     pub order: TraceSort,
     pub details_block: DetailsPane,
     pub details_tabs: Vec<DetailsPane>,
+    pub details_tab_index: usize,
     pub details_panes: Vec<DetailsPane>,
     pub request_details_list: ActionableList,
     pub query_params_list: ActionableList,
@@ -538,10 +539,9 @@ impl Component for Home {
             }
             Action::PopOutDetailsTab(pane) => {
                 if self.details_tabs.len() > 1 {
-                    handlers::handle_details_tab_next(self);
-
                     self.details_panes.push(pane);
                     self.details_tabs.retain(|&d| pane != d);
+                    self.details_tab_index = self.details_tab_index.saturating_sub(1);
                 }
 
                 self.update_details_lists();
@@ -549,10 +549,9 @@ impl Component for Home {
                 Ok(None)
             }
             Action::CloseDetailsPane(pane) => {
-                handlers::handle_details_tab_prev(self);
-
                 self.details_panes.retain(|&d| pane != d);
                 self.details_tabs.push(pane);
+                self.details_tab_index = self.details_tabs.len() - 1;
 
                 self.update_details_lists();
 

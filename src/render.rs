@@ -279,12 +279,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
                     .border_type(BorderType::Plain)
                     .border_set(border::DOUBLE),
             )
-            .select(
-                app.details_tabs
-                    .iter()
-                    .position(|&t| app.details_block == t)
-                    .unwrap_or_default(),
-            )
+            .select(app.details_tab_index)
             .style(Style::default().fg(if is_active {
                 app.colors.text.accent_1
             } else {
@@ -326,13 +321,10 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
         frame.render_widget(details_block, area);
         frame.render_widget(tabs, inner_layout[0]);
 
-        let tab_block = if app.details_tabs.contains(&app.details_block) {
-            app.details_block
-        } else {
-            // TODO: track the tab index separately to avoid losing placement when a details pane
-            // is focused
-            app.details_tabs[0]
-        };
+        let tab_block = app
+            .details_tabs
+            .get(app.details_tab_index)
+            .unwrap_or(&app.details_tabs[0]);
 
         let actionable_list = match tab_block {
             DetailsPane::RequestDetails => &mut app.request_details_list,
@@ -343,14 +335,14 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             DetailsPane::Timing => &mut app.timing_list,
         };
 
-        if tab_block == DetailsPane::Timing {
+        if *tab_block == DetailsPane::Timing {
             render_timing_chart(
                 selected_trace,
                 actionable_list,
                 inner_layout[1],
                 frame,
                 &app.colors,
-                app.active_block == ActiveBlock::Details && app.details_block == tab_block,
+                app.active_block == ActiveBlock::Details && app.details_block == *tab_block,
             );
         } else {
             render_actionable_list(
@@ -358,7 +350,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
                 frame,
                 inner_layout[1],
                 &app.colors,
-                app.active_block == ActiveBlock::Details && app.details_block == tab_block,
+                app.active_block == ActiveBlock::Details && app.details_block == *tab_block,
             );
         }
     }
