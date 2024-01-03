@@ -7,18 +7,13 @@ pub type ActionableListItem = ((String, String), Option<Action>);
 pub struct ActionableList {
     pub state: ListState,
     pub items: Vec<ActionableListItem>,
-    pub actions: Vec<ActionableListItem>,
 }
 
 impl ActionableList {
-    pub fn with_items(
-        items: Vec<ActionableListItem>,
-        actions: Vec<ActionableListItem>,
-    ) -> ActionableList {
+    pub fn with_items(items: Vec<ActionableListItem>) -> ActionableList {
         ActionableList {
             state: ListState::default(),
-            items: [items, actions.clone()].concat(),
-            actions,
+            items,
         }
     }
 
