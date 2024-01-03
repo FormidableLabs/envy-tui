@@ -67,7 +67,7 @@ pub fn get_border_style(active: bool, colors: &Colors) -> Style {
     }
 }
 
-fn get_text_style(active: bool, colors: Colors) -> Style {
+fn get_text_style(active: bool, colors: &Colors) -> Style {
     if active {
         Style::default().fg(colors.text.default)
     } else {
@@ -213,18 +213,22 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 .constraints([Constraint::Min(1)].as_ref())
                 .split(area);
 
+            let actionable_list = match pane {
+                DetailsPane::RequestDetails => &mut app.request_details_list,
+                DetailsPane::QueryParams => &mut app.query_params_list,
+                DetailsPane::RequestHeaders => &mut app.request_headers_list,
+                DetailsPane::ResponseDetails => &mut app.response_details_list,
+                DetailsPane::ResponseHeaders => &mut app.response_headers_list,
+                DetailsPane::Timing => &mut app.timing_list,
+            };
+
             let details_block = Block::default()
                 .title(format!("  {}  ", pane))
                 .title(
                     Title::from(format!(
                         "  {} OF {}  ",
-                        app.selected_request_header_index + 1,
-                        selected_trace
-                            .http
-                            .clone()
-                            .unwrap_or_default()
-                            .request_headers
-                            .len()
+                        actionable_list.state.selected().unwrap_or(0) + 1,
+                        actionable_list.items.len(),
                     ))
                     .position(Position::Bottom)
                     .alignment(Alignment::Right),
@@ -234,15 +238,6 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 .borders(Borders::ALL);
 
             frame.render_widget(details_block, area);
-
-            let actionable_list = match pane {
-                DetailsPane::RequestDetails => &mut app.request_details_list,
-                DetailsPane::QueryParams => &mut app.query_params_list,
-                DetailsPane::RequestHeaders => &mut app.request_headers_list,
-                DetailsPane::ResponseDetails => &mut app.response_details_list,
-                DetailsPane::ResponseHeaders => &mut app.response_headers_list,
-                DetailsPane::Timing => &mut app.timing_list,
-            };
 
             if pane == &&DetailsPane::Timing {
                 render_timing_chart(
@@ -298,29 +293,6 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             .constraints([Constraint::Max(2), Constraint::Min(1)].as_ref())
             .split(area);
 
-        let details_block = Block::default()
-            .title("  DETAILS  ")
-            .title(
-                Title::from(format!(
-                    "  {} OF {}  ",
-                    app.selected_request_header_index + 1,
-                    selected_trace
-                        .http
-                        .clone()
-                        .unwrap_or_default()
-                        .request_headers
-                        .len()
-                ))
-                .position(Position::Bottom)
-                .alignment(Alignment::Right),
-            )
-            .border_style(get_border_style(is_active, &app.colors))
-            .border_type(BorderType::Plain)
-            .borders(Borders::ALL);
-
-        frame.render_widget(details_block, area);
-        frame.render_widget(tabs, inner_layout[0]);
-
         let tab_block = app
             .details_tabs
             .get(app.details_tab_index)
@@ -334,6 +306,24 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             DetailsPane::ResponseHeaders => &mut app.response_headers_list,
             DetailsPane::Timing => &mut app.timing_list,
         };
+
+        let details_block = Block::default()
+            .title("  DETAILS  ")
+            .title(
+                Title::from(format!(
+                    "  {} OF {}  ",
+                    actionable_list.state.selected().unwrap_or(0) + 1,
+                    actionable_list.items.len(),
+                ))
+                .position(Position::Bottom)
+                .alignment(Alignment::Right),
+            )
+            .border_style(get_border_style(is_active, &app.colors))
+            .border_type(BorderType::Plain)
+            .borders(Borders::ALL);
+
+        frame.render_widget(details_block, area);
+        frame.render_widget(tabs, inner_layout[0]);
 
         if *tab_block == DetailsPane::Timing {
             render_timing_chart(
@@ -786,7 +776,7 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new(debug_lines)
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .header(
             Row::new(vec!["Action", "Map"])
                 .style(Style::default().fg(app.colors.text.accent_1))
@@ -814,7 +804,7 @@ pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
 
     // TODO: Render different Keybindings that are relevant for the given `active_block`.
     let list = List::new(debug_lines)
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -928,7 +918,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([rows].concat())
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
                 .style(Style::default().fg(app.colors.text.accent_1))
@@ -990,7 +980,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([rows1].concat())
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
                 .style(Style::default().fg(app.colors.text.accent_1))
@@ -1055,7 +1045,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([rows1].concat())
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
                 .style(Style::default().fg(app.colors.text.accent_1))
@@ -1110,7 +1100,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([filter_item_rows].concat())
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .header(
             Row::new(vec!["Selected", "Type", "Value"])
                 .style(Style::default().fg(app.colors.text.accent_1))
@@ -1247,7 +1237,7 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([filter_item_rows].concat())
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .header(
             Row::new(vec!["Selected", "Type", "Value", "Order"])
                 .style(Style::default().fg(app.colors.text.accent_1))

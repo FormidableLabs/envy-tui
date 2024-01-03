@@ -14,6 +14,10 @@ impl ActionableList {
         ActionableList { state, items }
     }
 
+    pub fn reset(&mut self) {
+        self.state.select(Some(0));
+    }
+
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {

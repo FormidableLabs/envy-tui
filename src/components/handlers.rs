@@ -61,13 +61,13 @@ fn reset_request_and_response_body_ui_state(app: &mut Home) {
 
     app.response_details.scroll_state = app.response_details.scroll_state.position(0);
 
-    app.selected_response_header_index = 0;
+    app.response_headers_list.reset();
 
     app.request_details.offset = 0;
 
     app.request_details.scroll_state = app.request_details.scroll_state.position(0);
 
-    app.selected_request_header_index = 0;
+    app.request_headers_list.reset();
 }
 
 pub fn handle_debug(app: &mut Home) -> Option<Action> {
@@ -156,7 +156,7 @@ pub fn handle_up(
 
                     set_content_length(app);
 
-                    app.selected_params_index = 0;
+                    app.query_params_list.reset();
 
                     Some(Action::SelectTrace(get_currently_selected_trace(app)))
                 }
@@ -225,7 +225,7 @@ pub fn handle_adjust_scroll_bar(
         app.main.scroll_state = app.main.scroll_state.position(position.into());
     }
 
-    app.selected_params_index = 0;
+    app.query_params_list.reset();
 
     None
 }
@@ -325,7 +325,7 @@ pub fn handle_down(
                     app.main.scroll_state = app.main.scroll_state.position(position.into());
                 }
 
-                app.selected_params_index = 0;
+                app.query_params_list.reset();
 
                 Some(Action::SelectTrace(get_currently_selected_trace(app)))
             }
@@ -720,12 +720,11 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         let requires_scrollbar = item_length as u16 >= usable_height;
 
-                        app.selected_request_header_index =
-                            content.request_headers.vertical as usize - 1;
+                        app.request_headers_list.previous();
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.selected_request_header_index >= { usable_height as usize };
+                                app.request_headers_list.state.offset() >= { usable_height as usize };
 
                             let offset_does_not_intersects_bottom_of_rect =
                                 (app.request_details.offset as u16 + usable_height)
@@ -766,12 +765,11 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         let requires_scrollbar = item_length as u16 >= usable_height;
 
-                        app.selected_response_header_index =
-                            content.response_headers.unwrap().vertical as usize - 1;
+                        app.response_headers_list.previous();
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.selected_response_header_index >= { usable_height as usize };
+                                app.response_headers_list.state.offset() >= { usable_height as usize };
 
                             let offset_does_not_intersects_bottom_of_rect =
                                 (app.response_details.offset as u16 + usable_height)
@@ -843,7 +841,7 @@ pub fn handle_go_to_start(app: &mut Home) -> Option<Action> {
         ActiveBlock::Details => match app.details_block {
             DetailsPane::RequestDetails => {
                 app.request_details.offset = 0;
-                app.selected_request_header_index = 0;
+                app.request_headers_list.reset();
 
                 app.request_details.scroll_state = app.request_details.scroll_state.position(0);
 
@@ -854,7 +852,7 @@ pub fn handle_go_to_start(app: &mut Home) -> Option<Action> {
 
                 if c.response_headers.is_some() {
                     app.response_details.offset = 0;
-                    app.selected_response_header_index = 0;
+                    app.response_headers_list.reset();
 
                     app.response_details.scroll_state =
                         app.response_details.scroll_state.position(0);
