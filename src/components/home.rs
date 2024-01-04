@@ -197,21 +197,39 @@ impl Home {
             let path = trace.http.clone().map_or("".to_string(), |http| http.path);
             let port = trace.http.clone().map_or("".to_string(), |http| http.port);
 
-            rows.push((("sent".into(), sent), None));
-            rows.push((("host".into(), host), None));
-            rows.push((("path".into(), path), None));
-            rows.push((("port".into(), port), None));
+            rows.push(ActionableListItem {
+                label: "sent".into(),
+                value: sent,
+                action: None,
+            });
+            rows.push(ActionableListItem {
+                label: "host".into(),
+                value: host,
+                action: None,
+            });
+            rows.push(ActionableListItem {
+                label: "path".into(),
+                value: path,
+                action: None,
+            });
+            rows.push(ActionableListItem {
+                label: "port".into(),
+                value: port,
+                action: None,
+            });
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::RequestDetails) {
-                rows.push((
-                    ("actions".to_string(), "pop-out [↗]".to_string()),
-                    Some(Action::PopOutDetailsTab(DetailsPane::RequestDetails)),
-                ))
+                rows.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "pop-out [↗]".to_string(),
+                    action: Some(Action::PopOutDetailsTab(DetailsPane::RequestDetails)),
+                })
             } else {
-                rows.push((
-                    ("actions".to_string(), "close [x]".to_string()),
-                    Some(Action::CloseDetailsPane(DetailsPane::RequestDetails)),
-                ))
+                rows.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "close [x]".to_string(),
+                    action: Some(Action::CloseDetailsPane(DetailsPane::RequestDetails)),
+                })
             };
 
             self.request_details_list =
@@ -236,20 +254,26 @@ impl Home {
 
             let mut next_items: Vec<ActionableListItem> = raw_params
                 .into_iter()
-                .map(|(label, name)| ((label, name), None))
+                .map(|(label, value)| ActionableListItem {
+                    label,
+                    value,
+                    action: None,
+                })
                 .to_owned()
                 .collect();
 
             if self.details_tabs.contains(&DetailsPane::QueryParams) {
-                next_items.push((
-                    ("actions".to_string(), "pop-out [↗]".to_string()),
-                    Some(Action::PopOutDetailsTab(DetailsPane::QueryParams)),
-                ))
+                next_items.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "pop-out [↗]".to_string(),
+                    action: Some(Action::PopOutDetailsTab(DetailsPane::QueryParams)),
+                })
             } else {
-                next_items.push((
-                    ("actions".to_string(), "close [x]".to_string()),
-                    Some(Action::CloseDetailsPane(DetailsPane::QueryParams)),
-                ))
+                next_items.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "close [x]".to_string(),
+                    action: Some(Action::CloseDetailsPane(DetailsPane::QueryParams)),
+                })
             };
 
             self.query_params_list =
@@ -278,20 +302,34 @@ impl Home {
                 .map_or(None, |http| http.duration)
                 .map_or("".to_string(), |duration| format!("{}ms", duration));
 
-            items.push((("received".into(), received), None));
-            items.push((("status".into(), status), None));
-            items.push((("duration".into(), duration), None));
+            items.push(ActionableListItem {
+                label: "received".into(),
+                value: received,
+                action: None,
+            });
+            items.push(ActionableListItem {
+                label: "status".into(),
+                value: status,
+                action: None,
+            });
+            items.push(ActionableListItem {
+                label: "duration".into(),
+                value: duration,
+                action: None,
+            });
 
             if self.details_tabs.contains(&DetailsPane::ResponseDetails) {
-                items.push((
-                    ("actions".to_string(), "pop-out [↗]".to_string()),
-                    Some(Action::PopOutDetailsTab(DetailsPane::ResponseDetails)),
-                ))
+                items.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "pop-out [↗]".to_string(),
+                    action: Some(Action::PopOutDetailsTab(DetailsPane::ResponseDetails)),
+                })
             } else {
-                items.push((
-                    ("actions".to_string(), "close [x]".to_string()),
-                    Some(Action::CloseDetailsPane(DetailsPane::ResponseDetails)),
-                ))
+                items.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "close [x]".to_string(),
+                    action: Some(Action::CloseDetailsPane(DetailsPane::ResponseDetails)),
+                })
             };
 
             self.response_details_list =
@@ -308,28 +346,26 @@ impl Home {
             });
             let mut next_items: Vec<ActionableListItem> = parsed_headers
                 .into_iter()
-                .map(|(label, name)| {
-                    (
-                        (
-                            label.as_str().to_string(),
-                            name.to_str().unwrap_or("Unknown header value").to_string(),
-                        ),
-                        None,
-                    )
+                .map(|(label, value)| ActionableListItem {
+                    label: label.as_str().to_string(),
+                    value: value.to_str().unwrap_or("Unknown header value").to_string(),
+                    action: None,
                 })
                 .to_owned()
                 .collect();
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::RequestHeaders) {
-                next_items.push((
-                    ("actions".to_string(), "pop-out [↗]".to_string()),
-                    Some(Action::PopOutDetailsTab(DetailsPane::RequestHeaders)),
-                ))
+                next_items.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "pop-out [↗]".to_string(),
+                    action: Some(Action::PopOutDetailsTab(DetailsPane::RequestHeaders)),
+                })
             } else {
-                next_items.push((
-                    ("actions".to_string(), "close [x]".to_string()),
-                    Some(Action::CloseDetailsPane(DetailsPane::RequestHeaders)),
-                ))
+                next_items.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "close [x]".to_string(),
+                    action: Some(Action::CloseDetailsPane(DetailsPane::RequestHeaders)),
+                })
             };
 
             self.request_headers_list =
@@ -346,29 +382,27 @@ impl Home {
             });
             let mut next_items: Vec<ActionableListItem> = parsed_headers
                 .into_iter()
-                .map(|(label, name)| {
-                    (
-                        (
-                            label.as_str().to_string(),
-                            name.to_str().unwrap_or("Unknown header value").to_string(),
-                        ),
-                        None,
-                    )
+                .map(|(label, value)| ActionableListItem {
+                    label: label.as_str().to_string(),
+                    value: value.to_str().unwrap_or("Unknown header value").to_string(),
+                    action: None,
                 })
                 .to_owned()
                 .collect();
 
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::ResponseHeaders) {
-                next_items.push((
-                    ("actions".to_string(), "pop-out [↗]".to_string()),
-                    Some(Action::PopOutDetailsTab(DetailsPane::ResponseHeaders)),
-                ))
+                next_items.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "pop-out [↗]".to_string(),
+                    action: Some(Action::PopOutDetailsTab(DetailsPane::ResponseHeaders)),
+                })
             } else {
-                next_items.push((
-                    ("actions".to_string(), "close [x]".to_string()),
-                    Some(Action::CloseDetailsPane(DetailsPane::ResponseHeaders)),
-                ))
+                next_items.push(ActionableListItem {
+                    label: "actions".to_string(),
+                    value: "close [x]".to_string(),
+                    action: Some(Action::CloseDetailsPane(DetailsPane::ResponseHeaders)),
+                })
             };
 
             self.response_headers_list =
@@ -376,13 +410,41 @@ impl Home {
 
             // TIMING PANE
             let next_items: Vec<ActionableListItem> = vec![
-                (("blocked".to_string(), "".to_string()), None),
-                (("DNS".to_string(), "".to_string()), None),
-                (("connecting".to_string(), "".to_string()), None),
-                (("TLS".to_string(), "".to_string()), None),
-                (("sending".to_string(), "".to_string()), None),
-                (("waiting".to_string(), "".to_string()), None),
-                (("receiving".to_string(), "".to_string()), None),
+                ActionableListItem {
+                    label: "blocked".to_string(),
+                    value: "".to_string(),
+                    action: None,
+                },
+                ActionableListItem {
+                    label: "DNS".to_string(),
+                    value: "".to_string(),
+                    action: None,
+                },
+                ActionableListItem {
+                    label: "connecting".to_string(),
+                    value: "".to_string(),
+                    action: None,
+                },
+                ActionableListItem {
+                    label: "TLS".to_string(),
+                    value: "".to_string(),
+                    action: None,
+                },
+                ActionableListItem {
+                    label: "sending".to_string(),
+                    value: "".to_string(),
+                    action: None,
+                },
+                ActionableListItem {
+                    label: "waiting".to_string(),
+                    value: "".to_string(),
+                    action: None,
+                },
+                ActionableListItem {
+                    label: "receiving".to_string(),
+                    value: "".to_string(),
+                    action: None,
+                },
             ];
 
             self.timing_list = ActionableList::new(next_items, self.timing_list.state.clone());

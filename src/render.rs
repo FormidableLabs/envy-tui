@@ -356,13 +356,13 @@ fn render_actionable_list(
     let items: Vec<ListItem> = actionable_list
         .items
         .iter()
-        .map(|((label, name), action)| {
+        .map(|item| {
             ListItem::new(Line::from(vec![
-                Span::raw(format!("{:<15}", label)),
+                Span::raw(format!("{:<15}", item.label)),
                 " ".into(),
                 Span::styled(
-                    name.to_string(),
-                    if active && action.is_some() {
+                    item.value.to_string(),
+                    if active && item.action.is_some() {
                         Style::default().fg(colors.text.accent_2)
                     } else if active {
                         get_row_style(RowStyle::Active, colors)

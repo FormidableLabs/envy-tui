@@ -1,7 +1,11 @@
 use crate::app::Action;
 use ratatui::widgets::ListState;
 
-pub type ActionableListItem = ((String, String), Option<Action>);
+pub struct ActionableListItem {
+    pub label: String,
+    pub value: String,
+    pub action: Option<Action>,
+}
 
 #[derive(Default)]
 pub struct ActionableList {
@@ -49,8 +53,8 @@ impl ActionableList {
     pub fn select(&mut self) -> Option<Action> {
         match self.state.selected() {
             Some(i) => {
-                if let Some((_labels, action)) = self.items.get(i) {
-                    action.clone()
+                if let Some(item) = self.items.get(i) {
+                    item.action.clone()
                 } else {
                     None
                 }
