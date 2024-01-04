@@ -23,11 +23,11 @@ use super::home::{FilterSource, MethodFilter, StatusFilter};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct HandlerMetadata {
-    pub main_height: u16,
-    pub response_body_rectangle_height: u16,
-    pub response_body_rectangle_width: u16,
-    pub request_body_rectangle_height: u16,
-    pub request_body_rectangle_width: u16,
+    pub main_height: usize,
+    pub response_body_rectangle_height: usize,
+    pub response_body_rectangle_width: usize,
+    pub request_body_rectangle_height: usize,
+    pub request_body_rectangle_width: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -123,6 +123,7 @@ pub fn handle_up(
                 _ => None,
             },
             (ActiveBlock::Traces, _) => {
+                app.cursor_position = app.cursor_position.saturating_sub(1);
                 if app.main.index > 0 {
                     app.main.index -= 1;
 
@@ -132,17 +133,17 @@ pub fn handle_up(
 
                     Some(Action::SelectTrace(get_currently_selected_trace(app)))
                 } else {
-                    let number_of_lines: u16 = app.items.len().try_into().unwrap();
+                    let number_of_lines = app.items.len().try_into().unwrap();
 
                     let usable_height = additinal_metadata
                         .main_height
-                        .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
+                        .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE);
 
                     if usable_height < number_of_lines {
-                        let overflown_number_count: u16 = number_of_lines
+                        let overflown_number_count = number_of_lines
                             - (additinal_metadata
                                 .main_height
-                                .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16));
+                                .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE));
 
                         let position = calculate_scrollbar_position(
                             number_of_lines,
@@ -191,18 +192,18 @@ pub fn handle_up(
 
                 let usable_height = additinal_metadata
                     .request_body_rectangle_height
-                    .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                    .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE)
                     .unwrap_or_default();
 
-                if item_length > usable_height as usize {
+                if item_length > usable_height {
                     if next_index < app.request_details.offset {
                         app.request_details.offset -= 1;
                     }
 
                     let next_position = calculate_scrollbar_position(
-                        item_length as u16,
+                        item_length,
                         app.request_details.offset,
-                        item_length as u16 - (usable_height),
+                        item_length - usable_height,
                     );
 
                     app.request_details.scroll_state = app
@@ -232,7 +233,7 @@ pub fn handle_up(
                     .len();
 
                 let usable_height = additinal_metadata.response_body_rectangle_height
-                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                    - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE;
 
                 if item_length > usable_height as usize {
                     if next_index < app.response_details.offset {
@@ -240,9 +241,9 @@ pub fn handle_up(
                     }
 
                     let next_position = calculate_scrollbar_position(
-                        item_length as u16,
+                        item_length,
                         app.response_details.offset,
-                        item_length as u16 - (usable_height),
+                        item_length - usable_height,
                     );
 
                     app.response_details.scroll_state = app
@@ -270,17 +271,17 @@ pub fn handle_adjust_scroll_bar(
         .main_height
         .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE.try_into().unwrap());
 
-    let number_of_lines: u16 = length.try_into().unwrap();
+    let number_of_lines = length.try_into().unwrap();
 
     reset_request_and_response_body_ui_state(app);
 
     set_content_length(app);
 
     if usable_height < number_of_lines {
-        let overflown_number_count: u16 = number_of_lines.saturating_sub(
+        let overflown_number_count = number_of_lines.saturating_sub(
             additinal_metadata
                 .main_height
-                .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16),
+                .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE),
         );
 
         let position =
@@ -346,22 +347,23 @@ pub fn handle_down(
                 None
             }
             (ActiveBlock::Traces, _) => {
-                let length = get_rendered_items(app).len();
+                let number_of_lines = get_rendered_items(app).len();
 
-                let number_of_lines: u16 = length.try_into().unwrap();
+                if number_of_lines.saturating_sub(1) > app.cursor_position {
+                    app.cursor_position = app.cursor_position.saturating_add(1)
+                }
 
                 let usable_height = additinal_metadata
                     .main_height
-                    .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE.try_into().unwrap());
+                    .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE);
 
-                if app.main.index + 1 < length {
-                    if app.main.index > {
-                        additinal_metadata
+                if app.main.index + 1 < number_of_lines {
+                    if app.main.index
+                        > additinal_metadata
                             .main_height
-                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16)
+                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE)
                             .saturating_sub(2)
-                    } as usize
-                        && app.main.offset as u16 + usable_height < number_of_lines
+                        && app.main.offset + usable_height < number_of_lines
                     {
                         app.main.offset += 1;
                     }
@@ -374,10 +376,11 @@ pub fn handle_down(
                 set_content_length(app);
 
                 if usable_height < number_of_lines {
-                    let overflown_number_count: u16 = number_of_lines.saturating_sub(
+                    let overflown_number_count = number_of_lines.saturating_sub(
                         additinal_metadata
                             .main_height
-                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16),
+                            .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE.into())
+                            .into(),
                     );
 
                     let position = calculate_scrollbar_position(
@@ -423,26 +426,26 @@ pub fn handle_down(
 
                 let usable_height = additinal_metadata
                     .request_body_rectangle_height
-                    .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                    .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE)
                     .unwrap_or_default();
 
-                let requires_scrollbar = item_length as u16 >= usable_height;
+                let requires_scrollbar = item_length >= usable_height;
 
                 if requires_scrollbar {
                     let current_index_hit_viewport_end =
-                        app.selected_request_header_index >= { usable_height as usize };
+                        app.selected_request_header_index >= usable_height;
 
                     let offset_does_not_intersects_bottom_of_rect =
-                        (app.request_details.offset as u16 + usable_height) < item_length as u16;
+                        (app.request_details.offset + usable_height) < item_length;
 
                     if current_index_hit_viewport_end && offset_does_not_intersects_bottom_of_rect {
                         app.request_details.offset += 1;
                     }
 
                     let next_position = calculate_scrollbar_position(
-                        item_length as u16,
+                        item_length,
                         app.request_details.offset,
-                        item_length as u16 - (usable_height),
+                        item_length - usable_height,
                     );
 
                     app.request_details.scroll_state = app
@@ -469,18 +472,17 @@ pub fn handle_down(
 
                     let usable_height = additinal_metadata
                         .response_body_rectangle_height
-                        .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
+                        .checked_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE)
                         .unwrap_or_default();
 
-                    let requires_scrollbar = item_length as u16 >= usable_height;
+                    let requires_scrollbar = item_length >= usable_height;
 
                     if requires_scrollbar {
                         let current_index_hit_viewport_end =
-                            app.selected_response_header_index >= { usable_height as usize };
+                            app.selected_response_header_index >= usable_height;
 
                         let offset_does_not_intersects_bottom_of_rect =
-                            (app.response_details.offset as u16 + usable_height)
-                                < item_length as u16;
+                            app.response_details.offset + usable_height < item_length;
 
                         if current_index_hit_viewport_end
                             && offset_does_not_intersects_bottom_of_rect
@@ -489,9 +491,9 @@ pub fn handle_down(
                         }
 
                         let next_position = calculate_scrollbar_position(
-                            item_length as u16,
+                            item_length,
                             app.response_details.offset,
-                            item_length as u16 - (usable_height),
+                            item_length - usable_height,
                         );
 
                         app.response_details.scroll_state = app
@@ -673,17 +675,17 @@ pub fn handle_yank(app: &mut Home, sender: Option<UnboundedSender<Action>>) -> O
 pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) -> Option<Action> {
     match app.active_block {
         ActiveBlock::Traces => {
-            let number_of_lines: u16 = app.items.len().try_into().unwrap();
+            let number_of_lines = app.items.len().try_into().unwrap();
 
             let usubale_rect_space =
-                additional_metadata.main_height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+                additional_metadata.main_height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE;
 
-            app.main.index = number_of_lines as usize - 1;
+            app.main.index = number_of_lines - 1;
 
             let has_overflown = number_of_lines > usubale_rect_space;
 
             if has_overflown {
-                app.main.offset = (number_of_lines - usubale_rect_space) as usize;
+                app.main.offset = number_of_lines - usubale_rect_space;
 
                 let position = calculate_scrollbar_position(
                     number_of_lines,
@@ -705,19 +707,18 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                 let length = content.request_body.unwrap();
 
                 let request_body_content_height = additional_metadata.request_body_rectangle_height
-                    - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
+                    - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE;
 
                 if length.vertical > request_body_content_height {
-                    app.request_body.offset =
-                        (length.vertical - request_body_content_height) as usize;
+                    app.request_body.offset = length.vertical - request_body_content_height;
 
                     let overflown_number_count = length.vertical - request_body_content_height;
 
                     app.request_body.scroll_state = app.request_body.scroll_state.position(
                         calculate_scrollbar_position(
-                            length.vertical,
+                            length.vertical.into(),
                             app.request_body.offset,
-                            overflown_number_count,
+                            overflown_number_count.into(),
                         )
                         .into(),
                     );
@@ -734,19 +735,18 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                 let response_body_content_height = additional_metadata
                     .response_body_rectangle_height
-                    - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE as u16;
+                    - RESPONSE_BODY_UNUSABLE_VERTICAL_SPACE;
 
                 if length.vertical > response_body_content_height {
-                    app.response_body.offset =
-                        (length.vertical - response_body_content_height) as usize;
+                    app.response_body.offset = length.vertical - response_body_content_height;
 
                     let overflown_number_count = length.vertical - response_body_content_height;
 
                     app.response_body.scroll_state = app.response_body.scroll_state.position(
                         calculate_scrollbar_position(
-                            length.vertical,
+                            length.vertical.into(),
                             app.response_body.offset,
-                            overflown_number_count,
+                            overflown_number_count.into(),
                         )
                         .into(),
                     )
@@ -765,32 +765,29 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         let usable_height = additional_metadata
                             .request_body_rectangle_height
-                            .checked_sub(REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE as u16)
-                            .unwrap_or_default();
+                            .saturating_sub(REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE);
 
-                        let requires_scrollbar = item_length as u16 >= usable_height;
+                        let requires_scrollbar = item_length >= usable_height;
 
-                        app.selected_request_header_index =
-                            content.request_headers.vertical as usize - 1;
+                        app.selected_request_header_index = content.request_headers.vertical - 1;
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.selected_request_header_index >= { usable_height as usize };
+                                app.selected_request_header_index >= usable_height;
 
                             let offset_does_not_intersects_bottom_of_rect =
-                                (app.request_details.offset as u16 + usable_height)
-                                    < item_length as u16;
+                                app.request_details.offset + usable_height < item_length;
 
                             if current_index_hit_viewport_end
                                 && offset_does_not_intersects_bottom_of_rect
                             {
-                                app.request_details.offset = item_length - usable_height as usize;
+                                app.request_details.offset = item_length - usable_height;
                             }
 
                             let next_position = calculate_scrollbar_position(
-                                item_length as u16,
+                                item_length,
                                 app.request_details.offset,
-                                item_length as u16 - (usable_height),
+                                item_length - usable_height,
                             );
 
                             app.request_details.scroll_state = app
@@ -811,32 +808,32 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                         let item_length =
                             item.http.clone().unwrap_or_default().response_headers.len();
 
-                        let usable_height = additional_metadata.response_body_rectangle_height
-                            - RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE as u16;
+                        let usable_height = additional_metadata
+                            .response_body_rectangle_height
+                            .saturating_sub(RESPONSE_HEADERS_UNUSABLE_VERTICAL_SPACE);
 
-                        let requires_scrollbar = item_length as u16 >= usable_height;
+                        let requires_scrollbar = item_length >= usable_height.into();
 
                         app.selected_response_header_index =
-                            content.response_headers.unwrap().vertical as usize - 1;
+                            content.response_headers.unwrap().vertical - 1;
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.selected_response_header_index >= { usable_height as usize };
+                                app.selected_response_header_index >= { usable_height.into() };
 
                             let offset_does_not_intersects_bottom_of_rect =
-                                (app.response_details.offset as u16 + usable_height)
-                                    < item_length as u16;
+                                app.response_details.offset + usable_height < item_length;
 
                             if current_index_hit_viewport_end
                                 && offset_does_not_intersects_bottom_of_rect
                             {
-                                app.response_details.offset = item_length - usable_height as usize;
+                                app.response_details.offset = item_length - usable_height;
                             }
 
                             let next_position = calculate_scrollbar_position(
-                                item_length as u16,
+                                item_length,
                                 app.response_details.offset,
-                                item_length as u16 - (usable_height),
+                                item_length - usable_height,
                             );
 
                             app.response_details.scroll_state = app

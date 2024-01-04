@@ -91,6 +91,7 @@ pub struct Home {
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub order: TraceSort,
+    pub cursor_position: usize,
 }
 
 impl Home {
@@ -431,11 +432,11 @@ impl Component for Home {
 
                     let _ = self.action_tx.as_ref().unwrap().send(Action::UpdateMeta(
                         handlers::HandlerMetadata {
-                            main_height: left_column.height,
-                            response_body_rectangle_height: body_layout[0].height,
-                            response_body_rectangle_width: body_layout[0].width,
-                            request_body_rectangle_height: body_layout[1].height,
-                            request_body_rectangle_width: body_layout[1].width,
+                            main_height: left_column.height.into(),
+                            response_body_rectangle_height: body_layout[0].height.into(),
+                            response_body_rectangle_width: body_layout[0].width.into(),
+                            request_body_rectangle_height: body_layout[1].height.into(),
+                            request_body_rectangle_width: body_layout[1].width.into(),
                         },
                     ));
                 } else {
@@ -482,11 +483,11 @@ impl Component for Home {
 
                     let _ = self.action_tx.as_ref().unwrap().send(Action::UpdateMeta(
                         handlers::HandlerMetadata {
-                            main_height: main_layout[0].height,
-                            response_body_rectangle_height: response_layout[1].height,
-                            response_body_rectangle_width: response_layout[1].width,
-                            request_body_rectangle_height: request_layout[1].height,
-                            request_body_rectangle_width: request_layout[1].width,
+                            main_height: main_layout[0].height.into(),
+                            response_body_rectangle_height: response_layout[1].height.into(),
+                            response_body_rectangle_width: response_layout[1].width.into(),
+                            request_body_rectangle_height: request_layout[1].height.into(),
+                            request_body_rectangle_width: request_layout[1].width.into(),
                         },
                     ));
                 }

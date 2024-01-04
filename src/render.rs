@@ -14,7 +14,8 @@ use ratatui::{
     widgets::{
         block::{Position, Title},
         canvas, Axis, Block, BorderType, Borders, Cell, Chart, Clear, Dataset, GraphType, List,
-        ListItem, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Tabs, Widget,
+        ListItem, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
+        Tabs, Widget,
     },
     Frame,
 };
@@ -553,7 +554,7 @@ fn render_timing_chart(app: &Home, area: Rect, frame: &mut Frame) {
 pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
     let height = area.height;
 
-    let effective_height = height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+    let effective_height = height.saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
 
     let active_block = app.active_block;
 
@@ -698,17 +699,21 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(requests, area);
 
-    let usable_height = area.height - NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16;
+    let usable_height = area
+        .height
+        .saturating_sub(NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE as u16);
 
     if number_of_lines > usable_height.into() {
         frame.render_stateful_widget(
             vertical_scroll,
             area.inner(&Margin {
+                vertical: 1,
                 horizontal: 0,
-                vertical: 2,
             }),
-            &mut app.main.scroll_state.clone(),
-        );
+            &mut ScrollbarState::default()
+                .content_length(number_of_lines)
+                .position(app.cursor_position),
+        )
     }
 }
 

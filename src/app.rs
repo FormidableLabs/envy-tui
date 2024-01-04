@@ -221,7 +221,7 @@ impl App {
 
             if let Some(Event::Render) = event {
                 for component in self.components.iter() {
-                    let c = component.lock().await;
+                    let mut c = component.lock().await;
                     t.terminal.draw(|frame| {
                         let r = c.render(frame, frame.size());
                         if let Err(e) = r {

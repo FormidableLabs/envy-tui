@@ -273,20 +273,16 @@ pub fn get_currently_selected_trace(app: &Home) -> Option<Trace> {
 }
 
 pub fn calculate_scrollbar_position(
-    content_length: u16,
+    content_length: usize,
     offset: usize,
-    overflown_number_count: u16,
-) -> u16 {
-    let content_length_as_float = content_length as f32;
-    let overflown_number_count_as_float = overflown_number_count as f32;
-    let offset_as_float = offset as f32;
-
-    ({ (content_length_as_float / overflown_number_count_as_float) * offset_as_float } as u16)
+    overflown_number_count: usize,
+) -> usize {
+    (content_length / overflown_number_count) * offset
 }
 
 pub struct ContentLength {
-    pub vertical: u16,
-    pub horizontal: u16,
+    pub vertical: usize,
+    pub horizontal: usize,
 }
 
 pub struct ContentLengthElements {
@@ -321,13 +317,13 @@ pub fn get_content_length(app: &Home) -> ContentLengthElements {
 
     if !item.response_headers.is_empty() {
         content_length.response_headers = Some(ContentLength {
-            vertical: item.response_headers.len() as u16,
+            vertical: item.response_headers.len(),
             horizontal: 0,
         })
     }
 
     if !item.request_headers.is_empty() {
-        content_length.request_headers.vertical = item.request_headers.len() as u16;
+        content_length.request_headers.vertical = item.request_headers.len();
     }
 
     let response_lines = &item.pretty_response_body.as_ref();
@@ -337,13 +333,13 @@ pub fn get_content_length(app: &Home) -> ContentLengthElements {
     if response_lines.is_some() {
         let response_lines = response_lines.unwrap();
 
-        let response_longest = response_lines.lines().fold(0, |longest: u16, lines: &str| {
-            let len = lines.len() as u16;
+        let response_longest = response_lines.lines().fold(0, |longest, lines: &str| {
+            let len = lines.len();
 
             len.max(longest)
         });
 
-        let response_vertical_content_length: u16 = response_lines
+        let response_vertical_content_length = response_lines
             .lines()
             .collect::<Vec<_>>()
             .len()
@@ -359,13 +355,13 @@ pub fn get_content_length(app: &Home) -> ContentLengthElements {
     if request_lines.is_some() {
         let request_lines = request_lines.unwrap();
 
-        let request_longest = request_lines.lines().fold(0, |longest: u16, lines: &str| {
-            let len = lines.len() as u16;
+        let request_longest = request_lines.lines().fold(0, |longest, lines: &str| {
+            let len = lines.len();
 
             len.max(longest)
         });
 
-        let request_vertical_content_length: u16 = request_lines
+        let request_vertical_content_length = request_lines
             .lines()
             .collect::<Vec<_>>()
             .len()
