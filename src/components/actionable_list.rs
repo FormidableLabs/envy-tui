@@ -5,8 +5,32 @@ use crate::app::Action;
 
 pub struct ActionableListItem {
     pub label: String,
-    pub value: String,
+    pub value: Option<String>,
     pub action: Option<Action>,
+}
+
+impl ActionableListItem {
+    pub fn with_label(label: &str) -> Self {
+        Self {
+            label: label.to_string(),
+            value: None,
+            action: None,
+        }
+    }
+    pub fn with_labelled_value(label: &str, value: &str) -> Self {
+        Self {
+            label: label.to_string(),
+            value: Some(value.to_string()),
+            action: None,
+        }
+    }
+    pub fn with_action(label: &str, value: &str, action: Action) -> Self {
+        Self {
+            label: label.to_string(),
+            value: Some(value.to_string()),
+            action: Some(action),
+        }
+    }
 }
 
 #[derive(Default, new)]

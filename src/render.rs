@@ -353,6 +353,10 @@ fn render_actionable_list(
     colors: &Colors,
     active: bool,
 ) {
+    let actionable_item_style = Style::default().fg(colors.text.accent_2);
+    let active_item_style = get_row_style(RowStyle::Active, colors);
+    let default_item_style = get_row_style(RowStyle::Default, colors);
+
     let items: Vec<ListItem> = actionable_list
         .items
         .iter()
@@ -361,13 +365,13 @@ fn render_actionable_list(
                 Span::raw(format!("{:<15}", item.label)),
                 " ".into(),
                 Span::styled(
-                    item.value.to_string(),
+                    item.value.clone().unwrap_or_default().to_string(),
                     if active && item.action.is_some() {
-                        Style::default().fg(colors.text.accent_2)
+                        actionable_item_style
                     } else if active {
-                        get_row_style(RowStyle::Active, colors)
+                        active_item_style
                     } else {
-                        get_row_style(RowStyle::Default, colors)
+                        default_item_style
                     },
                 ),
             ]))
