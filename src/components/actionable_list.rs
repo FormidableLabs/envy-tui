@@ -1,5 +1,7 @@
-use crate::app::Action;
+use derive_new::new;
 use ratatui::widgets::ListState;
+
+use crate::app::Action;
 
 pub struct ActionableListItem {
     pub label: String,
@@ -7,17 +9,13 @@ pub struct ActionableListItem {
     pub action: Option<Action>,
 }
 
-#[derive(Default)]
+#[derive(Default, new)]
 pub struct ActionableList {
-    pub state: ListState,
     pub items: Vec<ActionableListItem>,
+    pub state: ListState,
 }
 
 impl ActionableList {
-    pub fn new(items: Vec<ActionableListItem>, state: ListState) -> ActionableList {
-        ActionableList { state, items }
-    }
-
     pub fn reset(&mut self) {
         self.state.select(Some(0));
     }
