@@ -23,10 +23,11 @@ mapping:
   space: Select
   f: OpenFilter
   s: OpenSort
-  "]": NextPane
-  "[": PreviousPane
+  "]": NextDetailsTab
+  "[": PreviousDetailsTab
   e: ExpandAll
   E: CollapseAll
+  enter: ShowTraceDetails
 colors:
   surface:
     bg: !Indexed 235
