@@ -16,7 +16,12 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{Action, ActiveBlock, DetailsPane};
+use crate::app::{
+    Action, ActiveBlock,
+    DetailsPane::{
+        QueryParams, RequestDetails, RequestHeaders, ResponseDetails, ResponseHeaders, Timing,
+    },
+};
 use crate::components::actionable_list::ActionableList;
 use crate::components::home::{FilterSource, Home};
 use crate::config::Colors;
@@ -203,8 +208,8 @@ pub fn details(app: &mut Home, frame: &mut Frame, area: Rect) {
 
 pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usize) {
     if let Some(selected_trace) = &app.selected_trace {
-        if let Some(pane) = &app.details_panes.get(pane_idx) {
-            let is_active = app.active_block == ActiveBlock::Details && app.details_block == **pane;
+        if let Some(pane) = app.details_panes.get(pane_idx) {
+            let is_active = app.active_block == ActiveBlock::Details && app.details_block == *pane;
 
             let inner_layout = Layout::default()
                 .vertical_margin(2)
@@ -214,12 +219,12 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 .split(area);
 
             let actionable_list = match pane {
-                DetailsPane::RequestDetails => &mut app.request_details_list,
-                DetailsPane::QueryParams => &mut app.query_params_list,
-                DetailsPane::RequestHeaders => &mut app.request_headers_list,
-                DetailsPane::ResponseDetails => &mut app.response_details_list,
-                DetailsPane::ResponseHeaders => &mut app.response_headers_list,
-                DetailsPane::Timing => &mut app.timing_list,
+                RequestDetails => &mut app.request_details_list,
+                QueryParams => &mut app.query_params_list,
+                RequestHeaders => &mut app.request_headers_list,
+                ResponseDetails => &mut app.response_details_list,
+                ResponseHeaders => &mut app.response_headers_list,
+                Timing => &mut app.timing_list,
             };
 
             let details_block = Block::default()
@@ -239,7 +244,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
 
             frame.render_widget(details_block, area);
 
-            if pane == &&DetailsPane::Timing {
+            if pane.is_timing() {
                 render_timing_chart(
                     selected_trace,
                     actionable_list,
@@ -299,12 +304,12 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             .unwrap_or(&app.details_tabs[0]);
 
         let actionable_list = match tab_block {
-            DetailsPane::RequestDetails => &mut app.request_details_list,
-            DetailsPane::QueryParams => &mut app.query_params_list,
-            DetailsPane::RequestHeaders => &mut app.request_headers_list,
-            DetailsPane::ResponseDetails => &mut app.response_details_list,
-            DetailsPane::ResponseHeaders => &mut app.response_headers_list,
-            DetailsPane::Timing => &mut app.timing_list,
+            RequestDetails => &mut app.request_details_list,
+            QueryParams => &mut app.query_params_list,
+            RequestHeaders => &mut app.request_headers_list,
+            ResponseDetails => &mut app.response_details_list,
+            ResponseHeaders => &mut app.response_headers_list,
+            Timing => &mut app.timing_list,
         };
 
         let details_block = Block::default()
@@ -325,7 +330,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
         frame.render_widget(details_block, area);
         frame.render_widget(tabs, inner_layout[0]);
 
-        if *tab_block == DetailsPane::Timing {
+        if tab_block.is_timing() {
             render_timing_chart(
                 selected_trace,
                 actionable_list,

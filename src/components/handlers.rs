@@ -707,8 +707,6 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
         }
         ActiveBlock::Details => match app.details_block {
             DetailsPane::RequestDetails => {
-                let content = get_content_length(app);
-
                 if let Some(item) = app.selected_trace.clone() {
                     if item.http.clone().unwrap_or_default().duration.is_some() {
                         let item_length = item.http.unwrap_or_default().request_headers.len();
@@ -753,8 +751,6 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
                 None
             }
             DetailsPane::ResponseDetails => {
-                let content = get_content_length(app);
-
                 if let Some(item) = &app.selected_trace {
                     if item.http.clone().unwrap_or_default().duration.is_some() {
                         let item_length =
