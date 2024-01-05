@@ -47,7 +47,7 @@ impl ActionableList {
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.items.len() - 1 {
+                if i >= self.items.len().saturating_sub(1) {
                     i
                 } else {
                     i + 1

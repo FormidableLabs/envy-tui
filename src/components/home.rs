@@ -184,6 +184,17 @@ impl Home {
         }
     }
 
+    fn reset_active_pane(&mut self, pane: DetailsPane) {
+        match pane {
+            DetailsPane::QueryParams => self.query_params_list.reset(),
+            DetailsPane::RequestDetails => self.request_details_list.reset(),
+            DetailsPane::RequestHeaders => self.request_headers_list.reset(),
+            DetailsPane::ResponseDetails => self.response_details_list.reset(),
+            DetailsPane::ResponseHeaders => self.response_headers_list.reset(),
+            DetailsPane::Timing => {}
+        }
+    }
+
     fn update_details_lists(&mut self) {
         if let Some(trace) = &self.selected_trace {
             // REQUEST DETAILS PANE
@@ -543,13 +554,12 @@ impl Component for Home {
                 Ok(None)
             }
             Action::PopOutDetailsTab(pane) => {
-                if self.details_tabs.len() > 1 {
-                    self.details_panes.push(pane);
-                    self.details_tabs.retain(|&d| pane != d);
-                    self.details_tab_index = self.details_tab_index.saturating_sub(1);
-                }
+                self.details_panes.push(pane);
+                self.details_tabs.retain(|&d| pane != d);
+                self.details_tab_index = self.details_tab_index.saturating_sub(1);
 
                 self.update_details_lists();
+                self.reset_active_pane(pane);
 
                 Ok(None)
             }
@@ -559,6 +569,7 @@ impl Component for Home {
                 self.details_tab_index = self.details_tabs.len() - 1;
 
                 self.update_details_lists();
+                self.reset_active_pane(pane);
 
                 Ok(None)
             }
