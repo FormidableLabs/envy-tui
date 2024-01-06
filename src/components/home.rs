@@ -12,6 +12,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
 use crate::{
+    app::FilterScreen,
     app::{Action, ActiveBlock, DetailsPane, Mode, UIState},
     components::component::Component,
     components::handlers,
@@ -85,6 +86,7 @@ pub struct Home {
     pub response_json_viewer: jsonviewer::JSONViewer,
     pub selected_trace: Option<Trace>,
     pub filter_index: usize,
+    pub filter_value_index: usize,
     pub sort_index: usize,
     pub metadata: Option<handlers::HandlerMetadata>,
     pub filter_source: FilterSource,
@@ -235,6 +237,7 @@ impl Component for Home {
                 }
 
                 self.filter_index = 0;
+                self.filter_value_index = 0;
 
                 self.active_block = last_block.unwrap();
 
@@ -251,7 +254,7 @@ impl Component for Home {
 
                 self.previous_blocks.push(current_block);
 
-                self.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMain);
+                self.active_block = ActiveBlock::Filter(FilterScreen::FilterMain);
 
                 Ok(None)
             }
@@ -328,41 +331,14 @@ impl Component for Home {
 
                 render::render_help(self, frame, main_layout[0]);
             }
-            ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
+            ActiveBlock::Filter(filter_screen) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
-                render::render_filters(self, frame, main_layout[0]);
-            }
-            ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(3)
-                    .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
-
-                render::render_filters_source(self, frame, main_layout[0]);
-            }
-            ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(3)
-                    .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
-
-                render::render_filters_status(self, frame, main_layout[0]);
-            }
-            ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(3)
-                    .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
-
-                render::render_filters_method(self, frame, main_layout[0]);
+                render::render_filters(self, frame, main_layout[0], filter_screen);
             }
             ActiveBlock::Sort => {
                 let main_layout = Layout::default()

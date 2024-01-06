@@ -19,7 +19,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{Action, ActiveBlock, DetailsPane};
+use crate::app::{Action, ActiveBlock, DetailsPane, FilterScreen};
 use crate::components::home::{FilterSource, Home};
 use crate::config::Colors;
 use crate::consts::{
@@ -91,7 +91,7 @@ pub fn get_border_style(active: bool, colors: Colors) -> Style {
     }
 }
 
-fn get_text_style(active: bool, colors: Colors) -> Style {
+fn get_text_style(active: bool, colors: &Colors) -> Style {
     if active {
         Style::default().fg(colors.text.default)
     } else {
@@ -870,7 +870,7 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new(debug_lines)
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .header(
             Row::new(vec!["Action", "Map"])
                 .style(Style::default().fg(app.colors.text.accent_1))
@@ -898,7 +898,7 @@ pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
 
     // TODO: Render different Keybindings that are relevant for the given `active_block`.
     let list = List::new(debug_lines)
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -947,7 +947,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
 
     services = a;
 
-    let current_service = services.iter().nth(app.filter_index).cloned();
+    let current_service = services.iter().nth(app.filter_value_index).cloned();
 
     let rows = services
         .iter()
@@ -1012,19 +1012,8 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([rows].concat())
-        .style(get_text_style(true, app.colors.clone()))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
-                .title("[Filters - Sources]")
-                .border_type(BorderType::Plain),
-        )
+        .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
+        .style(get_text_style(true, &app.colors))
         .widths(&[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
@@ -1036,7 +1025,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
 }
 
 pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
-    let current_service = app.status_filters.iter().nth(app.filter_index);
+    let current_service = app.status_filters.iter().nth(app.filter_value_index);
 
     let rows1 = app
         .status_filters
@@ -1075,19 +1064,8 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([rows1].concat())
-        .style(get_text_style(true, app.colors.clone()))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
-                .title("[Filters - Status]")
-                .border_type(BorderType::Plain),
-        )
+        .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
+        .style(get_text_style(true, &app.colors))
         .widths(&[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
@@ -1103,7 +1081,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         .method_filters
         .iter()
         .map(|(_a, b)| b.name.clone())
-        .nth(app.filter_index);
+        .nth(app.filter_value_index);
 
     let rows1 = app
         .method_filters
@@ -1141,19 +1119,8 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([rows1].concat())
-        .style(get_text_style(true, app.colors.clone()))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
-                .title("[Filters - Method]")
-                .border_type(BorderType::Plain),
-        )
+        .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
+        .style(get_text_style(true, &app.colors))
         .widths(&[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
@@ -1164,60 +1131,87 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
     frame.render_widget(list.clone(), area);
 }
 
-pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect) {
+pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: FilterScreen) {
+    let parent_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(get_border_style(true, app.colors.clone()))
+        .title(" FILTER ")
+        .border_type(BorderType::Plain);
+
+    let inner_area = parent_block.inner(area);
+    frame.render_widget(parent_block, area);
+
+    let vertical_layout = Layout::default()
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .horizontal_margin(1)
+        .direction(Direction::Vertical)
+        .split(inner_area);
+
+    let layout = Layout::default()
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Length(1),
+            Constraint::Percentage(50),
+        ])
+        .vertical_margin(1)
+        .margin(1)
+        .direction(Direction::Horizontal)
+        .split(vertical_layout[0]);
+
     let filter_items = vec!["method", "source", "status"];
 
-    let current_service = filter_items.iter().nth(app.filter_index).cloned();
+    let current_filter = filter_items.iter().nth(app.filter_index).cloned();
 
     let filter_item_rows = filter_items
         .iter()
         .map(|item| {
-            let column_a =
+            let is_selected = current_filter.unwrap_or_default() == *item;
+            let label = if is_selected { "[x]" } else { "[ ]" };
+
+            let column_a = Cell::from(
+                Line::from(vec![Span::raw(label.to_string())]).alignment(Alignment::Left),
+            );
+            let column_b =
                 Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
 
-            let column_b = Cell::from(
-                Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
-            );
-
-            let row_style = if current_service.is_some()
-                && current_service.clone().unwrap() == item.deref().clone()
-            {
+            let row_style = if is_selected {
                 RowStyle::Selected
             } else {
                 RowStyle::Default
             };
 
-            let middle = Cell::from(
-                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
-            );
-
-            Row::new(vec![column_b, middle, column_a])
-                .style(get_row_style(row_style, app.colors.clone()))
+            Row::new(vec![column_a, column_b]).style(get_row_style(row_style, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
     let list = Table::new([filter_item_rows].concat())
-        .style(get_text_style(true, app.colors.clone()))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
-                .title("[Filters]")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
+        .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
+        .style(get_text_style(
+            filter_screen == FilterScreen::FilterMain,
+            &app.colors,
+        ))
+        .widths(&[Constraint::Length(3), Constraint::Percentage(100)])
+        .column_spacing(3);
 
-    frame.render_widget(list.clone(), area);
+    let divider = Block::default()
+        .borders(Borders::LEFT)
+        .border_style(get_border_style(true, app.colors.clone()));
+
+    let footer = Block::default()
+        .borders(Borders::TOP)
+        .border_set(symbols::border::DOUBLE)
+        .border_style(get_border_style(true, app.colors.clone()));
+
+    frame.render_widget(list, layout[0]);
+    frame.render_widget(divider, layout[1]);
+    frame.render_widget(footer, vertical_layout[1]);
+
+    match filter_screen {
+        FilterScreen::FilterMain => {}
+        FilterScreen::FilterMethod => render_filters_method(app, frame, layout[2]),
+        FilterScreen::FilterSource => render_filters_source(app, frame, layout[2]),
+        FilterScreen::FilterStatus => render_filters_status(app, frame, layout[2]),
+    }
 }
 
 pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
@@ -1334,7 +1328,7 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
         .collect::<Vec<_>>();
 
     let list = Table::new([filter_item_rows].concat())
-        .style(get_text_style(true, app.colors.clone()))
+        .style(get_text_style(true, &app.colors))
         .header(
             Row::new(vec!["Selected", "Type", "Value", "Order"])
                 .style(Style::default().fg(app.colors.text.accent_1))

@@ -106,9 +106,17 @@ pub fn handle_up(
             _ => None,
         },
         _ => match (app.active_block, app.details_block) {
-            (ActiveBlock::Filter(_), _) => match app.filter_index.checked_sub(1) {
+            (ActiveBlock::Filter(FilterScreen::FilterMain), _) => match app.filter_index.checked_sub(1) {
                 Some(v) => {
                     app.filter_index = v;
+
+                    None
+                }
+                _ => None,
+            },
+            (ActiveBlock::Filter(_), _) => match app.filter_value_index.checked_sub(1) {
+                Some(v) => {
+                    app.filter_value_index = v;
 
                     None
                 }
@@ -311,15 +319,15 @@ pub fn handle_down(
         },
         _ => match (app.active_block, app.details_block) {
             (ActiveBlock::Filter(FilterScreen::FilterMethod), _) => {
-                if app.filter_index + 1 < app.method_filters.len() {
-                    app.filter_index += 1;
+                if app.filter_value_index + 1 < app.method_filters.len() {
+                    app.filter_value_index += 1;
                 }
 
                 None
             }
             (ActiveBlock::Filter(FilterScreen::FilterSource), _) => {
-                if app.filter_index + 1 < get_services_from_traces(app).len() + 1 {
-                    app.filter_index += 1;
+                if app.filter_value_index + 1 < get_services_from_traces(app).len() + 1 {
+                    app.filter_value_index += 1;
                 }
 
                 None
@@ -332,8 +340,8 @@ pub fn handle_down(
                 None
             }
             (ActiveBlock::Filter(FilterScreen::FilterStatus), _) => {
-                if app.filter_index + 1 < app.status_filters.len() {
-                    app.filter_index += 1;
+                if app.filter_value_index + 1 < app.status_filters.len() {
+                    app.filter_value_index += 1;
                 }
 
                 None
@@ -973,7 +981,7 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             None
         }
-        ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
+        ActiveBlock::Filter(FilterScreen::FilterMain) => {
             let blocks = vec!["method", "source", "status"];
 
             let maybe_selected_filter = blocks.iter().nth(app.filter_index).cloned();
@@ -981,31 +989,20 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             if let Some(selected_filter) = maybe_selected_filter {
                 match selected_filter {
                     "method" => {
-                        app.previous_blocks
-                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
-
                         app.active_block =
-                            ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod)
+                            ActiveBlock::Filter(FilterScreen::FilterMethod)
                     }
                     "source" => {
-                        app.previous_blocks
-                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
-
                         app.active_block =
-                            ActiveBlock::Filter(crate::app::FilterScreen::FilterSource)
+                            ActiveBlock::Filter(FilterScreen::FilterSource)
                     }
                     "status" => {
-                        app.previous_blocks
-                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
-
                         app.active_block =
-                            ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus)
+                            ActiveBlock::Filter(FilterScreen::FilterStatus)
                     }
                     _ => {}
                 }
             };
-
-            app.filter_index = 0;
 
             None
         }
@@ -1015,7 +1012,7 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
                 .status_filters
                 .iter()
                 .map(|(key, _item)| key)
-                .nth(app.filter_index);
+                .nth(app.filter_value_index);
 
             if current_service.is_none() {
                 return None;
@@ -1046,12 +1043,12 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             None
         }
-        ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
+        ActiveBlock::Filter(FilterScreen::FilterMethod) => {
             let current_service = app
                 .method_filters
                 .iter()
                 .map(|(a, _item)| a)
-                .nth(app.filter_index);
+                .nth(app.filter_value_index);
 
             if current_service.is_none() {
                 return None;
@@ -1082,7 +1079,7 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             None
         }
-        ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
+        ActiveBlock::Filter(FilterScreen::FilterSource) => {
             let mut services = get_services_from_traces(app);
 
             let mut a: Vec<String> = vec!["All".to_string()];
@@ -1091,7 +1088,7 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             services = a;
 
-            let selected_filter = services.iter().nth(app.filter_index).cloned();
+            let selected_filter = services.iter().nth(app.filter_value_index).cloned();
 
             if selected_filter.is_none() {
                 return None;
