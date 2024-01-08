@@ -969,12 +969,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                         RowStyle::Default
                     };
 
-                    let middle = Cell::from(
-                        Line::from(vec![Span::raw("Source".to_string())])
-                            .alignment(Alignment::Left),
-                    );
-
-                    return Row::new(vec![column_b, middle, column_a])
+                    return Row::new(vec![column_b, column_a])
                         .style(get_row_style(row_style, app.colors.clone()));
                 }
                 FilterSource::Applied(applied) => {
@@ -999,12 +994,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                         RowStyle::Default
                     };
 
-                    let middle = Cell::from(
-                        Line::from(vec![Span::raw("Source".to_string())])
-                            .alignment(Alignment::Left),
-                    );
-
-                    return Row::new(vec![column_b, middle, column_a])
+                    return Row::new(vec![column_b, column_a])
                         .style(get_row_style(row_style, app.colors.clone()));
                 }
             };
@@ -1054,12 +1044,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
                     RowStyle::Default
                 };
 
-            let h = Cell::from(
-                Line::from(vec![Span::raw("Status".to_string())]).alignment(Alignment::Left),
-            );
-
-            Row::new(vec![column_b, h, column_a])
-                .style(get_row_style(row_style, app.colors.clone()))
+            Row::new(vec![column_b, column_a]).style(get_row_style(row_style, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
@@ -1109,12 +1094,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
                 RowStyle::Default
             };
 
-            let h = Cell::from(
-                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
-            );
-
-            Row::new(vec![column_b, h, column_a])
-                .style(get_row_style(row_style, app.colors.clone()))
+            Row::new(vec![column_b, column_a]).style(get_row_style(row_style, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
@@ -1142,7 +1122,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: 
     frame.render_widget(parent_block, area);
 
     let vertical_layout = Layout::default()
-        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .constraints([Constraint::Min(0), Constraint::Length(4)])
         .horizontal_margin(1)
         .direction(Direction::Vertical)
         .split(inner_area);
@@ -1202,9 +1182,55 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: 
         .border_set(symbols::border::DOUBLE)
         .border_style(get_border_style(true, app.colors.clone()));
 
+    let footer_rect = footer.inner(vertical_layout[1]);
+    let method_filters = app
+        .method_filters
+        .values()
+        .filter(|v| v.selected)
+        .map(|v| v.name.clone())
+        .map(|s| format!("method-{}", s.to_lowercase()))
+        .collect::<Vec<_>>();
+    let source_filters: Vec<String> = if let FilterSource::Applied(hashset) = &app.filter_source {
+        hashset
+            .iter()
+            .map(|s| format!("source-{}", s.to_lowercase()))
+            .collect()
+    } else {
+        vec![]
+    };
+
+    let status_filters: Vec<String> = app
+        .status_filters
+        .values()
+        .filter(|v| v.selected)
+        .map(|v| v.name.clone())
+        .map(|s| format!("status-{}", s.to_lowercase()))
+        .collect();
+
+    let filters = [method_filters, source_filters, status_filters]
+        .concat()
+        .join(", ");
+
+    let footer_content = Paragraph::new(vec![
+        Line::raw(""),
+        Line::from(vec![Span::styled(
+            format!(
+                "filter: {}",
+                if filters.len() > 0 {
+                    filters
+                } else {
+                    "none".into()
+                }
+            ),
+            Style::default().fg(app.colors.text.accent_2),
+        )]),
+        Line::raw(""),
+    ]);
+
     frame.render_widget(list, layout[0]);
     frame.render_widget(divider, layout[1]);
     frame.render_widget(footer, vertical_layout[1]);
+    frame.render_widget(footer_content, footer_rect);
 
     match filter_screen {
         FilterScreen::FilterMain => {}
