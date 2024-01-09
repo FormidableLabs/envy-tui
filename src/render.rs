@@ -19,13 +19,13 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{Action, ActiveBlock, DetailsPane, FilterScreen};
+use crate::app::{Action, ActiveBlock, DetailsPane, FilterScreen, TraceSort};
 use crate::components::home::{FilterSource, Home};
 use crate::config::Colors;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
 };
-use crate::utils::{get_rendered_items, parse_query_params, truncate, TraceSort};
+use crate::utils::{get_rendered_items, parse_query_params, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 pub enum RowStyle {
@@ -1241,80 +1241,57 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: 
 }
 
 pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
-    let filter_items = vec![
-        (
-            "Method",
-            "Asc",
-            TraceSort::Method(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Method",
-            "Desc",
-            TraceSort::Method(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Source",
-            "Asc",
-            TraceSort::Source(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Source",
-            "Desc",
-            TraceSort::Source(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Status",
-            "Asc",
-            TraceSort::Status(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Status",
-            "Desc",
-            TraceSort::Status(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Timestamp",
-            "Asc",
-            TraceSort::Timestamp(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Timestamp",
-            "Desc",
-            TraceSort::Timestamp(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Duration",
-            "Asc",
-            TraceSort::Duration(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Duration",
-            "Desc",
-            TraceSort::Duration(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Url",
-            "Asc",
-            TraceSort::Url(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Url",
-            "Desc",
-            TraceSort::Url(crate::utils::Ordering::Descending),
-        ),
-    ];
+    let parent_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(get_border_style(true, app.colors.clone()))
+        .title(" SORT ")
+        .border_type(BorderType::Plain);
 
-    let current_service = filter_items.iter().nth(app.sort_index).cloned();
+    let inner_area = parent_block.inner(area);
+    frame.render_widget(parent_block, area);
 
-    let filter_item_rows = filter_items
+    let vertical_layout = Layout::default()
+        .constraints([Constraint::Min(0), Constraint::Length(4)])
+        .horizontal_margin(1)
+        .direction(Direction::Vertical)
+        .split(inner_area);
+
+    let layout = Layout::default()
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Length(1),
+            Constraint::Percentage(50),
+        ])
+        .vertical_margin(1)
+        .margin(1)
+        .direction(Direction::Horizontal)
+        .split(vertical_layout[0]);
+
+    let filter_items: Vec<String> = app.sort_sources.iter().map(|s| s.to_string()).collect();
+    let filter_item_variants: Vec<String> =
+        app.sort_ordering.iter().map(|s| s.to_string()).collect();
+
+    let divider = Block::default()
+        .borders(Borders::LEFT)
+        .border_style(get_border_style(true, app.colors.clone()));
+
+    let footer = Block::default()
+        .borders(Borders::TOP)
+        .border_set(symbols::border::DOUBLE)
+        .border_style(get_border_style(true, app.colors.clone()));
+
+    let footer_rect = footer.inner(vertical_layout[1]);
+
+    let current_service = filter_items.iter().nth(app.sort_kind_index).cloned();
+
+    let filter_kind_rows = filter_items
         .iter()
-        .map(|(item, order, sort_enum)| {
+        .enumerate()
+        .map(|(idx, item)| {
             let column_a =
                 Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
 
-            let current_sort = &app.order;
-
-            let column_b = if current_sort == sort_enum {
+            let column_b = if app.order.kind.to_string() == *item {
                 Cell::from(
                     Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
                 )
@@ -1324,56 +1301,67 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
                 )
             };
 
-            let (sort_type, sort_order, _enum) = current_service.clone().unwrap();
-
-            let row_style = if current_service.is_some()
-                && sort_type == item.to_string()
-                && sort_order == order.deref()
-            {
+            let row_style = if idx == app.sort_kind_index {
                 RowStyle::Selected
             } else {
                 RowStyle::Default
             };
 
-            let middle = Cell::from(
-                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
-            );
-
-            let order1 = Cell::from(
-                Line::from(vec![Span::raw(order.to_string())]).alignment(Alignment::Left),
-            );
-
-            Row::new(vec![
-                column_b.clone(),
-                middle.clone(),
-                column_a.clone(),
-                order1,
-            ])
-            .style(get_row_style(row_style, app.colors.clone()))
+            Row::new(vec![column_b.clone(), column_a.clone()])
+                .style(get_row_style(row_style, app.colors.clone()))
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([filter_item_rows].concat())
+    let filter_order_rows = filter_item_variants
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            let column_a =
+                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
+
+            let column_b = if app.order.order.to_string() == *item {
+                Cell::from(
+                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+                )
+            } else {
+                Cell::from(
+                    Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
+                )
+            };
+
+            let row_style = if idx == app.sort_order_index {
+                RowStyle::Selected
+            } else {
+                RowStyle::Default
+            };
+
+            Row::new(vec![column_b.clone(), column_a.clone()])
+                .style(get_row_style(row_style, app.colors.clone()))
+        })
+        .collect::<Vec<_>>();
+
+    let sort_kind_list = Table::new([filter_kind_rows].concat())
         .style(get_text_style(true, &app.colors))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value", "Order"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, app.colors.clone()))
-                .title("[Sort traces by]")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(40),
-        ])
+        .widths(&[Constraint::Percentage(45), Constraint::Percentage(40)])
+        .column_spacing(10);
+    let sort_order_list = Table::new([filter_order_rows].concat())
+        .style(get_text_style(true, &app.colors))
+        .widths(&[Constraint::Percentage(45), Constraint::Percentage(40)])
         .column_spacing(10);
 
-    frame.render_widget(list.clone(), area);
+    let sort = format!("{}", app.order.to_string().to_lowercase());
+    let footer_content = Paragraph::new(vec![
+        Line::raw(""),
+        Line::from(vec![Span::styled(
+            format!("sort: {}", sort),
+            Style::default().fg(app.colors.text.accent_2),
+        )]),
+        Line::raw(""),
+    ]);
+
+    frame.render_widget(sort_kind_list, layout[0]);
+    frame.render_widget(divider, layout[1]);
+    frame.render_widget(sort_order_list, layout[2]);
+    frame.render_widget(footer, vertical_layout[1]);
+    frame.render_widget(footer_content, footer_rect);
 }

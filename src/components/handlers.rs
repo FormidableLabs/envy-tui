@@ -1,4 +1,6 @@
-use crate::app::{Action, ActiveBlock, DetailsPane, FilterScreen};
+use crate::app::{
+    Action, ActiveBlock, DetailsPane, FilterScreen, SortOrder, SortScreen, SortSource, TraceSort,
+};
 use crate::components::home::Home;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -9,7 +11,7 @@ use crate::render::get_services_from_traces;
 use crate::services::websocket::Trace;
 use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
-    get_rendered_items, parse_query_params, set_content_length, Ordering, TraceSort,
+    get_rendered_items, parse_query_params, set_content_length,
 };
 use crossterm::event::{KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
@@ -106,14 +108,16 @@ pub fn handle_up(
             _ => None,
         },
         _ => match (app.active_block, app.details_block) {
-            (ActiveBlock::Filter(FilterScreen::FilterMain), _) => match app.filter_index.checked_sub(1) {
-                Some(v) => {
-                    app.filter_index = v;
+            (ActiveBlock::Filter(FilterScreen::FilterMain), _) => {
+                match app.filter_index.checked_sub(1) {
+                    Some(v) => {
+                        app.filter_index = v;
 
-                    None
+                        None
+                    }
+                    _ => None,
                 }
-                _ => None,
-            },
+            }
             (ActiveBlock::Filter(_), _) => match app.filter_value_index.checked_sub(1) {
                 Some(v) => {
                     app.filter_value_index = v;
@@ -122,14 +126,16 @@ pub fn handle_up(
                 }
                 _ => None,
             },
-            (ActiveBlock::Sort, _) => match app.sort_index.checked_sub(1) {
-                Some(v) => {
-                    app.sort_index = v;
+            (ActiveBlock::Sort(SortScreen::SortMain), _) => {
+                app.sort_kind_index = app.sort_kind_index.saturating_sub(1);
 
-                    None
-                }
-                _ => None,
-            },
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::SortVariant), _) => {
+                app.sort_order_index = app.sort_order_index.saturating_sub(1);
+
+                None
+            }
             (ActiveBlock::Traces, _) => {
                 if app.main.index > 0 {
                     app.main.index -= 1;
@@ -346,9 +352,16 @@ pub fn handle_down(
 
                 None
             }
-            (ActiveBlock::Sort, _) => {
-                if app.sort_index + 1 < 12 {
-                    app.sort_index += 1;
+            (ActiveBlock::Sort(SortScreen::SortMain), _) => {
+                if app.sort_kind_index + 1 < app.sort_sources.len() {
+                    app.sort_kind_index += 1;
+                }
+
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::SortVariant), _) => {
+                if app.sort_order_index + 1 < app.sort_ordering.len() {
+                    app.sort_order_index += 1;
                 }
 
                 None
@@ -943,43 +956,33 @@ pub fn handle_general_status(app: &mut Home, s: String) -> Option<Action> {
 
 pub fn handle_select(app: &mut Home) -> Option<Action> {
     match app.active_block {
-        ActiveBlock::Sort => {
-            let filter_items = vec![
-                ("Method", "Asc"),
-                ("Method", "Desc"),
-                ("Source", "Asc"),
-                ("Source", "Desc"),
-                ("Status", "Asc"),
-                ("Status", "Desc"),
-                ("Timestamp", "Asc"),
-                ("Timestamp", "Desc"),
-                ("Duration", "Asc"),
-                ("Duration", "Desc"),
-                ("Url", "Asc"),
-                ("Url", "Desc"),
-            ];
+        ActiveBlock::Sort(SortScreen::SortMain) => {
+            if let Some(kind) = app.sort_sources.get(app.sort_kind_index) {
+                app.order = TraceSort {
+                    kind: kind.clone(),
+                    order: SortOrder::Ascending,
+                };
 
-            let selected_filter = filter_items.iter().nth(app.sort_index).cloned();
-
-            if let Some(selected_filter) = selected_filter {
-                match selected_filter {
-                    ("Method", "Asc") => app.order = TraceSort::Method(Ordering::Ascending),
-                    ("Method", "Desc") => app.order = TraceSort::Method(Ordering::Descending),
-                    ("Status", "Asc") => app.order = TraceSort::Status(Ordering::Ascending),
-                    ("Status", "Desc") => app.order = TraceSort::Status(Ordering::Descending),
-                    ("Timestamp", "Asc") => app.order = TraceSort::Timestamp(Ordering::Ascending),
-                    ("Timestamp", "Desc") => app.order = TraceSort::Timestamp(Ordering::Descending),
-                    ("Url", "Asc") => app.order = TraceSort::Url(Ordering::Ascending),
-                    ("Url", "Desc") => app.order = TraceSort::Url(Ordering::Descending),
-                    ("Duration", "Asc") => app.order = TraceSort::Duration(Ordering::Ascending),
-                    ("Duration", "Desc") => app.order = TraceSort::Duration(Ordering::Descending),
-                    ("Source", "Asc") => app.order = TraceSort::Source(Ordering::Ascending),
-                    ("Source", "Desc") => app.order = TraceSort::Source(Ordering::Descending),
-                    (_, _) => {}
-                }
+                Some(Action::ActivateBlock(ActiveBlock::Sort(
+                    SortScreen::SortVariant,
+                )))
+            } else {
+                None
             }
+        }
+        ActiveBlock::Sort(SortScreen::SortVariant) => {
+            if let Some(sort_order) = app.sort_ordering.get(app.sort_order_index) {
+                app.order = TraceSort {
+                    kind: app.order.kind.clone(),
+                    order: sort_order.clone(),
+                };
 
-            None
+                Some(Action::ActivateBlock(ActiveBlock::Sort(
+                    SortScreen::SortMain,
+                )))
+            } else {
+                None
+            }
         }
         ActiveBlock::Filter(FilterScreen::FilterMain) => {
             let blocks = vec!["method", "source", "status"];
@@ -988,18 +991,9 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             if let Some(selected_filter) = maybe_selected_filter {
                 match selected_filter {
-                    "method" => {
-                        app.active_block =
-                            ActiveBlock::Filter(FilterScreen::FilterMethod)
-                    }
-                    "source" => {
-                        app.active_block =
-                            ActiveBlock::Filter(FilterScreen::FilterSource)
-                    }
-                    "status" => {
-                        app.active_block =
-                            ActiveBlock::Filter(FilterScreen::FilterStatus)
-                    }
+                    "method" => app.active_block = ActiveBlock::Filter(FilterScreen::FilterMethod),
+                    "source" => app.active_block = ActiveBlock::Filter(FilterScreen::FilterSource),
+                    "status" => app.active_block = ActiveBlock::Filter(FilterScreen::FilterStatus),
                     _ => {}
                 }
             };

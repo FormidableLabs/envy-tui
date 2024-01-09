@@ -12,8 +12,10 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
 use crate::{
-    app::FilterScreen,
-    app::{Action, ActiveBlock, DetailsPane, Mode, UIState},
+    app::{
+        Action, ActiveBlock, DetailsPane, FilterScreen, Mode, SortOrder, SortScreen, SortSource,
+        TraceSort, UIState,
+    },
     components::component::Component,
     components::handlers,
     components::jsonviewer,
@@ -21,7 +23,6 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::TraceSort,
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -87,7 +88,10 @@ pub struct Home {
     pub selected_trace: Option<Trace>,
     pub filter_index: usize,
     pub filter_value_index: usize,
-    pub sort_index: usize,
+    pub sort_kind_index: usize,
+    pub sort_order_index: usize,
+    pub sort_sources: Vec<SortSource>,
+    pub sort_ordering: Vec<SortOrder>,
     pub metadata: Option<handlers::HandlerMetadata>,
     pub filter_source: FilterSource,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
@@ -113,6 +117,15 @@ impl Home {
                 "Response body",
                 config.colors.clone(),
             )?,
+            sort_sources: vec![
+                SortSource::Method,
+                SortSource::Status,
+                SortSource::Source,
+                SortSource::Url,
+                SortSource::Duration,
+                SortSource::Timestamp,
+            ],
+            sort_ordering: vec![SortOrder::Ascending, SortOrder::Descending],
             ..Self::default()
         };
 
@@ -263,7 +276,7 @@ impl Component for Home {
 
                 self.previous_blocks.push(current_block);
 
-                self.active_block = ActiveBlock::Sort;
+                self.active_block = ActiveBlock::Sort(SortScreen::SortMain);
 
                 Ok(None)
             }
@@ -316,6 +329,10 @@ impl Component for Home {
                 self.selected_trace = trace;
                 Ok(None)
             }
+            Action::ActivateBlock(block) => {
+                self.active_block = block;
+                Ok(None)
+            }
             _ => Ok(None),
         }
     }
@@ -340,7 +357,7 @@ impl Component for Home {
 
                 render::render_filters(self, frame, main_layout[0], filter_screen);
             }
-            ActiveBlock::Sort => {
+            ActiveBlock::Sort(_) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(3)
@@ -377,7 +394,9 @@ impl Component for Home {
                         )
                         .split(main_layout[0]);
 
-                    let [left_column, right_column, ..] = main_columns[..] else { todo!() };
+                    let [left_column, right_column, ..] = main_columns[..] else {
+                        todo!()
+                    };
 
                     let right_column_layout = Layout::default()
                         .direction(Direction::Vertical)

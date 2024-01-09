@@ -52,6 +52,13 @@ impl Display for FilterScreen {
     }
 }
 
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SortScreen {
+    #[default]
+    SortMain,
+    SortVariant,
+}
+
 #[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ActiveBlock {
     #[default]
@@ -62,7 +69,7 @@ pub enum ActiveBlock {
     Help,
     Debug,
     Filter(FilterScreen),
-    Sort,
+    Sort(SortScreen),
     SearchQuery,
 }
 
@@ -133,6 +140,85 @@ pub enum Action {
     ExpandAll,
     CollapseAll,
     ActivateBlock(ActiveBlock),
+}
+
+#[derive(Default, PartialEq, Eq, Debug, Clone, strum_macros::Display)]
+pub enum SortOrder {
+    #[default]
+    Ascending,
+    Descending,
+}
+
+#[derive(Default, PartialEq, Eq, Debug, Clone, strum_macros::Display)]
+pub enum SortSource {
+    #[default]
+    Method,
+    Status,
+    Source,
+    Url,
+    Duration,
+    Timestamp,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Default)]
+pub struct TraceSort {
+    pub kind: SortSource,
+    pub order: SortOrder,
+}
+
+impl Display for TraceSort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TraceSort {
+                kind: SortSource::Timestamp,
+                order: SortOrder::Ascending,
+            } => write!(f, "Timestamp ↑"),
+            TraceSort {
+                kind: SortSource::Timestamp,
+                order: SortOrder::Descending,
+            } => write!(f, "Timestamp ↓"),
+            TraceSort {
+                kind: SortSource::Method,
+                order: SortOrder::Ascending,
+            } => write!(f, "Method ↑"),
+            TraceSort {
+                kind: SortSource::Method,
+                order: SortOrder::Descending,
+            } => write!(f, "Method ↓"),
+            TraceSort {
+                kind: SortSource::Status,
+                order: SortOrder::Ascending,
+            } => write!(f, "Status ↑"),
+            TraceSort {
+                kind: SortSource::Status,
+                order: SortOrder::Descending,
+            } => write!(f, "Status ↓"),
+            TraceSort {
+                kind: SortSource::Duration,
+                order: SortOrder::Ascending,
+            } => write!(f, "Duration ↑"),
+            TraceSort {
+                kind: SortSource::Duration,
+                order: SortOrder::Descending,
+            } => write!(f, "Duration ↓"),
+            TraceSort {
+                kind: SortSource::Source,
+                order: SortOrder::Ascending,
+            } => write!(f, "Source ↑"),
+            TraceSort {
+                kind: SortSource::Source,
+                order: SortOrder::Descending,
+            } => write!(f, "Source ↓"),
+            TraceSort {
+                kind: SortSource::Url,
+                order: SortOrder::Ascending,
+            } => write!(f, "Url ↑"),
+            TraceSort {
+                kind: SortSource::Url,
+                order: SortOrder::Descending,
+            } => write!(f, "Url ↓"),
+        }
+    }
 }
 
 #[derive(Default)]
