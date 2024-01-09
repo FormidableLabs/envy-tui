@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crossterm::event::KeyEvent;
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumIter;
+use strum_macros::{Display, EnumIs, EnumIter};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
@@ -18,15 +18,21 @@ use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
 use crate::wss::client;
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize, Display, EnumIs, EnumIter)]
 #[repr(u8)]
 pub enum DetailsPane {
     #[default]
+    #[strum(serialize = "REQUEST DETAILS")]
     RequestDetails = 0,
+    #[strum(serialize = "QUERY PARAMS")]
     QueryParams,
+    #[strum(serialize = "REQUEST HEADERS")]
     RequestHeaders,
+    #[strum(serialize = "RESPONSE DETAILS")]
     ResponseDetails,
+    #[strum(serialize = "RESPONSE HEADERS")]
     ResponseHeaders,
+    #[strum(serialize = "TIMING")]
     Timing,
 }
 
@@ -84,10 +90,11 @@ pub struct UIState {
     pub horizontal_scroll_state: ScrollbarState,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Action {
     #[serde(skip)]
     Error(String),
+    #[default]
     CopyToClipBoard,
     NavigateLeft(Option<KeyEvent>),
     NavigateDown(Option<KeyEvent>),
@@ -117,8 +124,8 @@ pub enum Action {
     SelectTrace(Option<Trace>),
     UpdateTraceIndex(usize),
     ShowTraceDetails,
-    NextPane,
-    PreviousPane,
+    NextDetailsTab,
+    PreviousDetailsTab,
     ScheduleStartWebSocketServer,
     ScheduleStopWebSocketServer,
     StartWebSocketServer,
@@ -140,6 +147,8 @@ pub enum Action {
     ExpandAll,
     CollapseAll,
     ActivateBlock(ActiveBlock),
+    PopOutDetailsTab(DetailsPane),
+    CloseDetailsPane(DetailsPane),
 }
 
 #[derive(Default, PartialEq, Eq, Debug, Clone, strum_macros::Display)]
@@ -307,7 +316,7 @@ impl App {
 
             if let Some(Event::Render) = event {
                 for component in self.components.iter() {
-                    let c = component.lock().await;
+                    let mut c = component.lock().await;
                     t.terminal.draw(|frame| {
                         let r = c.render(frame, frame.size());
                         if let Err(e) = r {

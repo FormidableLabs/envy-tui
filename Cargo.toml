@@ -24,6 +24,7 @@ pretty_assertions = "1.4.0"
 chrono = "0.4.31"
 strum = "0.25.0"
 strum_macros = "0.25.3"
+derive-new = "0.6.0"
 
 [profile.release]
 debug = true
