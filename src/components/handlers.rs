@@ -963,6 +963,8 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
                     order: SortOrder::Ascending,
                 };
 
+                app.sort_order_index = 0;
+
                 Some(Action::ActivateBlock(ActiveBlock::Sort(
                     SortScreen::SortVariant,
                 )))
