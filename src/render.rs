@@ -878,7 +878,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                     );
 
                     let row_style = if current_service.is_some()
-                        && current_service.clone().unwrap() == item.deref().clone()
+                        && current_service.clone().unwrap() == item.deref()
                     {
                         RowStyle::Selected
                     } else {
@@ -1056,12 +1056,18 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_scre
 
     let filter_items = vec!["method", "source", "status"];
 
-    let current_filter = filter_items.iter().nth(app.filter_index).cloned();
+    let current_filter = filter_items.get(app.filter_index);
 
     let filter_item_rows = filter_items
         .iter()
         .map(|item| {
-            let is_selected = current_filter.unwrap_or_default() == *item;
+            let is_active = current_filter == Some(item);
+            let is_selected = match item {
+                &"method" => filter_screen == FilterScreen::FilterMethod,
+                &"source" => filter_screen == FilterScreen::FilterSource,
+                &"status" => filter_screen == FilterScreen::FilterStatus,
+                _ => false,
+            };
             let label = if is_selected { "[x]" } else { "[ ]" };
 
             let column_a = Cell::from(
@@ -1071,7 +1077,7 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_scre
                 Line::from(vec![Span::raw(item.to_string())]).alignment(Alignment::Left),
             );
 
-            let row_style = if is_selected {
+            let row_style = if is_active {
                 RowStyle::Selected
             } else {
                 RowStyle::Default
