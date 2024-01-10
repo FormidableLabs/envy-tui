@@ -1213,7 +1213,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         .direction(Direction::Horizontal)
         .split(footer_rect);
 
-    let sort = format!("{}", app.sort.to_string().to_lowercase());
+    let sort = format!("{}", app.selected_sort.to_string().to_lowercase());
     let footer_content = Paragraph::new(vec![
         Line::raw(""),
         Line::from(vec![Span::styled(

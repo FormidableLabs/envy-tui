@@ -504,6 +504,13 @@ impl Component for Home {
                 self.filter_index = 0;
                 self.filter_value_index = 0;
 
+                if let ActiveBlock::Filter(_) = self.active_block {
+                    self.selected_filter_source = FilterSource::default();
+                }
+                if let ActiveBlock::Sort(_) = self.active_block {
+                    self.selected_sort = TraceSort::default();
+                }
+
                 self.active_block = last_block.unwrap();
 
                 Ok(None)

@@ -467,17 +467,17 @@ pub fn handle_tab(app: &mut Home) -> Option<Action> {
         ActiveBlock::Details => ActiveBlock::ResponseBody,
         ActiveBlock::ResponseBody => ActiveBlock::RequestBody,
         ActiveBlock::RequestBody => ActiveBlock::Traces,
-        ActiveBlock::Sort(screen) => match screen {
-            SortScreen::SortMain => ActiveBlock::Sort(SortScreen::SortVariant),
-            SortScreen::SortVariant => ActiveBlock::Sort(SortScreen::SortActions),
-            SortScreen::SortActions => ActiveBlock::Sort(SortScreen::SortMain),
-        },
         ActiveBlock::Filter(screen) => match screen {
             FilterScreen::FilterMain => app.active_block,
             FilterScreen::FilterSource => ActiveBlock::Filter(FilterScreen::FilterActions),
             FilterScreen::FilterMethod => ActiveBlock::Filter(FilterScreen::FilterActions),
             FilterScreen::FilterStatus => ActiveBlock::Filter(FilterScreen::FilterActions),
             FilterScreen::FilterActions => ActiveBlock::Filter(FilterScreen::FilterMain),
+        },
+        ActiveBlock::Sort(screen) => match screen {
+            SortScreen::SortMain => ActiveBlock::Sort(SortScreen::SortVariant),
+            SortScreen::SortVariant => ActiveBlock::Sort(SortScreen::SortActions),
+            SortScreen::SortActions => ActiveBlock::Sort(SortScreen::SortMain),
         },
         _ => app.active_block,
     };
@@ -507,6 +507,11 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
             FilterScreen::FilterMethod => ActiveBlock::Filter(FilterScreen::FilterMain),
             FilterScreen::FilterStatus => ActiveBlock::Filter(FilterScreen::FilterMain),
             FilterScreen::FilterActions => app.active_block,
+        },
+        ActiveBlock::Sort(screen) => match screen {
+            SortScreen::SortMain => ActiveBlock::Sort(SortScreen::SortActions),
+            SortScreen::SortVariant => ActiveBlock::Sort(SortScreen::SortMain),
+            SortScreen::SortActions => ActiveBlock::Sort(SortScreen::SortVariant),
         },
         _ => app.active_block,
     };
