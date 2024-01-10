@@ -40,7 +40,7 @@ pub struct ActionableList {
 
 impl ActionableList {
     pub fn reset(&mut self) {
-        self.state.select(Some(0));
+        self.state.select(None);
     }
 
     pub fn next(&mut self) {

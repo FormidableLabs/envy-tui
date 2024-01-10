@@ -468,7 +468,7 @@ pub fn handle_tab(app: &mut Home) -> Option<Action> {
         ActiveBlock::ResponseBody => ActiveBlock::RequestBody,
         ActiveBlock::RequestBody => ActiveBlock::Traces,
         ActiveBlock::Filter(screen) => match screen {
-            FilterScreen::FilterMain => app.active_block,
+            FilterScreen::FilterMain => ActiveBlock::Filter(FilterScreen::FilterActions),
             FilterScreen::FilterSource => ActiveBlock::Filter(FilterScreen::FilterActions),
             FilterScreen::FilterMethod => ActiveBlock::Filter(FilterScreen::FilterActions),
             FilterScreen::FilterStatus => ActiveBlock::Filter(FilterScreen::FilterActions),
@@ -506,7 +506,7 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
             FilterScreen::FilterSource => ActiveBlock::Filter(FilterScreen::FilterMain),
             FilterScreen::FilterMethod => ActiveBlock::Filter(FilterScreen::FilterMain),
             FilterScreen::FilterStatus => ActiveBlock::Filter(FilterScreen::FilterMain),
-            FilterScreen::FilterActions => app.active_block,
+            FilterScreen::FilterActions => ActiveBlock::Filter(FilterScreen::FilterMain),
         },
         ActiveBlock::Sort(screen) => match screen {
             SortScreen::SortMain => ActiveBlock::Sort(SortScreen::SortActions),
@@ -954,12 +954,15 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             let maybe_selected_filter = blocks.iter().nth(app.filter_index).cloned();
 
             if let Some(selected_filter) = maybe_selected_filter {
-                match selected_filter {
-                    "method" => app.active_block = ActiveBlock::Filter(FilterScreen::FilterMethod),
-                    "source" => app.active_block = ActiveBlock::Filter(FilterScreen::FilterSource),
-                    "status" => app.active_block = ActiveBlock::Filter(FilterScreen::FilterStatus),
-                    _ => {}
-                }
+                let screen = match selected_filter {
+                    "method" => FilterScreen::FilterMethod,
+                    "source" => FilterScreen::FilterSource,
+                    "status" => FilterScreen::FilterStatus,
+                    _ => FilterScreen::default()
+                };
+
+                app.filter_value_screen = screen;
+                app.active_block = ActiveBlock::Filter(screen);
             };
 
             None

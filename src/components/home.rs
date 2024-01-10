@@ -91,15 +91,16 @@ pub struct Home {
     pub selected_trace: Option<Trace>,
     pub filter_index: usize,
     pub filter_value_index: usize,
+    pub filter_value_screen: FilterScreen,
     pub filter_actions: ActionableList,
+    pub filter_source: FilterSource,
+    pub selected_filter_source: FilterSource,
     pub sort_sources: ActionableList,
     pub sort_ordering: ActionableList,
     pub sort_actions: ActionableList,
     pub sort: TraceSort,
     pub selected_sort: TraceSort,
     pub metadata: Option<handlers::HandlerMetadata>,
-    pub filter_source: FilterSource,
-    pub selected_filter_source: FilterSource,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub details_block: DetailsPane,
@@ -612,7 +613,20 @@ impl Component for Home {
                 Ok(None)
             }
             Action::ActivateBlock(block) => {
+                if block == ActiveBlock::Sort(SortScreen::SortActions) {
+                    self.sort_actions.next();
+                } else {
+                    self.sort_actions.reset();
+                }
+
+                if block == ActiveBlock::Filter(FilterScreen::FilterActions) {
+                    self.filter_actions.next();
+                } else {
+                    self.filter_actions.reset();
+                }
+
                 self.active_block = block;
+
                 Ok(None)
             }
             Action::SelectSortOrder(order) => {
@@ -656,14 +670,14 @@ impl Component for Home {
 
                 render::render_help(self, frame, main_layout[0]);
             }
-            ActiveBlock::Filter(filter_screen) => {
+            ActiveBlock::Filter(_) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
                     .split(frame.size());
 
-                render::render_filters(self, frame, main_layout[0], filter_screen);
+                render::render_filters(self, frame, main_layout[0]);
             }
             ActiveBlock::Sort(_) => {
                 let main_layout = Layout::default()

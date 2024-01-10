@@ -865,6 +865,8 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
 
     let current_service = services.iter().nth(app.filter_value_index).cloned();
 
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::FilterSource);
+
     let rows = services
         .iter()
         .map(|item| {
@@ -877,10 +879,11 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                         Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
                     );
 
-                    let row_style = if current_service.is_some()
-                        && current_service.clone().unwrap() == item.deref()
-                    {
+                    let is_selected = current_service == Some(item.to_string());
+                    let row_style = if is_active && is_selected {
                         RowStyle::Selected
+                    } else if is_selected {
+                        RowStyle::Inactive
                     } else {
                         RowStyle::Default
                     };
@@ -902,10 +905,12 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                         )
                     };
 
-                    let row_style = if current_service.is_some()
-                        && current_service.clone().unwrap() == item.deref()
-                    {
+                    let is_selected = current_service == Some(item.to_string());
+
+                    let row_style = if is_active && is_selected {
                         RowStyle::Selected
+                    } else if is_selected {
+                        RowStyle::Inactive
                     } else {
                         RowStyle::Default
                     };
@@ -919,7 +924,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
 
     let list = Table::new([rows].concat())
         .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
-        .style(get_text_style(true, &app.colors))
+        .style(get_text_style(is_active, &app.colors))
         .widths(&[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
@@ -927,11 +932,13 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
         ])
         .column_spacing(10);
 
-    frame.render_widget(list.clone(), area);
+    frame.render_widget(list, area);
 }
 
 pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
     let current_service = app.status_filters.iter().nth(app.filter_value_index);
+
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::FilterStatus);
 
     let rows1 = app
         .status_filters
@@ -953,12 +960,15 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
 
             let (_key, status_filter) = current_service.clone().unwrap();
 
-            let row_style =
-                if current_service.is_some() && status_filter.status == item.name.clone() {
-                    RowStyle::Selected
-                } else {
-                    RowStyle::Default
-                };
+            let is_selected = status_filter.status == item.name.clone();
+
+            let row_style = if is_active && is_selected {
+                RowStyle::Selected
+            } else if is_selected {
+                RowStyle::Inactive
+            } else {
+                RowStyle::Default
+            };
 
             Row::new(vec![column_b, column_a]).style(get_row_style(row_style, &app.colors))
         })
@@ -966,7 +976,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
 
     let list = Table::new([rows1].concat())
         .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
-        .style(get_text_style(true, &app.colors))
+        .style(get_text_style(is_active, &app.colors))
         .widths(&[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
@@ -974,7 +984,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
         ])
         .column_spacing(10);
 
-    frame.render_widget(list.clone(), area);
+    frame.render_widget(list, area);
 }
 
 pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
@@ -983,6 +993,8 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         .iter()
         .map(|(_a, b)| b.name.clone())
         .nth(app.filter_value_index);
+
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::FilterMethod);
 
     let rows1 = app
         .method_filters
@@ -1002,10 +1014,12 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
                 )
             };
 
-            let row_style = if current_service.is_some()
-                && current_service.clone().unwrap() == item.name.clone()
-            {
+            let is_selected = current_service == Some(item.name.clone());
+
+            let row_style = if is_active && is_selected {
                 RowStyle::Selected
+            } else if is_selected {
+                RowStyle::Inactive
             } else {
                 RowStyle::Default
             };
@@ -1016,7 +1030,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
 
     let list = Table::new([rows1].concat())
         .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
-        .style(get_text_style(true, &app.colors))
+        .style(get_text_style(is_active, &app.colors))
         .widths(&[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
@@ -1024,10 +1038,16 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         ])
         .column_spacing(10);
 
-    frame.render_widget(list.clone(), area);
+    frame.render_widget(list, area);
 }
 
-pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_screen: FilterScreen) {
+pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
+    let filter_screen = if let ActiveBlock::Filter(screen) = app.active_block {
+        screen
+    } else {
+        FilterScreen::FilterMain
+    };
+
     let parent_block = Block::default()
         .borders(Borders::ALL)
         .border_style(get_border_style(true, &app.colors))
@@ -1061,7 +1081,9 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_scre
     let filter_item_rows = filter_items
         .iter()
         .map(|item| {
-            let is_active = current_filter == Some(item);
+            let is_active =
+                filter_screen == FilterScreen::FilterMain && current_filter == Some(item);
+            let is_inactive = current_filter == Some(item);
             let is_selected = match item {
                 &"method" => filter_screen == FilterScreen::FilterMethod,
                 &"source" => filter_screen == FilterScreen::FilterSource,
@@ -1079,6 +1101,8 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_scre
 
             let row_style = if is_active {
                 RowStyle::Selected
+            } else if is_inactive {
+                RowStyle::Inactive
             } else {
                 RowStyle::Default
             };
@@ -1090,7 +1114,7 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_scre
     let list = Table::new([filter_item_rows].concat())
         .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
         .style(get_text_style(
-            filter_screen == FilterScreen::FilterMain,
+            filter_screen == FilterScreen::FilterMethod,
             &app.colors,
         ))
         .widths(&[Constraint::Length(3), Constraint::Percentage(100)])
@@ -1105,7 +1129,6 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_scre
         .border_set(symbols::border::DOUBLE)
         .border_style(get_border_style(true, &app.colors));
 
-    let footer_rect = footer.inner(vertical_layout[1]);
     let method_filters = app
         .method_filters
         .values()
@@ -1135,26 +1158,36 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_scre
         .concat()
         .join(", ");
 
-    let footer_layout = Layout::default()
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .direction(Direction::Horizontal)
+    let footer_rect = footer.inner(vertical_layout[1]);
+    let footer_vertical_layout = Layout::default()
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .direction(Direction::Vertical)
         .split(footer_rect);
 
-    let footer_content = Paragraph::new(vec![
-        Line::raw(""),
-        Line::from(vec![Span::styled(
-            format!(
-                "filter: {}",
-                if filters.len() > 0 {
-                    filters
-                } else {
-                    "none".into()
-                }
-            ),
-            Style::default().fg(app.colors.text.accent_2),
-        )]),
-        Line::raw(""),
-    ]);
+    let footer_layout = Layout::default()
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Min(0),
+            Constraint::Length(5),
+        ])
+        .direction(Direction::Horizontal)
+        .split(footer_vertical_layout[1]);
+
+    let footer_content = Paragraph::new(vec![Line::from(vec![Span::styled(
+        format!(
+            "filter: {}",
+            if filters.len() > 0 {
+                filters
+            } else {
+                "none".into()
+            }
+        ),
+        Style::default().fg(app.colors.text.accent_2),
+    )])]);
 
     frame.render_widget(list, layout[0]);
     frame.render_widget(divider, layout[1]);
@@ -1163,12 +1196,12 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_scre
     render_actionable_list(
         &mut app.filter_actions,
         frame,
-        footer_layout[1],
+        footer_layout[2],
         &app.colors,
         app.active_block == ActiveBlock::Filter(FilterScreen::FilterActions),
     );
 
-    match filter_screen {
+    match app.filter_value_screen {
         FilterScreen::FilterMain => {}
         FilterScreen::FilterActions => {}
         FilterScreen::FilterMethod => render_filters_method(app, frame, layout[2]),

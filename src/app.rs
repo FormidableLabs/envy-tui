@@ -121,6 +121,7 @@ pub enum Action {
     UpdateSearchQuery(char),
     UpdateFilter,
     UpdateSort,
+    SelectFilterScreen(FilterScreen),
     SelectSortSource(SortSource),
     SelectSortOrder(SortOrder),
     DeleteSearchQuery,
