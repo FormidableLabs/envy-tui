@@ -903,7 +903,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                     };
 
                     let row_style = if current_service.is_some()
-                        && current_service.clone().unwrap() == item.deref().clone()
+                        && current_service.clone().unwrap() == item.deref()
                     {
                         RowStyle::Selected
                     } else {
@@ -1027,7 +1027,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
     frame.render_widget(list.clone(), area);
 }
 
-pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: FilterScreen) {
+pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect, filter_screen: FilterScreen) {
     let parent_block = Block::default()
         .borders(Borders::ALL)
         .border_style(get_border_style(true, &app.colors))
@@ -1067,8 +1067,9 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: 
             let column_a = Cell::from(
                 Line::from(vec![Span::raw(label.to_string())]).alignment(Alignment::Left),
             );
-            let column_b =
-                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
+            let column_b = Cell::from(
+                Line::from(vec![Span::raw(item.to_string())]).alignment(Alignment::Left),
+            );
 
             let row_style = if is_selected {
                 RowStyle::Selected
@@ -1106,14 +1107,15 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: 
         .map(|v| v.name.clone())
         .map(|s| format!("method-{}", s.to_lowercase()))
         .collect::<Vec<_>>();
-    let source_filters: Vec<String> = if let FilterSource::Applied(hashset) = &app.filter_source {
-        hashset
-            .iter()
-            .map(|s| format!("source-{}", s.to_lowercase()))
-            .collect()
-    } else {
-        vec![]
-    };
+    let source_filters: Vec<String> =
+        if let FilterSource::Applied(hashset) = &app.selected_filter_source {
+            hashset
+                .iter()
+                .map(|s| format!("source-{}", s.to_lowercase()))
+                .collect()
+        } else {
+            vec![]
+        };
 
     let status_filters: Vec<String> = app
         .status_filters
@@ -1126,6 +1128,11 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: 
     let filters = [method_filters, source_filters, status_filters]
         .concat()
         .join(", ");
+
+    let footer_layout = Layout::default()
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .direction(Direction::Horizontal)
+        .split(footer_rect);
 
     let footer_content = Paragraph::new(vec![
         Line::raw(""),
@@ -1146,10 +1153,18 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: 
     frame.render_widget(list, layout[0]);
     frame.render_widget(divider, layout[1]);
     frame.render_widget(footer, vertical_layout[1]);
-    frame.render_widget(footer_content, footer_rect);
+    frame.render_widget(footer_content, footer_layout[0]);
+    render_actionable_list(
+        &mut app.filter_actions,
+        frame,
+        footer_layout[1],
+        &app.colors,
+        app.active_block == ActiveBlock::Filter(FilterScreen::FilterActions),
+    );
 
     match filter_screen {
         FilterScreen::FilterMain => {}
+        FilterScreen::FilterActions => {}
         FilterScreen::FilterMethod => render_filters_method(app, frame, layout[2]),
         FilterScreen::FilterSource => render_filters_source(app, frame, layout[2]),
         FilterScreen::FilterStatus => render_filters_status(app, frame, layout[2]),

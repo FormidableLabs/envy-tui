@@ -91,6 +91,7 @@ pub struct Home {
     pub selected_trace: Option<Trace>,
     pub filter_index: usize,
     pub filter_value_index: usize,
+    pub filter_actions: ActionableList,
     pub sort_sources: ActionableList,
     pub sort_ordering: ActionableList,
     pub sort_actions: ActionableList,
@@ -98,6 +99,7 @@ pub struct Home {
     pub selected_sort: TraceSort,
     pub metadata: Option<handlers::HandlerMetadata>,
     pub filter_source: FilterSource,
+    pub selected_filter_source: FilterSource,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub details_block: DetailsPane,
@@ -130,6 +132,10 @@ impl Home {
                 "Response body",
                 config.colors.clone(),
             )?,
+            filter_actions: ActionableList::new(
+                vec![ActionableListItem::with_label("apply").with_action(Action::UpdateFilter)],
+                ListState::default(),
+            ),
             sort_sources: ActionableList::new(
                 vec![
                     ActionableListItem::with_label(SortSource::Method.as_ref())
@@ -198,10 +204,6 @@ impl Home {
 
     pub fn get_filter_source(&self) -> &FilterSource {
         &self.filter_source
-    }
-
-    pub fn set_filter_source(&mut self, f: FilterSource) {
-        self.filter_source = f
     }
 
     fn mark_trace_as_timed_out(&mut self, id: String) {
@@ -626,6 +628,10 @@ impl Component for Home {
             }
             Action::UpdateSort => {
                 self.sort = self.selected_sort.clone();
+                Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
+            }
+            Action::UpdateFilter => {
+                self.filter_source = self.selected_filter_source.clone();
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
             }
             _ => Ok(None),

@@ -52,6 +52,7 @@ pub enum FilterScreen {
     FilterMethod,
     FilterSource,
     FilterStatus,
+    FilterActions,
 }
 
 impl Display for FilterScreen {
@@ -118,6 +119,7 @@ pub enum Action {
     QuitApplication,
     NewSearch,
     UpdateSearchQuery(char),
+    UpdateFilter,
     UpdateSort,
     SelectSortSource(SortSource),
     SelectSortOrder(SortOrder),
@@ -157,14 +159,34 @@ pub enum Action {
     CloseDetailsPane(DetailsPane),
 }
 
-#[derive(Default, PartialEq, Eq, Debug, Clone, Serialize, Deserialize, strum_macros::Display, strum_macros::AsRefStr)]
+#[derive(
+    Default,
+    PartialEq,
+    Eq,
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    strum_macros::Display,
+    strum_macros::AsRefStr,
+)]
 pub enum SortOrder {
     #[default]
     Ascending,
     Descending,
 }
 
-#[derive(Default, PartialEq, Eq, Debug, Clone, Serialize, Deserialize, strum_macros::Display, strum_macros::AsRefStr)]
+#[derive(
+    Default,
+    PartialEq,
+    Eq,
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    strum_macros::Display,
+    strum_macros::AsRefStr,
+)]
 pub enum SortSource {
     #[default]
     Method,
