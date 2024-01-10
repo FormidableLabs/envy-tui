@@ -1247,20 +1247,29 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         .border_style(get_border_style(true, &app.colors));
 
     let footer_rect = footer.inner(vertical_layout[1]);
-    let footer_layout = Layout::default()
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .direction(Direction::Horizontal)
+    let footer_vertical_layout = Layout::default()
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .direction(Direction::Vertical)
         .split(footer_rect);
 
+    let footer_layout = Layout::default()
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Min(0),
+            Constraint::Length(5),
+        ])
+        .direction(Direction::Horizontal)
+        .split(footer_vertical_layout[1]);
+
     let sort = format!("{}", app.selected_sort.to_string().to_lowercase());
-    let footer_content = Paragraph::new(vec![
-        Line::raw(""),
-        Line::from(vec![Span::styled(
-            format!("sort: {}", sort),
-            Style::default().fg(app.colors.text.accent_2),
-        )]),
-        Line::raw(""),
-    ]);
+    let footer_content = Paragraph::new(vec![Line::from(vec![Span::styled(
+        format!("sort: {}", sort),
+        Style::default().fg(app.colors.text.accent_2),
+    )])]);
 
     render_actionable_list(
         &mut app.sort_sources,
@@ -1282,7 +1291,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
     render_actionable_list(
         &mut app.sort_actions,
         frame,
-        footer_layout[1],
+        footer_layout[2],
         &app.colors,
         app.active_block == ActiveBlock::Sort(SortScreen::SortActions),
     );
