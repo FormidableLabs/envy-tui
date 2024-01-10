@@ -24,11 +24,10 @@ impl ActionableListItem {
             action: None,
         }
     }
-    pub fn with_action(label: &str, value: &str, action: Action) -> Self {
+    pub fn with_action(self, action: Action) -> Self {
         Self {
-            label: label.to_string(),
-            value: Some(value.to_string()),
             action: Some(action),
+            ..self
         }
     }
 }

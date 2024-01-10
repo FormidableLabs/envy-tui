@@ -21,7 +21,7 @@ use crate::app::{
     DetailsPane::{
         QueryParams, RequestDetails, RequestHeaders, ResponseDetails, ResponseHeaders, Timing,
     },
-    FilterScreen,
+    FilterScreen, SortScreen,
 };
 use crate::components::actionable_list::ActionableList;
 use crate::components::home::{FilterSource, Home};
@@ -523,7 +523,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
         }
     };
 
-    let sort_message = format!("Active sort: {}", &app.order);
+    let sort_message = format!("Active sort: {}", &app.sort);
 
     let title = format!("Traces - [{}] - [{}]", filter_message, sort_message);
 
@@ -1156,7 +1156,7 @@ pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect, filter_screen: 
     }
 }
 
-pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
+pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
     let parent_block = Block::default()
         .borders(Borders::ALL)
         .border_style(get_border_style(true, &app.colors))
@@ -1183,10 +1183,6 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
         .direction(Direction::Horizontal)
         .split(vertical_layout[0]);
 
-    let filter_items: Vec<String> = app.sort_sources.iter().map(|s| s.to_string()).collect();
-    let filter_item_variants: Vec<String> =
-        app.sort_ordering.iter().map(|s| s.to_string()).collect();
-
     let divider = Block::default()
         .borders(Borders::LEFT)
         .border_style(get_border_style(true, &app.colors));
@@ -1197,75 +1193,12 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
         .border_style(get_border_style(true, &app.colors));
 
     let footer_rect = footer.inner(vertical_layout[1]);
+    let footer_layout = Layout::default()
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .direction(Direction::Horizontal)
+        .split(footer_rect);
 
-    let current_service = filter_items.iter().nth(app.sort_kind_index).cloned();
-
-    let filter_kind_rows = filter_items
-        .iter()
-        .enumerate()
-        .map(|(idx, item)| {
-            let column_a =
-                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
-
-            let column_b = if app.order.kind.to_string() == *item {
-                Cell::from(
-                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
-                )
-            } else {
-                Cell::from(
-                    Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
-                )
-            };
-
-            let row_style = if idx == app.sort_kind_index {
-                RowStyle::Selected
-            } else {
-                RowStyle::Default
-            };
-
-            Row::new(vec![column_b.clone(), column_a.clone()])
-                .style(get_row_style(row_style, &app.colors))
-        })
-        .collect::<Vec<_>>();
-
-    let filter_order_rows = filter_item_variants
-        .iter()
-        .enumerate()
-        .map(|(idx, item)| {
-            let column_a =
-                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
-
-            let column_b = if app.order.order.to_string() == *item {
-                Cell::from(
-                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
-                )
-            } else {
-                Cell::from(
-                    Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
-                )
-            };
-
-            let row_style = if idx == app.sort_order_index {
-                RowStyle::Selected
-            } else {
-                RowStyle::Default
-            };
-
-            Row::new(vec![column_b.clone(), column_a.clone()])
-                .style(get_row_style(row_style, &app.colors))
-        })
-        .collect::<Vec<_>>();
-
-    let sort_kind_list = Table::new([filter_kind_rows].concat())
-        .style(get_text_style(true, &app.colors))
-        .widths(&[Constraint::Percentage(45), Constraint::Percentage(40)])
-        .column_spacing(10);
-    let sort_order_list = Table::new([filter_order_rows].concat())
-        .style(get_text_style(true, &app.colors))
-        .widths(&[Constraint::Percentage(45), Constraint::Percentage(40)])
-        .column_spacing(10);
-
-    let sort = format!("{}", app.order.to_string().to_lowercase());
+    let sort = format!("{}", app.sort.to_string().to_lowercase());
     let footer_content = Paragraph::new(vec![
         Line::raw(""),
         Line::from(vec![Span::styled(
@@ -1275,9 +1208,28 @@ pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
         Line::raw(""),
     ]);
 
-    frame.render_widget(sort_kind_list, layout[0]);
+    render_actionable_list(
+        &mut app.sort_sources,
+        frame,
+        layout[0],
+        &app.colors,
+        app.active_block == ActiveBlock::Sort(SortScreen::SortMain),
+    );
     frame.render_widget(divider, layout[1]);
-    frame.render_widget(sort_order_list, layout[2]);
+    render_actionable_list(
+        &mut app.sort_ordering,
+        frame,
+        layout[2],
+        &app.colors,
+        app.active_block == ActiveBlock::Sort(SortScreen::SortVariant),
+    );
     frame.render_widget(footer, vertical_layout[1]);
-    frame.render_widget(footer_content, footer_rect);
+    frame.render_widget(footer_content, footer_layout[0]);
+    render_actionable_list(
+        &mut app.sort_actions,
+        frame,
+        footer_layout[1],
+        &app.colors,
+        app.active_block == ActiveBlock::Sort(SortScreen::SortActions),
+    );
 }

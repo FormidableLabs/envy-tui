@@ -129,9 +129,9 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
         })
         .collect::<Vec<&Trace>>();
 
-    items_as_vector.sort_by(|a, b| match &app.order {
+    items_as_vector.sort_by(|a, b| match &app.sort {
         TraceSort {
-            kind: SortSource::Duration,
+            source: SortSource::Duration,
             order: SortOrder::Ascending,
         } => a
             .http
@@ -141,7 +141,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             .unwrap_or(0)
             .cmp(&b.http.as_ref().unwrap().duration.unwrap_or(0)),
         TraceSort {
-            kind: SortSource::Duration,
+            source: SortSource::Duration,
             order: SortOrder::Descending,
         } => b
             .http
@@ -151,15 +151,15 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             .unwrap_or(0)
             .cmp(&a.http.as_ref().unwrap().duration.unwrap_or(0)),
         TraceSort {
-            kind: SortSource::Timestamp,
+            source: SortSource::Timestamp,
             order: SortOrder::Ascending,
         } => a.timestamp.cmp(&b.timestamp),
         TraceSort {
-            kind: SortSource::Timestamp,
+            source: SortSource::Timestamp,
             order: SortOrder::Descending,
         } => b.timestamp.cmp(&a.timestamp),
         TraceSort {
-            kind: SortSource::Status,
+            source: SortSource::Status,
             order: SortOrder::Descending,
         } => {
             let a_has = a.http.as_ref().unwrap().status.is_some();
@@ -182,7 +182,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             }
         }
         TraceSort {
-            kind: SortSource::Status,
+            source: SortSource::Status,
             order: SortOrder::Ascending,
         } => {
             let a_has = a.http.as_ref().unwrap().status.is_some();
@@ -205,7 +205,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             }
         }
         TraceSort {
-            kind: SortSource::Url,
+            source: SortSource::Url,
             order: SortOrder::Descending,
         } => {
             let url = &a.http.as_ref().unwrap().uri;
@@ -214,11 +214,11 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             url.cmp(&urlb)
         }
         TraceSort {
-            kind: SortSource::Url,
+            source: SortSource::Url,
             order: SortOrder::Ascending,
         } => a.timestamp.cmp(&b.timestamp),
         TraceSort {
-            kind: SortSource::Method,
+            source: SortSource::Method,
             order: SortOrder::Ascending,
         } => {
             let a_has = a.http.as_ref().unwrap().method.to_string();
@@ -227,7 +227,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             a_has.cmp(&b_has)
         }
         TraceSort {
-            kind: SortSource::Method,
+            source: SortSource::Method,
             order: SortOrder::Descending,
         } => {
             let a_has = a.http.as_ref().unwrap().method.to_string();
@@ -236,7 +236,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             b_has.cmp(&a_has)
         }
         TraceSort {
-            kind: SortSource::Source,
+            source: SortSource::Source,
             order: SortOrder::Ascending,
         } => {
             let a_has = &a.service_name;
@@ -245,7 +245,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
             a_has.cmp(&b_has)
         }
         TraceSort {
-            kind: SortSource::Source,
+            source: SortSource::Source,
             order: SortOrder::Descending,
         } => {
             let a_has = &a.service_name;

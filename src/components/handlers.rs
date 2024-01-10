@@ -126,12 +126,17 @@ pub fn handle_up(
                 _ => None,
             },
             (ActiveBlock::Sort(SortScreen::SortMain), _) => {
-                app.sort_kind_index = app.sort_kind_index.saturating_sub(1);
+                app.sort_sources.previous();
 
                 None
             }
             (ActiveBlock::Sort(SortScreen::SortVariant), _) => {
-                app.sort_order_index = app.sort_order_index.saturating_sub(1);
+                app.sort_ordering.previous();
+
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::SortActions), _) => {
+                app.sort_actions.previous();
 
                 None
             }
@@ -289,16 +294,17 @@ pub fn handle_down(
                 None
             }
             (ActiveBlock::Sort(SortScreen::SortMain), _) => {
-                if app.sort_kind_index + 1 < app.sort_sources.len() {
-                    app.sort_kind_index += 1;
-                }
+                app.sort_sources.next();
 
                 None
             }
             (ActiveBlock::Sort(SortScreen::SortVariant), _) => {
-                if app.sort_order_index + 1 < app.sort_ordering.len() {
-                    app.sort_order_index += 1;
-                }
+                app.sort_ordering.next();
+
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::SortActions), _) => {
+                app.sort_actions.next();
 
                 None
             }
@@ -451,6 +457,14 @@ pub fn handle_tab(app: &mut Home) -> Option<Action> {
         ActiveBlock::Details => ActiveBlock::ResponseBody,
         ActiveBlock::ResponseBody => ActiveBlock::RequestBody,
         ActiveBlock::RequestBody => ActiveBlock::Traces,
+        ActiveBlock::Sort(screen) => {
+
+            match screen {
+                SortScreen::SortMain => ActiveBlock::Sort(SortScreen::SortVariant),
+                SortScreen::SortVariant => ActiveBlock::Sort(SortScreen::SortActions),
+                SortScreen::SortActions => ActiveBlock::Sort(SortScreen::SortMain)
+            }
+        }
         _ => app.active_block,
     };
 
@@ -743,7 +757,9 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.request_headers_list.state.offset() >= { usable_height as usize };
+                                app.request_headers_list.state.offset() >= {
+                                    usable_height as usize
+                                };
 
                             let offset_does_not_intersects_bottom_of_rect =
                                 (app.request_details.offset as u16 + usable_height)
@@ -786,7 +802,9 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.response_headers_list.state.offset() >= { usable_height as usize };
+                                app.response_headers_list.state.offset() >= {
+                                    usable_height as usize
+                                };
 
                             let offset_does_not_intersects_bottom_of_rect =
                                 (app.response_details.offset as u16 + usable_height)
@@ -901,34 +919,13 @@ pub fn handle_general_status(app: &mut Home, s: String) -> Option<Action> {
 pub fn handle_select(app: &mut Home) -> Option<Action> {
     match app.active_block {
         ActiveBlock::Sort(SortScreen::SortMain) => {
-            if let Some(kind) = app.sort_sources.get(app.sort_kind_index) {
-                app.order = TraceSort {
-                    kind: kind.clone(),
-                    order: SortOrder::Ascending,
-                };
-
-                app.sort_order_index = 0;
-
-                Some(Action::ActivateBlock(ActiveBlock::Sort(
-                    SortScreen::SortVariant,
-                )))
-            } else {
-                None
-            }
+            app.sort_sources.select()
         }
         ActiveBlock::Sort(SortScreen::SortVariant) => {
-            if let Some(sort_order) = app.sort_ordering.get(app.sort_order_index) {
-                app.order = TraceSort {
-                    kind: app.order.kind.clone(),
-                    order: sort_order.clone(),
-                };
-
-                Some(Action::ActivateBlock(ActiveBlock::Sort(
-                    SortScreen::SortMain,
-                )))
-            } else {
-                None
-            }
+            app.sort_ordering.select()
+        }
+        ActiveBlock::Sort(SortScreen::SortActions) => {
+            app.sort_actions.select()
         }
         ActiveBlock::Filter(FilterScreen::FilterMain) => {
             let blocks = vec!["method", "source", "status"];
@@ -959,9 +956,7 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             }
 
             if let Some(filter) = current_service {
-                if let Some(status_filter) = app.status_filters.get(filter) {
-                    let d = status_filter.clone();
-
+                if let Some(d) = app.status_filters.get(filter) {
                     app.status_filters.insert(
                         filter.clone(),
                         StatusFilter {
@@ -996,8 +991,6 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             if let Some(filter) = current_service {
                 if let Some(d) = app.method_filters.get(filter) {
-                    let d = d.clone();
-
                     app.method_filters.insert(
                         filter.clone(),
                         MethodFilter {

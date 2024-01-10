@@ -18,7 +18,9 @@ use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
 use crate::wss::client;
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize, Display, EnumIs, EnumIter)]
+#[derive(
+    Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize, Display, EnumIs, EnumIter,
+)]
 #[repr(u8)]
 pub enum DetailsPane {
     #[default]
@@ -63,6 +65,7 @@ pub enum SortScreen {
     #[default]
     SortMain,
     SortVariant,
+    SortActions,
 }
 
 #[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -115,6 +118,9 @@ pub enum Action {
     QuitApplication,
     NewSearch,
     UpdateSearchQuery(char),
+    UpdateSort,
+    SelectSortSource(SortSource),
+    SelectSortOrder(SortOrder),
     DeleteSearchQuery,
     ExitSearch,
     Help,
@@ -151,14 +157,14 @@ pub enum Action {
     CloseDetailsPane(DetailsPane),
 }
 
-#[derive(Default, PartialEq, Eq, Debug, Clone, strum_macros::Display)]
+#[derive(Default, PartialEq, Eq, Debug, Clone, Serialize, Deserialize, strum_macros::Display, strum_macros::AsRefStr)]
 pub enum SortOrder {
     #[default]
     Ascending,
     Descending,
 }
 
-#[derive(Default, PartialEq, Eq, Debug, Clone, strum_macros::Display)]
+#[derive(Default, PartialEq, Eq, Debug, Clone, Serialize, Deserialize, strum_macros::Display, strum_macros::AsRefStr)]
 pub enum SortSource {
     #[default]
     Method,
@@ -171,7 +177,7 @@ pub enum SortSource {
 
 #[derive(PartialEq, Eq, Debug, Clone, Default)]
 pub struct TraceSort {
-    pub kind: SortSource,
+    pub source: SortSource,
     pub order: SortOrder,
 }
 
@@ -179,51 +185,51 @@ impl Display for TraceSort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TraceSort {
-                kind: SortSource::Timestamp,
+                source: SortSource::Timestamp,
                 order: SortOrder::Ascending,
             } => write!(f, "Timestamp ↑"),
             TraceSort {
-                kind: SortSource::Timestamp,
+                source: SortSource::Timestamp,
                 order: SortOrder::Descending,
             } => write!(f, "Timestamp ↓"),
             TraceSort {
-                kind: SortSource::Method,
+                source: SortSource::Method,
                 order: SortOrder::Ascending,
             } => write!(f, "Method ↑"),
             TraceSort {
-                kind: SortSource::Method,
+                source: SortSource::Method,
                 order: SortOrder::Descending,
             } => write!(f, "Method ↓"),
             TraceSort {
-                kind: SortSource::Status,
+                source: SortSource::Status,
                 order: SortOrder::Ascending,
             } => write!(f, "Status ↑"),
             TraceSort {
-                kind: SortSource::Status,
+                source: SortSource::Status,
                 order: SortOrder::Descending,
             } => write!(f, "Status ↓"),
             TraceSort {
-                kind: SortSource::Duration,
+                source: SortSource::Duration,
                 order: SortOrder::Ascending,
             } => write!(f, "Duration ↑"),
             TraceSort {
-                kind: SortSource::Duration,
+                source: SortSource::Duration,
                 order: SortOrder::Descending,
             } => write!(f, "Duration ↓"),
             TraceSort {
-                kind: SortSource::Source,
+                source: SortSource::Source,
                 order: SortOrder::Ascending,
             } => write!(f, "Source ↑"),
             TraceSort {
-                kind: SortSource::Source,
+                source: SortSource::Source,
                 order: SortOrder::Descending,
             } => write!(f, "Source ↓"),
             TraceSort {
-                kind: SortSource::Url,
+                source: SortSource::Url,
                 order: SortOrder::Ascending,
             } => write!(f, "Url ↑"),
             TraceSort {
-                kind: SortSource::Url,
+                source: SortSource::Url,
                 order: SortOrder::Descending,
             } => write!(f, "Url ↓"),
         }

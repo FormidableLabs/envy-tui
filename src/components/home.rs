@@ -10,6 +10,7 @@ use http::{HeaderName, HeaderValue};
 use ratatui::{
     layout::Layout,
     prelude::{Constraint, Direction, Rect},
+    widgets::ListState,
 };
 use strum::IntoEnumIterator;
 use tokio::sync::mpsc::UnboundedSender;
@@ -90,15 +91,15 @@ pub struct Home {
     pub selected_trace: Option<Trace>,
     pub filter_index: usize,
     pub filter_value_index: usize,
-    pub sort_kind_index: usize,
-    pub sort_order_index: usize,
-    pub sort_sources: Vec<SortSource>,
-    pub sort_ordering: Vec<SortOrder>,
+    pub sort_sources: ActionableList,
+    pub sort_ordering: ActionableList,
+    pub sort_actions: ActionableList,
+    pub sort: TraceSort,
+    pub selected_sort: TraceSort,
     pub metadata: Option<handlers::HandlerMetadata>,
     pub filter_source: FilterSource,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
-    pub order: TraceSort,
     pub details_block: DetailsPane,
     pub details_tabs: Vec<DetailsPane>,
     pub details_tab_index: usize,
@@ -129,15 +130,36 @@ impl Home {
                 "Response body",
                 config.colors.clone(),
             )?,
-            sort_sources: vec![
-                SortSource::Method,
-                SortSource::Status,
-                SortSource::Source,
-                SortSource::Url,
-                SortSource::Duration,
-                SortSource::Timestamp,
-            ],
-            sort_ordering: vec![SortOrder::Ascending, SortOrder::Descending],
+            sort_sources: ActionableList::new(
+                vec![
+                    ActionableListItem::with_label(SortSource::Method.as_ref())
+                        .with_action(Action::SelectSortSource(SortSource::Method)),
+                    ActionableListItem::with_label(SortSource::Status.as_ref())
+                        .with_action(Action::SelectSortSource(SortSource::Status)),
+                    ActionableListItem::with_label(SortSource::Source.as_ref())
+                        .with_action(Action::SelectSortSource(SortSource::Source)),
+                    ActionableListItem::with_label(SortSource::Url.as_ref())
+                        .with_action(Action::SelectSortSource(SortSource::Url)),
+                    ActionableListItem::with_label(SortSource::Duration.as_ref())
+                        .with_action(Action::SelectSortSource(SortSource::Duration)),
+                    ActionableListItem::with_label(SortSource::Timestamp.as_ref())
+                        .with_action(Action::SelectSortSource(SortSource::Timestamp)),
+                ],
+                ListState::default(),
+            ),
+            sort_ordering: ActionableList::new(
+                vec![
+                    ActionableListItem::with_label(SortOrder::Ascending.as_ref())
+                        .with_action(Action::SelectSortOrder(SortOrder::Ascending)),
+                    ActionableListItem::with_label(SortOrder::Descending.as_ref())
+                        .with_action(Action::SelectSortOrder(SortOrder::Descending)),
+                ],
+                ListState::default(),
+            ),
+            sort_actions: ActionableList::new(
+                vec![ActionableListItem::with_label("apply").with_action(Action::UpdateSort)],
+                ListState::default(),
+            ),
             details_tabs: DetailsPane::iter().collect(),
             details_panes: vec![],
             ..Self::default()
@@ -149,7 +171,7 @@ impl Home {
 
         statuses.iter().for_each(|status| {
             home.status_filters.insert(
-                status.clone().to_string(),
+                status.to_string(),
                 StatusFilter {
                     status: status.to_string(),
                     selected: false,
@@ -230,17 +252,15 @@ impl Home {
             rows.push(ActionableListItem::with_labelled_value("port", &port));
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::RequestDetails) {
-                rows.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::RequestDetails),
-                ))
+                rows.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::RequestDetails)),
+                )
             } else {
-                rows.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::RequestDetails),
-                ))
+                rows.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::RequestDetails)),
+                )
             };
 
             self.request_details_list =
@@ -270,17 +290,15 @@ impl Home {
                 .collect();
 
             if self.details_tabs.contains(&DetailsPane::QueryParams) {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::QueryParams),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::QueryParams)),
+                )
             } else {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::QueryParams),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::QueryParams)),
+                )
             };
 
             self.query_params_list =
@@ -318,17 +336,15 @@ impl Home {
             ));
 
             if self.details_tabs.contains(&DetailsPane::ResponseDetails) {
-                items.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::ResponseDetails),
-                ))
+                items.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::ResponseDetails)),
+                )
             } else {
-                items.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::ResponseDetails),
-                ))
+                items.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::ResponseDetails)),
+                )
             };
 
             self.response_details_list =
@@ -355,17 +371,15 @@ impl Home {
                 .collect();
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::RequestHeaders) {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::RequestHeaders),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::RequestHeaders)),
+                )
             } else {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::RequestHeaders),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::RequestHeaders)),
+                )
             };
 
             self.request_headers_list =
@@ -393,17 +407,15 @@ impl Home {
 
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::ResponseHeaders) {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::ResponseHeaders),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::ResponseHeaders)),
+                )
             } else {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::ResponseHeaders),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::ResponseHeaders)),
+                )
             };
 
             self.response_headers_list =
@@ -593,6 +605,28 @@ impl Component for Home {
             Action::ActivateBlock(block) => {
                 self.active_block = block;
                 Ok(None)
+            }
+            Action::SelectSortOrder(order) => {
+                self.selected_sort = TraceSort {
+                    order,
+                    source: self.selected_sort.source.clone(),
+                };
+                Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
+                    SortScreen::SortActions,
+                ))))
+            }
+            Action::SelectSortSource(source) => {
+                self.selected_sort = TraceSort {
+                    order: self.selected_sort.order.clone(),
+                    source,
+                };
+                Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
+                    SortScreen::SortVariant,
+                ))))
+            }
+            Action::UpdateSort => {
+                self.sort = self.selected_sort.clone();
+                Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
             }
             _ => Ok(None),
         }
