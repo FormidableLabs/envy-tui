@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::ops::Deref;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
@@ -21,10 +20,10 @@ use crate::app::{
     DetailsPane::{
         QueryParams, RequestDetails, RequestHeaders, ResponseDetails, ResponseHeaders, Timing,
     },
-    FilterScreen, SortScreen,
+    FilterScreen, SortScreen, TraceFilter, WebSocketInternalState,
 };
 use crate::components::actionable_list::ActionableList;
-use crate::components::home::{FilterSource, Home};
+use crate::components::home::Home;
 use crate::config::Colors;
 use crate::consts::NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE;
 use crate::services::websocket::Trace;
@@ -554,7 +553,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
             let id = request.id.clone();
 
             let selected = match selected_item {
-                Some(item) => item.deref() == request.deref(),
+                Some(item) => item == request,
                 None => false,
             };
 
@@ -668,13 +667,11 @@ pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
         );
 
     let wss_status_message = match app.wss_state {
-        crate::components::home::WebSockerInternalState::Connected(1) => {
-            "🟢 1 client connected".to_string()
-        }
-        crate::components::home::WebSockerInternalState::Connected(v) => {
+        WebSocketInternalState::Connected(1) => "🟢 1 client connected".to_string(),
+        WebSocketInternalState::Connected(v) => {
             format!("🟢 {:?} clients connected", v)
         }
-        crate::components::home::WebSockerInternalState::Closed => "⭕ Server closed".to_string(),
+        WebSocketInternalState::Closed => "⭕ Server closed".to_string(),
 
         _ => "🟠 Waiting for connection".to_string(),
     };
@@ -865,7 +862,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
 
     let current_service = services.iter().nth(app.filter_value_index).cloned();
 
-    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::FilterSource);
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Source);
 
     let rows = services
         .iter()
@@ -873,8 +870,8 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
             let column_a =
                 Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
 
-            match app.get_filter_source() {
-                FilterSource::All => {
+            match app.get_filter() {
+                TraceFilter::All => {
                     let column_b = Cell::from(
                         Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
                     );
@@ -891,7 +888,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                     return Row::new(vec![column_b, column_a])
                         .style(get_row_style(row_style, &app.colors));
                 }
-                FilterSource::Applied(applied) => {
+                TraceFilter::Applied(applied) => {
                     // let column_b = if applied.contains(current_service.as_ref().unwrap()) {
                     let column_b = if applied.contains(item) {
                         Cell::from(
@@ -938,7 +935,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
 pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
     let current_service = app.status_filters.iter().nth(app.filter_value_index);
 
-    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::FilterStatus);
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Status);
 
     let rows1 = app
         .status_filters
@@ -994,7 +991,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         .map(|(_a, b)| b.name.clone())
         .nth(app.filter_value_index);
 
-    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::FilterMethod);
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Method);
 
     let rows1 = app
         .method_filters
@@ -1045,7 +1042,7 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
     let filter_screen = if let ActiveBlock::Filter(screen) = app.active_block {
         screen
     } else {
-        FilterScreen::FilterMain
+        FilterScreen::Main
     };
 
     let parent_block = Block::default()
@@ -1076,18 +1073,17 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
 
     let filter_items = vec!["method", "source", "status"];
 
-    let current_filter = filter_items.get(app.filter_index);
+    let current_filter = filter_items.get(app.filter_source_index);
 
     let filter_item_rows = filter_items
         .iter()
         .map(|item| {
-            let is_active =
-                filter_screen == FilterScreen::FilterMain && current_filter == Some(item);
+            let is_active = filter_screen == FilterScreen::Main && current_filter == Some(item);
             let is_inactive = current_filter == Some(item);
             let is_selected = match item {
-                &"method" => filter_screen == FilterScreen::FilterMethod,
-                &"source" => filter_screen == FilterScreen::FilterSource,
-                &"status" => filter_screen == FilterScreen::FilterStatus,
+                &"method" => filter_screen == FilterScreen::Method,
+                &"source" => filter_screen == FilterScreen::Source,
+                &"status" => filter_screen == FilterScreen::Status,
                 _ => false,
             };
             let label = if is_selected { "[x]" } else { "[ ]" };
@@ -1114,7 +1110,7 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
     let list = Table::new([filter_item_rows].concat())
         .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
         .style(get_text_style(
-            filter_screen == FilterScreen::FilterMethod,
+            filter_screen == FilterScreen::Method,
             &app.colors,
         ))
         .widths(&[Constraint::Length(3), Constraint::Percentage(100)])
@@ -1136,15 +1132,14 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         .map(|v| v.name.clone())
         .map(|s| format!("method-{}", s.to_lowercase()))
         .collect::<Vec<_>>();
-    let source_filters: Vec<String> =
-        if let FilterSource::Applied(hashset) = &app.selected_filter_source {
-            hashset
-                .iter()
-                .map(|s| format!("source-{}", s.to_lowercase()))
-                .collect()
-        } else {
-            vec![]
-        };
+    let source_filters: Vec<String> = if let TraceFilter::Applied(hashset) = &app.selected_filter {
+        hashset
+            .iter()
+            .map(|s| format!("source-{}", s.to_lowercase()))
+            .collect()
+    } else {
+        vec![]
+    };
 
     let status_filters: Vec<String> = app
         .status_filters
@@ -1198,15 +1193,15 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         frame,
         footer_layout[2],
         &app.colors,
-        app.active_block == ActiveBlock::Filter(FilterScreen::FilterActions),
+        app.active_block == ActiveBlock::Filter(FilterScreen::Actions),
     );
 
     match app.filter_value_screen {
-        FilterScreen::FilterMain => {}
-        FilterScreen::FilterActions => {}
-        FilterScreen::FilterMethod => render_filters_method(app, frame, layout[2]),
-        FilterScreen::FilterSource => render_filters_source(app, frame, layout[2]),
-        FilterScreen::FilterStatus => render_filters_status(app, frame, layout[2]),
+        FilterScreen::Main => {}
+        FilterScreen::Actions => {}
+        FilterScreen::Method => render_filters_method(app, frame, layout[2]),
+        FilterScreen::Source => render_filters_source(app, frame, layout[2]),
+        FilterScreen::Status => render_filters_status(app, frame, layout[2]),
     }
 }
 
@@ -1276,15 +1271,15 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         frame,
         layout[0],
         &app.colors,
-        app.active_block == ActiveBlock::Sort(SortScreen::SortMain),
+        app.active_block == ActiveBlock::Sort(SortScreen::Source),
     );
     frame.render_widget(divider, layout[1]);
     render_actionable_list(
-        &mut app.sort_ordering,
+        &mut app.sort_directions,
         frame,
         layout[2],
         &app.colors,
-        app.active_block == ActiveBlock::Sort(SortScreen::SortVariant),
+        app.active_block == ActiveBlock::Sort(SortScreen::Order),
     );
     frame.render_widget(footer, vertical_layout[1]);
     frame.render_widget(footer_content, footer_layout[0]);
@@ -1293,6 +1288,6 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         frame,
         footer_layout[2],
         &app.colors,
-        app.active_block == ActiveBlock::Sort(SortScreen::SortActions),
+        app.active_block == ActiveBlock::Sort(SortScreen::Actions),
     );
 }

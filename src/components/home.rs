@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     str::FromStr,
 };
 
@@ -18,8 +18,9 @@ use tokio::task::AbortHandle;
 
 use crate::{
     app::{
-        Action, ActiveBlock, DetailsPane, FilterScreen, Mode, SortOrder, SortScreen, SortSource,
-        TraceSort, UIState,
+        Action, ActiveBlock, DetailsPane, FilterScreen, MethodFilter, Mode, SortDirection,
+        SortScreen, SortSource, StatusFilter, TraceFilter, TraceSort, UIState,
+        WebSocketInternalState,
     },
     components::actionable_list::{ActionableList, ActionableListItem},
     components::component::Component,
@@ -31,38 +32,6 @@ use crate::{
     tui::{Event, Frame},
     utils::parse_query_params,
 };
-
-#[derive(Default, PartialEq, Eq, Debug, Clone)]
-pub enum WebSockerInternalState {
-    Connected(usize),
-    Open,
-    #[default]
-    Closed,
-}
-
-#[derive(Clone, PartialEq, Debug, Eq, Default)]
-pub enum FilterSource {
-    #[default]
-    All,
-    Applied(HashSet<String>), // Source(String),
-                              // Method(http::method::Method),
-                              // Status(String),
-}
-
-#[derive(Default)]
-pub struct MethodFilter {
-    pub method: http::method::Method,
-    pub name: String,
-    pub selected: bool,
-}
-
-#[derive(Default)]
-pub struct StatusFilter {
-    pub status: String,
-    pub name: String,
-    pub selected: bool,
-}
-
 #[derive(Default)]
 pub struct Home {
     pub active_block: ActiveBlock,
@@ -85,24 +54,24 @@ pub struct Home {
     pub ws_status: String,
     pub wss_connected: bool,
     pub wss_connection_count: usize,
-    pub wss_state: WebSockerInternalState,
+    pub wss_state: WebSocketInternalState,
     pub request_json_viewer: jsonviewer::JSONViewer,
     pub response_json_viewer: jsonviewer::JSONViewer,
     pub selected_trace: Option<Trace>,
-    pub filter_index: usize,
+    pub filter_actions: ActionableList,
+    pub filter: TraceFilter,
+    pub selected_filter: TraceFilter,
+    pub filter_source_index: usize,
     pub filter_value_index: usize,
     pub filter_value_screen: FilterScreen,
-    pub filter_actions: ActionableList,
-    pub filter_source: FilterSource,
-    pub selected_filter_source: FilterSource,
-    pub sort_sources: ActionableList,
-    pub sort_ordering: ActionableList,
-    pub sort_actions: ActionableList,
-    pub sort: TraceSort,
-    pub selected_sort: TraceSort,
-    pub metadata: Option<handlers::HandlerMetadata>,
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
+    pub sort: TraceSort,
+    pub selected_sort: TraceSort,
+    pub sort_actions: ActionableList,
+    pub sort_directions: ActionableList,
+    pub sort_sources: ActionableList,
+    pub metadata: Option<handlers::HandlerMetadata>,
     pub details_block: DetailsPane,
     pub details_tabs: Vec<DetailsPane>,
     pub details_tab_index: usize,
@@ -154,12 +123,12 @@ impl Home {
                 ],
                 ListState::default(),
             ),
-            sort_ordering: ActionableList::new(
+            sort_directions: ActionableList::new(
                 vec![
-                    ActionableListItem::with_label(SortOrder::Ascending.as_ref())
-                        .with_action(Action::SelectSortOrder(SortOrder::Ascending)),
-                    ActionableListItem::with_label(SortOrder::Descending.as_ref())
-                        .with_action(Action::SelectSortOrder(SortOrder::Descending)),
+                    ActionableListItem::with_label(SortDirection::Ascending.as_ref())
+                        .with_action(Action::SelectSortDirection(SortDirection::Ascending)),
+                    ActionableListItem::with_label(SortDirection::Descending.as_ref())
+                        .with_action(Action::SelectSortDirection(SortDirection::Descending)),
                 ],
                 ListState::default(),
             ),
@@ -203,8 +172,8 @@ impl Home {
         Ok(home)
     }
 
-    pub fn get_filter_source(&self) -> &FilterSource {
-        &self.filter_source
+    pub fn get_filter(&self) -> &TraceFilter {
+        &self.filter
     }
 
     fn mark_trace_as_timed_out(&mut self, id: String) {
@@ -502,11 +471,11 @@ impl Component for Home {
                     return Ok(Some(Action::QuitApplication));
                 }
 
-                self.filter_index = 0;
+                self.filter_source_index = 0;
                 self.filter_value_index = 0;
 
                 if let ActiveBlock::Filter(_) = self.active_block {
-                    self.selected_filter_source = FilterSource::default();
+                    self.selected_filter = TraceFilter::default();
                 }
                 if let ActiveBlock::Sort(_) = self.active_block {
                     self.selected_sort = TraceSort::default();
@@ -527,7 +496,7 @@ impl Component for Home {
 
                 self.previous_blocks.push(current_block);
 
-                self.active_block = ActiveBlock::Filter(FilterScreen::FilterMain);
+                self.active_block = ActiveBlock::Filter(FilterScreen::Main);
 
                 Ok(None)
             }
@@ -536,7 +505,7 @@ impl Component for Home {
 
                 self.previous_blocks.push(current_block);
 
-                self.active_block = ActiveBlock::Sort(SortScreen::SortMain);
+                self.active_block = ActiveBlock::Sort(SortScreen::Source);
 
                 Ok(None)
             }
@@ -613,13 +582,13 @@ impl Component for Home {
                 Ok(None)
             }
             Action::ActivateBlock(block) => {
-                if block == ActiveBlock::Sort(SortScreen::SortActions) {
+                if block == ActiveBlock::Sort(SortScreen::Actions) {
                     self.sort_actions.next();
                 } else {
                     self.sort_actions.reset();
                 }
 
-                if block == ActiveBlock::Filter(FilterScreen::FilterActions) {
+                if block == ActiveBlock::Filter(FilterScreen::Actions) {
                     self.filter_actions.next();
                 } else {
                     self.filter_actions.reset();
@@ -629,22 +598,22 @@ impl Component for Home {
 
                 Ok(None)
             }
-            Action::SelectSortOrder(order) => {
+            Action::SelectSortDirection(direction) => {
                 self.selected_sort = TraceSort {
-                    order,
+                    direction,
                     source: self.selected_sort.source.clone(),
                 };
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
-                    SortScreen::SortActions,
+                    SortScreen::Actions,
                 ))))
             }
             Action::SelectSortSource(source) => {
                 self.selected_sort = TraceSort {
-                    order: self.selected_sort.order.clone(),
+                    direction: self.selected_sort.direction.clone(),
                     source,
                 };
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
-                    SortScreen::SortVariant,
+                    SortScreen::Source,
                 ))))
             }
             Action::UpdateSort => {
@@ -652,7 +621,7 @@ impl Component for Home {
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
             }
             Action::UpdateFilter => {
-                self.filter_source = self.selected_filter_source.clone();
+                self.filter = self.selected_filter.clone();
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
             }
             _ => Ok(None),

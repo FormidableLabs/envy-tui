@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use tokio::sync::Mutex;
 
 use crate::components::component::Component;
 use crate::components::handlers::HandlerMetadata;
-use crate::components::home::{Home, WebSockerInternalState};
+use crate::components::home::Home;
 use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
 use crate::wss::client;
@@ -48,11 +49,11 @@ pub enum Mode {
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilterScreen {
     #[default]
-    FilterMain,
-    FilterMethod,
-    FilterSource,
-    FilterStatus,
-    FilterActions,
+    Main,
+    Method,
+    Source,
+    Status,
+    Actions,
 }
 
 impl Display for FilterScreen {
@@ -64,9 +65,9 @@ impl Display for FilterScreen {
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SortScreen {
     #[default]
-    SortMain,
-    SortVariant,
-    SortActions,
+    Source,
+    Order,
+    Actions,
 }
 
 #[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -121,9 +122,8 @@ pub enum Action {
     UpdateSearchQuery(char),
     UpdateFilter,
     UpdateSort,
-    SelectFilterScreen(FilterScreen),
     SelectSortSource(SortSource),
-    SelectSortOrder(SortOrder),
+    SelectSortDirection(SortDirection),
     DeleteSearchQuery,
     ExitSearch,
     Help,
@@ -145,7 +145,7 @@ pub enum Action {
     #[serde(skip)]
     SetGeneralStatus(String),
     #[serde(skip)]
-    SetWebsocketStatus(WebSockerInternalState),
+    SetWebsocketStatus(WebSocketInternalState),
     #[serde(skip)]
     MarkTraceAsTimedOut(String),
     #[serde(skip)]
@@ -160,6 +160,37 @@ pub enum Action {
     CloseDetailsPane(DetailsPane),
 }
 
+#[derive(Default, PartialEq, Eq, Debug, Clone)]
+pub enum WebSocketInternalState {
+    Connected(usize),
+    Open,
+    #[default]
+    Closed,
+}
+
+#[derive(Clone, PartialEq, Debug, Eq, Default)]
+pub enum TraceFilter {
+    #[default]
+    All,
+    Applied(HashSet<String>), // Source(String),
+                              // Method(http::method::Method),
+                              // Status(String),
+}
+
+#[derive(Default)]
+pub struct MethodFilter {
+    pub method: http::method::Method,
+    pub name: String,
+    pub selected: bool,
+}
+
+#[derive(Default)]
+pub struct StatusFilter {
+    pub status: String,
+    pub name: String,
+    pub selected: bool,
+}
+
 #[derive(
     Default,
     PartialEq,
@@ -171,7 +202,7 @@ pub enum Action {
     strum_macros::Display,
     strum_macros::AsRefStr,
 )]
-pub enum SortOrder {
+pub enum SortDirection {
     #[default]
     Ascending,
     Descending,
@@ -201,7 +232,7 @@ pub enum SortSource {
 #[derive(PartialEq, Eq, Debug, Clone, Default)]
 pub struct TraceSort {
     pub source: SortSource,
-    pub order: SortOrder,
+    pub direction: SortDirection,
 }
 
 impl Display for TraceSort {
@@ -209,51 +240,51 @@ impl Display for TraceSort {
         match self {
             TraceSort {
                 source: SortSource::Timestamp,
-                order: SortOrder::Ascending,
+                direction: SortDirection::Ascending,
             } => write!(f, "Timestamp ↑"),
             TraceSort {
                 source: SortSource::Timestamp,
-                order: SortOrder::Descending,
+                direction: SortDirection::Descending,
             } => write!(f, "Timestamp ↓"),
             TraceSort {
                 source: SortSource::Method,
-                order: SortOrder::Ascending,
+                direction: SortDirection::Ascending,
             } => write!(f, "Method ↑"),
             TraceSort {
                 source: SortSource::Method,
-                order: SortOrder::Descending,
+                direction: SortDirection::Descending,
             } => write!(f, "Method ↓"),
             TraceSort {
                 source: SortSource::Status,
-                order: SortOrder::Ascending,
+                direction: SortDirection::Ascending,
             } => write!(f, "Status ↑"),
             TraceSort {
                 source: SortSource::Status,
-                order: SortOrder::Descending,
+                direction: SortDirection::Descending,
             } => write!(f, "Status ↓"),
             TraceSort {
                 source: SortSource::Duration,
-                order: SortOrder::Ascending,
+                direction: SortDirection::Ascending,
             } => write!(f, "Duration ↑"),
             TraceSort {
                 source: SortSource::Duration,
-                order: SortOrder::Descending,
+                direction: SortDirection::Descending,
             } => write!(f, "Duration ↓"),
             TraceSort {
                 source: SortSource::Source,
-                order: SortOrder::Ascending,
+                direction: SortDirection::Ascending,
             } => write!(f, "Source ↑"),
             TraceSort {
                 source: SortSource::Source,
-                order: SortOrder::Descending,
+                direction: SortDirection::Descending,
             } => write!(f, "Source ↓"),
             TraceSort {
                 source: SortSource::Url,
-                order: SortOrder::Ascending,
+                direction: SortDirection::Ascending,
             } => write!(f, "Url ↑"),
             TraceSort {
                 source: SortSource::Url,
-                order: SortOrder::Descending,
+                direction: SortDirection::Descending,
             } => write!(f, "Url ↓"),
         }
     }

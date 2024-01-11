@@ -14,7 +14,7 @@ use tungstenite::connect;
 use tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 use url::Url;
 
-use crate::app::Action;
+use crate::app::{Action,WebSocketInternalState};
 use crate::parser::parse_raw_trace;
 
 use tungstenite::Message;
@@ -33,11 +33,7 @@ struct RequestPath {
 }
 
 impl Callback for &mut RequestPath {
-    fn on_request(
-        mut self,
-        request: &Request,
-        response: Response,
-    ) -> Result<Response, ErrorResponse> {
+    fn on_request(self, request: &Request, response: Response) -> Result<Response, ErrorResponse> {
         self.uri = request.uri().to_string();
 
         Ok(response)
@@ -241,14 +237,14 @@ pub async fn handle_connection(
     match number_of_connections - 1 {
         0 => {
             let _ = action_sender.send(Action::SetWebsocketStatus(
-                crate::components::home::WebSockerInternalState::Open,
+                WebSocketInternalState::Open,
             ));
 
             ()
         }
         v => {
             let _ = action_sender.send(Action::SetWebsocketStatus(
-                crate::components::home::WebSockerInternalState::Connected(v),
+                WebSocketInternalState::Connected(v),
             ));
 
             ()
@@ -291,13 +287,13 @@ pub async fn handle_connection(
         match number_of_connections - 1 {
             0 => {
                 let _ = action_sender.send(Action::SetWebsocketStatus(
-                    crate::components::home::WebSockerInternalState::Open,
+                    WebSocketInternalState::Open,
                 ));
                 ()
             }
             v => {
                 let _ = action_sender.send(Action::SetWebsocketStatus(
-                    crate::components::home::WebSockerInternalState::Connected(v),
+                    WebSocketInternalState::Connected(v),
                 ));
                 ()
             }
