@@ -66,7 +66,7 @@ impl Display for FilterScreen {
 pub enum SortScreen {
     #[default]
     Source,
-    Order,
+    Direction,
     Actions,
 }
 

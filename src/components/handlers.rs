@@ -132,7 +132,7 @@ pub fn handle_up(
 
                 None
             }
-            (ActiveBlock::Sort(SortScreen::Order), _) => {
+            (ActiveBlock::Sort(SortScreen::Direction), _) => {
                 app.sort_directions.previous();
 
                 None
@@ -305,7 +305,7 @@ pub fn handle_down(
 
                 None
             }
-            (ActiveBlock::Sort(SortScreen::Order), _) => {
+            (ActiveBlock::Sort(SortScreen::Direction), _) => {
                 app.sort_directions.next();
 
                 None
@@ -404,12 +404,12 @@ pub fn handle_enter(app: &mut Home) -> Option<Action> {
         None
     } else if app.active_block == ActiveBlock::Details {
         match app.details_block {
-            DetailsPane::RequestDetails => app.request_details_list.select(),
-            DetailsPane::QueryParams => app.query_params_list.select(),
-            DetailsPane::RequestHeaders => app.request_headers_list.select(),
-            DetailsPane::ResponseDetails => app.response_details_list.select(),
-            DetailsPane::ResponseHeaders => app.response_headers_list.select(),
-            DetailsPane::Timing => app.timing_list.select(),
+            DetailsPane::RequestDetails => app.request_details_list.action(),
+            DetailsPane::QueryParams => app.query_params_list.action(),
+            DetailsPane::RequestHeaders => app.request_headers_list.action(),
+            DetailsPane::ResponseDetails => app.response_details_list.action(),
+            DetailsPane::ResponseHeaders => app.response_headers_list.action(),
+            DetailsPane::Timing => app.timing_list.action(),
         }
     } else {
         None
@@ -472,8 +472,8 @@ pub fn handle_tab(app: &mut Home) -> Option<Action> {
             FilterScreen::Actions => ActiveBlock::Filter(FilterScreen::Main),
         },
         ActiveBlock::Sort(screen) => match screen {
-            SortScreen::Source => ActiveBlock::Sort(SortScreen::Order),
-            SortScreen::Order => ActiveBlock::Sort(SortScreen::Actions),
+            SortScreen::Source => ActiveBlock::Sort(SortScreen::Direction),
+            SortScreen::Direction => ActiveBlock::Sort(SortScreen::Actions),
             SortScreen::Actions => ActiveBlock::Sort(SortScreen::Source),
         },
         _ => app.active_block,
@@ -507,8 +507,8 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
         },
         ActiveBlock::Sort(screen) => match screen {
             SortScreen::Source => ActiveBlock::Sort(SortScreen::Actions),
-            SortScreen::Order => ActiveBlock::Sort(SortScreen::Source),
-            SortScreen::Actions => ActiveBlock::Sort(SortScreen::Order),
+            SortScreen::Direction => ActiveBlock::Sort(SortScreen::Source),
+            SortScreen::Actions => ActiveBlock::Sort(SortScreen::Direction),
         },
         _ => app.active_block,
     };
@@ -941,10 +941,10 @@ pub fn handle_general_status(app: &mut Home, s: String) -> Option<Action> {
 
 pub fn handle_select(app: &mut Home) -> Option<Action> {
     match app.active_block {
-        ActiveBlock::Sort(SortScreen::Source) => app.sort_sources.select(),
-        ActiveBlock::Sort(SortScreen::Order) => app.sort_directions.select(),
-        ActiveBlock::Sort(SortScreen::Actions) => app.sort_actions.select(),
-        ActiveBlock::Filter(FilterScreen::Actions) => app.filter_actions.select(),
+        ActiveBlock::Sort(SortScreen::Source) => app.sort_sources.action(),
+        ActiveBlock::Sort(SortScreen::Direction) => app.sort_directions.action(),
+        ActiveBlock::Sort(SortScreen::Actions) => app.sort_actions.action(),
+        ActiveBlock::Filter(FilterScreen::Actions) => app.filter_actions.action(),
         ActiveBlock::Filter(FilterScreen::Main) => {
             let blocks = vec!["method", "source", "status"];
 
@@ -959,6 +959,7 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
                 };
 
                 app.filter_value_screen = screen;
+                app.filter_value_index = 0;
                 app.active_block = ActiveBlock::Filter(screen);
             };
 

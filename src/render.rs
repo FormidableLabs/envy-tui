@@ -1279,7 +1279,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         frame,
         layout[2],
         &app.colors,
-        app.active_block == ActiveBlock::Sort(SortScreen::Order),
+        app.active_block == ActiveBlock::Sort(SortScreen::Direction),
     );
     frame.render_widget(footer, vertical_layout[1]);
     frame.render_widget(footer_content, footer_layout[0]);

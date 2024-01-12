@@ -43,6 +43,10 @@ impl ActionableList {
         self.state.select(None);
     }
 
+    pub fn select(&mut self, index: usize) {
+        self.state.select(Some(index));
+    }
+
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
@@ -71,7 +75,7 @@ impl ActionableList {
         self.state.select(Some(i));
     }
 
-    pub fn select(&mut self) -> Option<Action> {
+    pub fn action(&mut self) -> Option<Action> {
         match self.state.selected() {
             Some(i) => {
                 if let Some(item) = self.items.get(i) {

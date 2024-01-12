@@ -121,7 +121,7 @@ impl Home {
                     ActionableListItem::with_label(SortSource::Timestamp.as_ref())
                         .with_action(Action::SelectSortSource(SortSource::Timestamp)),
                 ],
-                ListState::default(),
+                ListState::default().with_selected(Some(0)),
             ),
             sort_directions: ActionableList::new(
                 vec![
@@ -130,7 +130,7 @@ impl Home {
                     ActionableListItem::with_label(SortDirection::Descending.as_ref())
                         .with_action(Action::SelectSortDirection(SortDirection::Descending)),
                 ],
-                ListState::default(),
+                ListState::default().with_selected(Some(0)),
             ),
             sort_actions: ActionableList::new(
                 vec![ActionableListItem::with_label("apply").with_action(Action::UpdateSort)],
@@ -471,13 +471,14 @@ impl Component for Home {
                     return Ok(Some(Action::QuitApplication));
                 }
 
-                self.filter_source_index = 0;
-                self.filter_value_index = 0;
-
                 if let ActiveBlock::Filter(_) = self.active_block {
+                    self.filter_source_index = 0;
+                    self.filter_value_index = 0;
                     self.selected_filter = TraceFilter::default();
                 }
                 if let ActiveBlock::Sort(_) = self.active_block {
+                    self.sort_sources.select(0);
+                    self.sort_directions.select(0);
                     self.selected_sort = TraceSort::default();
                 }
 
@@ -613,7 +614,7 @@ impl Component for Home {
                     source,
                 };
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
-                    SortScreen::Source,
+                    SortScreen::Direction,
                 ))))
             }
             Action::UpdateSort => {
