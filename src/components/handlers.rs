@@ -1,6 +1,6 @@
 use crate::app::{
-    Action, ActiveBlock, DetailsPane, FilterScreen, MethodFilter, SortScreen, StatusFilter,
-    TraceFilter,
+    Action, ActiveBlock, DetailsPane, FilterScreen, MethodFilter, SortScreen, SourceFilter,
+    StatusFilter,
 };
 use crate::components::home::Home;
 use crate::consts::{
@@ -106,14 +106,16 @@ pub fn handle_up(
             _ => None,
         },
         _ => match (app.active_block, app.details_block) {
-            (ActiveBlock::Filter(FilterScreen::Main), _) => match app.filter_source_index.checked_sub(1) {
-                Some(v) => {
-                    app.filter_source_index = v;
+            (ActiveBlock::Filter(FilterScreen::Main), _) => {
+                match app.filter_source_index.checked_sub(1) {
+                    Some(v) => {
+                        app.filter_source_index = v;
 
-                    None
+                        None
+                    }
+                    _ => None,
                 }
-                _ => None,
-            },
+            }
             (ActiveBlock::Filter(FilterScreen::Actions), _) => {
                 app.filter_actions.previous();
 
@@ -268,7 +270,7 @@ pub fn handle_down(
         },
         _ => match (app.active_block, app.details_block) {
             (ActiveBlock::Filter(FilterScreen::Method), _) => {
-                if app.filter_value_index + 1 < app.method_filters.len() {
+                if app.filter_value_index + 1 < app.selected_filters.method.len() {
                     app.filter_value_index += 1;
                 }
 
@@ -289,7 +291,7 @@ pub fn handle_down(
                 None
             }
             (ActiveBlock::Filter(FilterScreen::Status), _) => {
-                if app.filter_value_index + 1 < app.status_filters.len() {
+                if app.filter_value_index + 1 < app.selected_filters.status.len() {
                     app.filter_value_index += 1;
                 }
 
@@ -968,7 +970,8 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
         ActiveBlock::Filter(FilterScreen::Status) => {
             let current_service = app
-                .status_filters
+                .selected_filters
+                .status
                 .iter()
                 .map(|(key, _item)| key)
                 .nth(app.filter_value_index);
@@ -978,8 +981,8 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             }
 
             if let Some(filter) = current_service {
-                if let Some(d) = app.status_filters.get(filter) {
-                    app.status_filters.insert(
+                if let Some(d) = app.selected_filters.status.get(filter) {
+                    app.selected_filters.status.insert(
                         filter.clone(),
                         StatusFilter {
                             name: d.name.clone(),
@@ -1002,7 +1005,8 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
         }
         ActiveBlock::Filter(FilterScreen::Method) => {
             let current_service = app
-                .method_filters
+                .selected_filters
+                .method
                 .iter()
                 .map(|(a, _item)| a)
                 .nth(app.filter_value_index);
@@ -1012,8 +1016,8 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             }
 
             if let Some(filter) = current_service {
-                if let Some(d) = app.method_filters.get(filter) {
-                    app.method_filters.insert(
+                if let Some(d) = app.selected_filters.method.get(filter) {
+                    app.selected_filters.method.insert(
                         filter.clone(),
                         MethodFilter {
                             name: d.name.clone(),
@@ -1045,37 +1049,33 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             let selected_filter = services.iter().nth(app.filter_value_index).cloned();
 
-            if selected_filter.is_none() {
-                return None;
-            }
-
             if let Some(filter) = selected_filter {
                 match filter.as_str() {
-                    "All" => app.selected_filter = TraceFilter::All,
-                    source => match app.get_filter() {
-                        TraceFilter::All => {
+                    "All" => app.selected_filters.source = SourceFilter::All,
+                    source => match &app.selected_filters.source {
+                        SourceFilter::All => {
                             let mut set = HashSet::new();
 
                             set.insert(source.to_string());
 
-                            app.selected_filter = TraceFilter::Applied(set)
+                            app.selected_filters.source = SourceFilter::Applied(set)
                         }
-                        TraceFilter::Applied(applied_sources) => {
+                        SourceFilter::Applied(applied_sources) => {
                             if applied_sources.contains(&source.to_string()) {
                                 let mut set = applied_sources.clone();
 
                                 set.remove(source);
 
-                                app.selected_filter = TraceFilter::Applied(set)
+                                app.selected_filters.source = SourceFilter::Applied(set)
                             } else {
                                 let mut set = applied_sources.clone();
 
                                 set.insert(source.to_string());
 
                                 if set.len() == get_services_from_traces(app).len() {
-                                    app.selected_filter = TraceFilter::All
+                                    app.selected_filters.source = SourceFilter::All
                                 } else {
-                                    app.selected_filter = TraceFilter::Applied(set)
+                                    app.selected_filters.source = SourceFilter::Applied(set)
                                 }
                             }
                         }

@@ -1,8 +1,5 @@
+use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
-use std::{
-    collections::{BTreeSet, HashMap},
-    str::FromStr,
-};
 
 use chrono::prelude::DateTime;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -18,9 +15,8 @@ use tokio::task::AbortHandle;
 
 use crate::{
     app::{
-        Action, ActiveBlock, DetailsPane, FilterScreen, MethodFilter, Mode, SortDirection,
-        SortScreen, SortSource, StatusFilter, TraceFilter, TraceSort, UIState,
-        WebSocketInternalState,
+        Action, ActiveBlock, DetailsPane, FilterScreen, Mode, SortDirection, SortScreen,
+        SortSource, TraceFilter, TraceSort, UIState, WebSocketInternalState,
     },
     components::actionable_list::{ActionableList, ActionableListItem},
     components::component::Component,
@@ -59,13 +55,11 @@ pub struct Home {
     pub response_json_viewer: jsonviewer::JSONViewer,
     pub selected_trace: Option<Trace>,
     pub filter_actions: ActionableList,
-    pub filter: TraceFilter,
-    pub selected_filter: TraceFilter,
+    pub filters: TraceFilter,
+    pub selected_filters: TraceFilter,
     pub filter_source_index: usize,
     pub filter_value_index: usize,
     pub filter_value_screen: FilterScreen,
-    pub method_filters: HashMap<http::method::Method, MethodFilter>,
-    pub status_filters: HashMap<String, StatusFilter>,
     pub sort: TraceSort,
     pub selected_sort: TraceSort,
     pub sort_actions: ActionableList,
@@ -87,7 +81,7 @@ pub struct Home {
 impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
         let config = Config::new()?;
-        let mut home = Home {
+        let home = Home {
             key_map: config.mapping.0,
             colors: config.colors.clone(),
             request_json_viewer: jsonviewer::JSONViewer::new(
@@ -141,39 +135,7 @@ impl Home {
             ..Self::default()
         };
 
-        let methods = vec!["POST", "GET", "DELETE", "PUT", "PATCH", "OPTION"];
-
-        let statuses = vec!["1xx", "2xx", "3xx", "4xx", "5xx"];
-
-        statuses.iter().for_each(|status| {
-            home.status_filters.insert(
-                status.to_string(),
-                StatusFilter {
-                    status: status.to_string(),
-                    selected: false,
-                    name: status.to_string(),
-                },
-            );
-        });
-
-        methods.iter().for_each(|method| {
-            if let Ok(method) = http::method::Method::from_str(method) {
-                home.method_filters.insert(
-                    method.clone(),
-                    MethodFilter {
-                        method: method.clone(),
-                        selected: false,
-                        name: method.to_string(),
-                    },
-                );
-            }
-        });
-
         Ok(home)
-    }
-
-    pub fn get_filter(&self) -> &TraceFilter {
-        &self.filter
     }
 
     fn mark_trace_as_timed_out(&mut self, id: String) {
@@ -471,17 +433,6 @@ impl Component for Home {
                     return Ok(Some(Action::QuitApplication));
                 }
 
-                if let ActiveBlock::Filter(_) = self.active_block {
-                    self.filter_source_index = 0;
-                    self.filter_value_index = 0;
-                    self.selected_filter = TraceFilter::default();
-                }
-                if let ActiveBlock::Sort(_) = self.active_block {
-                    self.sort_sources.select(0);
-                    self.sort_directions.select(0);
-                    self.selected_sort = TraceSort::default();
-                }
-
                 self.active_block = last_block.unwrap();
 
                 Ok(None)
@@ -493,19 +444,27 @@ impl Component for Home {
             Action::Select => Ok(handlers::handle_select(self)),
             Action::HandleFilter(l) => Ok(handlers::handle_general_status(self, l.to_string())),
             Action::OpenFilter => {
-                let current_block = self.active_block;
+                if self.active_block.is_filter() {
+                    return Ok(None);
+                }
 
-                self.previous_blocks.push(current_block);
-
+                self.filter_source_index = 0;
+                self.filter_value_index = 0;
+                self.selected_filters = TraceFilter::default();
+                self.previous_blocks.push(self.active_block);
                 self.active_block = ActiveBlock::Filter(FilterScreen::Main);
 
                 Ok(None)
             }
             Action::OpenSort => {
-                let current_block = self.active_block;
+                if self.active_block.is_sort() {
+                    return Ok(None);
+                }
 
-                self.previous_blocks.push(current_block);
-
+                self.sort_sources.select(0);
+                self.sort_directions.select(0);
+                self.selected_sort = TraceSort::default();
+                self.previous_blocks.push(self.active_block);
                 self.active_block = ActiveBlock::Sort(SortScreen::Source);
 
                 Ok(None)
@@ -622,7 +581,7 @@ impl Component for Home {
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
             }
             Action::UpdateFilter => {
-                self.filter = self.selected_filter.clone();
+                self.filters = self.selected_filters.clone();
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
             }
             _ => Ok(None),

@@ -20,7 +20,7 @@ use crate::app::{
     DetailsPane::{
         QueryParams, RequestDetails, RequestHeaders, ResponseDetails, ResponseHeaders, Timing,
     },
-    FilterScreen, SortScreen, TraceFilter, WebSocketInternalState,
+    FilterScreen, SortScreen, SourceFilter, WebSocketInternalState,
 };
 use crate::components::actionable_list::ActionableList;
 use crate::components::home::Home;
@@ -481,7 +481,13 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
 
     let selected_item = items_as_vector.get(app.main.index);
 
-    let method_len = app.method_filters.iter().fold(0, |sum, (_key, item)| {
+    let source_len = if let SourceFilter::Applied(filter_source) = &app.filters.source {
+        filter_source.len()
+    } else {
+        0
+    };
+
+    let method_len = app.filters.method.iter().fold(0, |sum, (_key, item)| {
         let mut result = sum;
 
         if item.selected {
@@ -491,7 +497,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
         return result;
     });
 
-    let status_len = app.status_filters.iter().fold(0, |sum, (_key, item)| {
+    let status_len = app.filters.status.iter().fold(0, |sum, (_key, item)| {
         let mut result = sum;
 
         if item.selected {
@@ -501,25 +507,30 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
         return result;
     });
 
-    let filter_message = match status_len + method_len {
-        0 => String::from("No filters selected"),
-        _ => {
-            let mut filters_text = format!("Active filter(s): ");
+    let filter_message = if source_len + status_len + method_len == 0 {
+        String::from("No filters selected")
+    } else {
+        let mut filters_text: String = format!("Active filter(s): ");
 
-            app.method_filters.iter().for_each(|(_a, filter_method)| {
-                if filter_method.selected {
-                    filters_text.push_str((format!(" {} (Method)", filter_method.name)).as_str());
-                }
-            });
-
-            app.status_filters.iter().for_each(|(_a, filter_status)| {
-                if filter_status.selected {
-                    filters_text.push_str((format!(" {} (Status)", filter_status.name)).as_str());
-                }
-            });
-
-            filters_text
+        if let SourceFilter::Applied(filter_sources) = &app.filters.source {
+            for filter_source in filter_sources {
+                filters_text.push_str(format!(" {} (Source)", filter_source).as_str());
+            }
         }
+
+        app.filters.method.iter().for_each(|(_a, filter_method)| {
+            if filter_method.selected {
+                filters_text.push_str(format!(" {} (Method)", filter_method.name).as_str());
+            }
+        });
+
+        app.filters.status.iter().for_each(|(_a, filter_status)| {
+            if filter_status.selected {
+                filters_text.push_str(format!(" {} (Status)", filter_status.name).as_str());
+            }
+        });
+
+        filters_text
     };
 
     let sort_message = format!("Active sort: {}", &app.sort);
@@ -848,17 +859,13 @@ pub fn get_services_from_traces(app: &Home) -> Vec<String> {
 
     services_as_vec.sort();
 
-    services_as_vec.clone()
+    services_as_vec
 }
 
 pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
-    let mut services = get_services_from_traces(app);
+    let mut services = vec!["All".to_string()];
 
-    let mut a: Vec<String> = vec!["All".to_string()];
-
-    a.append(&mut services);
-
-    services = a;
+    services.extend(get_services_from_traces(app));
 
     let current_service = services.iter().nth(app.filter_value_index).cloned();
 
@@ -870,8 +877,8 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
             let column_a =
                 Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
 
-            match app.get_filter() {
-                TraceFilter::All => {
+            match &app.selected_filters.source {
+                SourceFilter::All => {
                     let column_b = Cell::from(
                         Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
                     );
@@ -888,8 +895,8 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                     return Row::new(vec![column_b, column_a])
                         .style(get_row_style(row_style, &app.colors));
                 }
-                TraceFilter::Applied(applied) => {
-                    // let column_b = if applied.contains(current_service.as_ref().unwrap()) {
+                SourceFilter::Applied(applied) => {
+                    let is_selected = current_service == Some(item.to_string());
                     let column_b = if applied.contains(item) {
                         Cell::from(
                             Line::from(vec![Span::raw("[x]".to_string())])
@@ -901,8 +908,6 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                                 .alignment(Alignment::Left),
                         )
                     };
-
-                    let is_selected = current_service == Some(item.to_string());
 
                     let row_style = if is_active && is_selected {
                         RowStyle::Selected
@@ -933,12 +938,17 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
 }
 
 pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
-    let current_service = app.status_filters.iter().nth(app.filter_value_index);
+    let current_service = app
+        .selected_filters
+        .status
+        .iter()
+        .nth(app.filter_value_index);
 
     let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Status);
 
     let rows1 = app
-        .status_filters
+        .selected_filters
+        .status
         .iter()
         .map(|(_a, item)| {
             let column_a = Cell::from(
@@ -986,7 +996,8 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
 
 pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
     let current_service = app
-        .method_filters
+        .selected_filters
+        .method
         .iter()
         .map(|(_a, b)| b.name.clone())
         .nth(app.filter_value_index);
@@ -994,7 +1005,8 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
     let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Method);
 
     let rows1 = app
-        .method_filters
+        .selected_filters
+        .method
         .iter()
         .map(|(_a, item)| {
             let column_a = Cell::from(
@@ -1126,23 +1138,26 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         .border_style(get_border_style(true, &app.colors));
 
     let method_filters = app
-        .method_filters
+        .selected_filters
+        .method
         .values()
         .filter(|v| v.selected)
         .map(|v| v.name.clone())
         .map(|s| format!("method-{}", s.to_lowercase()))
         .collect::<Vec<_>>();
-    let source_filters: Vec<String> = if let TraceFilter::Applied(hashset) = &app.selected_filter {
-        hashset
-            .iter()
-            .map(|s| format!("source-{}", s.to_lowercase()))
-            .collect()
-    } else {
-        vec![]
-    };
+    let source_filters: Vec<String> =
+        if let SourceFilter::Applied(hashset) = &app.selected_filters.source {
+            hashset
+                .iter()
+                .map(|s| format!("source-{}", s.to_lowercase()))
+                .collect()
+        } else {
+            vec![]
+        };
 
     let status_filters: Vec<String> = app
-        .status_filters
+        .selected_filters
+        .status
         .values()
         .filter(|v| v.selected)
         .map(|v| v.name.clone())

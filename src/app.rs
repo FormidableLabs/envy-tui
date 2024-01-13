@@ -5,6 +5,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use crossterm::event::KeyEvent;
+use http::Method;
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumIs, EnumIter};
@@ -70,7 +71,7 @@ pub enum SortScreen {
     Actions,
 }
 
-#[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize, strum_macros::EnumIs)]
 pub enum ActiveBlock {
     #[default]
     Traces,
@@ -169,22 +170,69 @@ pub enum WebSocketInternalState {
 }
 
 #[derive(Clone, PartialEq, Debug, Eq, Default)]
-pub enum TraceFilter {
+pub enum SourceFilter {
     #[default]
     All,
-    Applied(HashSet<String>), // Source(String),
-                              // Method(http::method::Method),
-                              // Status(String),
+    Applied(HashSet<String>),
 }
 
-#[derive(Default)]
+#[derive(Clone)]
+pub struct TraceFilter {
+    pub source: SourceFilter,
+    pub method: HashMap<Method, MethodFilter>,
+    pub status: HashMap<String, StatusFilter>,
+}
+
+impl Default for TraceFilter {
+    fn default() -> Self {
+        let mut method: HashMap<Method, MethodFilter> = HashMap::new();
+        let mut status: HashMap<String, StatusFilter> = HashMap::new();
+
+        vec!["1xx", "2xx", "3xx", "4xx", "5xx"].iter().for_each(|http_status| {
+            status.insert(
+                http_status.to_string(),
+                StatusFilter {
+                    status: http_status.to_string(),
+                    selected: false,
+                    name: http_status.to_string(),
+                },
+            );
+        });
+
+        vec![
+            Method::POST,
+            Method::GET,
+            Method::DELETE,
+            Method::PUT,
+            Method::PATCH,
+            Method::OPTIONS,
+        ].iter().for_each(|http_method| {
+            method.insert(
+                http_method.clone(),
+                MethodFilter {
+                    method: http_method.clone(),
+                    selected: false,
+                    name: http_method.to_string(),
+                },
+            );
+        });
+
+        Self {
+            source: SourceFilter::default(),
+            method,
+            status,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
 pub struct MethodFilter {
-    pub method: http::method::Method,
+    pub method: Method,
     pub name: String,
     pub selected: bool,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct StatusFilter {
     pub status: String,
     pub name: String,

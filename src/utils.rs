@@ -2,7 +2,7 @@ use core::str::FromStr;
 use http::Uri;
 use regex::Regex;
 
-use crate::app::{SortDirection, SortSource, TraceFilter, TraceSort};
+use crate::app::{SortDirection, SortSource, SourceFilter, TraceSort};
 use crate::components::home::Home;
 use crate::services::websocket::Trace;
 
@@ -59,14 +59,16 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
     }
 
     let no_applied_method_filter = app
-        .method_filters
+        .filters
+        .method
         .iter()
         .filter(|(_key, method_filter)| method_filter.selected == true)
         .collect::<Vec<_>>()
         .is_empty();
 
-    let no_applied_statud_filter = app
-        .status_filters
+    let no_applied_status_filter = app
+        .filters
+        .status
         .iter()
         .filter(|(_key, method_filter)| method_filter.selected == true)
         .collect::<Vec<_>>()
@@ -82,15 +84,11 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
                 true
             }
         })
-        .filter(
-            |trace| match (app.get_filter(), trace.service_name.as_ref()) {
-                (TraceFilter::All, _) => true,
-                (TraceFilter::Applied(sources), Some(trace_source)) => {
-                    sources.contains(trace_source)
-                }
-                _ => false,
-            },
-        )
+        .filter(|trace| match (&app.filters.source, &trace.service_name) {
+            (SourceFilter::All, _) => true,
+            (SourceFilter::Applied(sources), Some(trace_source)) => sources.contains(trace_source),
+            (SourceFilter::Applied(_), None) => false,
+        })
         .filter(|trace| {
             let method = &trace.http.as_ref().unwrap().status;
 
@@ -111,7 +109,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
                 _ => "",
             };
 
-            match (no_applied_statud_filter, app.status_filters.get(matcher)) {
+            match (no_applied_status_filter, app.filters.status.get(matcher)) {
                 (true, _) => true,
                 (_, Some(status_filter)) => status_filter.selected.clone(),
                 (_, _) => false,
@@ -120,7 +118,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
         .filter(|trace| {
             match (
                 no_applied_method_filter,
-                app.method_filters.get(&trace.http.as_ref().unwrap().method),
+                app.filters.method.get(&trace.http.as_ref().unwrap().method),
             ) {
                 (true, _) => true,
                 (_, Some(method_filter)) => method_filter.selected.clone(),

@@ -14,7 +14,7 @@ use tungstenite::connect;
 use tungstenite::handshake::server::{Callback, ErrorResponse, Request, Response};
 use url::Url;
 
-use crate::app::{Action,WebSocketInternalState};
+use crate::app::{Action, WebSocketInternalState};
 use crate::parser::parse_raw_trace;
 
 use tungstenite::Message;
@@ -236,9 +236,7 @@ pub async fn handle_connection(
 
     match number_of_connections - 1 {
         0 => {
-            let _ = action_sender.send(Action::SetWebsocketStatus(
-                WebSocketInternalState::Open,
-            ));
+            let _ = action_sender.send(Action::SetWebsocketStatus(WebSocketInternalState::Open));
 
             ()
         }
@@ -286,9 +284,8 @@ pub async fn handle_connection(
     if path != "/inner_client" {
         match number_of_connections - 1 {
             0 => {
-                let _ = action_sender.send(Action::SetWebsocketStatus(
-                    WebSocketInternalState::Open,
-                ));
+                let _ =
+                    action_sender.send(Action::SetWebsocketStatus(WebSocketInternalState::Open));
                 ()
             }
             v => {
