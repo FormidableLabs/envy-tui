@@ -96,44 +96,35 @@ impl Home {
                 "Response body",
                 config.colors.clone(),
             )?,
-            filter_actions: ActionableList::new(
-                vec![ActionableListItem::with_label("apply").with_action(Action::UpdateFilter)],
-                ListState::default(),
-                ListState::default(),
-            ),
-            sort_sources: ActionableList::new(
-                vec![
-                    ActionableListItem::with_label(SortSource::Method.as_ref())
-                        .with_action(Action::SelectSortSource(SortSource::Method)),
-                    ActionableListItem::with_label(SortSource::Status.as_ref())
-                        .with_action(Action::SelectSortSource(SortSource::Status)),
-                    ActionableListItem::with_label(SortSource::Source.as_ref())
-                        .with_action(Action::SelectSortSource(SortSource::Source)),
-                    ActionableListItem::with_label(SortSource::Url.as_ref())
-                        .with_action(Action::SelectSortSource(SortSource::Url)),
-                    ActionableListItem::with_label(SortSource::Duration.as_ref())
-                        .with_action(Action::SelectSortSource(SortSource::Duration)),
-                    ActionableListItem::with_label(SortSource::Timestamp.as_ref())
-                        .with_action(Action::SelectSortSource(SortSource::Timestamp)),
-                ],
-                ListState::default().with_selected(Some(0)),
-                ListState::default(),
-            ),
-            sort_directions: ActionableList::new(
-                vec![
-                    ActionableListItem::with_label(SortDirection::Ascending.as_ref())
-                        .with_action(Action::SelectSortDirection(SortDirection::Ascending)),
-                    ActionableListItem::with_label(SortDirection::Descending.as_ref())
-                        .with_action(Action::SelectSortDirection(SortDirection::Descending)),
-                ],
-                ListState::default().with_selected(Some(0)),
-                ListState::default(),
-            ),
-            sort_actions: ActionableList::new(
-                vec![ActionableListItem::with_label("apply").with_action(Action::UpdateSort)],
-                ListState::default(),
-                ListState::default(),
-            ),
+            filter_actions: ActionableList::with_items(vec![ActionableListItem::with_label(
+                "apply",
+            )
+            .with_action(Action::UpdateFilter)]),
+            sort_sources: ActionableList::with_items(vec![
+                ActionableListItem::with_label(SortSource::Method.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Method)),
+                ActionableListItem::with_label(SortSource::Status.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Status)),
+                ActionableListItem::with_label(SortSource::Source.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Source)),
+                ActionableListItem::with_label(SortSource::Url.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Url)),
+                ActionableListItem::with_label(SortSource::Duration.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Duration)),
+                ActionableListItem::with_label(SortSource::Timestamp.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Timestamp)),
+            ])
+            .with_scroll_state(ListState::default().with_selected(Some(0))),
+            sort_directions: ActionableList::with_items(vec![
+                ActionableListItem::with_label(SortDirection::Ascending.as_ref())
+                    .with_action(Action::SelectSortDirection(SortDirection::Ascending)),
+                ActionableListItem::with_label(SortDirection::Descending.as_ref())
+                    .with_action(Action::SelectSortDirection(SortDirection::Descending)),
+            ])
+            .with_scroll_state(ListState::default().with_selected(Some(0))),
+            sort_actions: ActionableList::with_items(vec![
+                ActionableListItem::with_label("apply").with_action(Action::UpdateSort)
+            ]),
             details_tabs: DetailsPane::iter().collect(),
             details_panes: vec![],
             ..Self::default()
@@ -201,11 +192,7 @@ impl Home {
                 )
             };
 
-            self.request_details_list = ActionableList::new(
-                rows,
-                self.request_details_list.scroll_state.clone(),
-                self.request_details_list.select_state.clone(),
-            );
+            self.request_details_list = ActionableList::with_items(rows);
 
             // QUERY PARAMS PANE
             let mut raw_params = parse_query_params(
@@ -242,11 +229,7 @@ impl Home {
                 )
             };
 
-            self.query_params_list = ActionableList::new(
-                next_items,
-                self.query_params_list.scroll_state.clone(),
-                self.query_params_list.select_state.clone(),
-            );
+            self.query_params_list = ActionableList::with_items(next_items);
 
             // RESPONSE DETAILS PANE
             let mut items: Vec<ActionableListItem> = vec![];
@@ -291,11 +274,7 @@ impl Home {
                 )
             };
 
-            self.response_details_list = ActionableList::new(
-                items,
-                self.response_details_list.scroll_state.clone(),
-                self.response_details_list.select_state.clone(),
-            );
+            self.response_details_list = ActionableList::with_items(items);
 
             // REQUEST HEADERS PANE
             let headers = trace.http.clone().unwrap_or_default().request_headers;
@@ -329,11 +308,7 @@ impl Home {
                 )
             };
 
-            self.request_headers_list = ActionableList::new(
-                next_items,
-                self.request_headers_list.scroll_state.clone(),
-                self.request_headers_list.select_state.clone(),
-            );
+            self.request_headers_list = ActionableList::with_items(next_items);
 
             // RESPONSE HEADERS PANE
             let headers = trace.http.clone().unwrap_or_default().response_headers;
@@ -368,11 +343,7 @@ impl Home {
                 )
             };
 
-            self.response_headers_list = ActionableList::new(
-                next_items,
-                self.response_headers_list.scroll_state.clone(),
-                self.response_headers_list.select_state.clone(),
-            );
+            self.response_headers_list = ActionableList::with_items(next_items);
 
             // TIMING PANE
             let next_items: Vec<ActionableListItem> = vec![
@@ -385,11 +356,7 @@ impl Home {
                 ActionableListItem::with_label("receiving"),
             ];
 
-            self.timing_list = ActionableList::new(
-                next_items,
-                self.timing_list.scroll_state.clone(),
-                self.timing_list.select_state.clone(),
-            );
+            self.timing_list = ActionableList::with_items(next_items);
         }
     }
 }

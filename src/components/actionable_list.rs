@@ -40,6 +40,21 @@ pub struct ActionableList {
 }
 
 impl ActionableList {
+    pub fn with_items(items: Vec<ActionableListItem>) -> Self {
+        Self {
+            items,
+            scroll_state: ListState::default(),
+            select_state: ListState::default(),
+        }
+    }
+
+    pub fn with_scroll_state(self, scroll_state: ListState) -> Self {
+        Self {
+            scroll_state,
+            ..self
+        }
+    }
+
     pub fn reset(&mut self) {
         self.scroll_state.select(None);
         self.select_state.select(None);
