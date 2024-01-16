@@ -782,7 +782,7 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.request_headers_list.state.offset() >= {
+                                app.request_headers_list.scroll_state.offset() >= {
                                     usable_height as usize
                                 };
 
@@ -827,7 +827,7 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.response_headers_list.state.offset() >= {
+                                app.response_headers_list.scroll_state.offset() >= {
                                     usable_height as usize
                                 };
 

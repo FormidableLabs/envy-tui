@@ -35,20 +35,26 @@ impl ActionableListItem {
 #[derive(Default, new)]
 pub struct ActionableList {
     pub items: Vec<ActionableListItem>,
-    pub state: ListState,
+    pub scroll_state: ListState,
+    pub select_state: ListState,
 }
 
 impl ActionableList {
     pub fn reset(&mut self) {
-        self.state.select(None);
+        self.scroll_state.select(None);
+        self.select_state.select(None);
+    }
+
+    pub fn top(&mut self, index: usize) {
+        self.scroll_state.select(Some(index));
     }
 
     pub fn select(&mut self, index: usize) {
-        self.state.select(Some(index));
+        self.select_state.select(Some(index));
     }
 
     pub fn next(&mut self) {
-        let i = match self.state.selected() {
+        let i = match self.scroll_state.selected() {
             Some(i) => {
                 if i >= self.items.len().saturating_sub(1) {
                     i
@@ -58,11 +64,11 @@ impl ActionableList {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        self.scroll_state.select(Some(i));
     }
 
     pub fn previous(&mut self) {
-        let i = match self.state.selected() {
+        let i = match self.scroll_state.selected() {
             Some(i) => {
                 if i == 0 {
                     i
@@ -72,11 +78,11 @@ impl ActionableList {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        self.scroll_state.select(Some(i));
     }
 
     pub fn action(&mut self) -> Option<Action> {
-        match self.state.selected() {
+        match self.scroll_state.selected() {
             Some(i) => {
                 if let Some(item) = self.items.get(i) {
                     item.action.clone()

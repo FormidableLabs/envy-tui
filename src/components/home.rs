@@ -99,6 +99,7 @@ impl Home {
             filter_actions: ActionableList::new(
                 vec![ActionableListItem::with_label("apply").with_action(Action::UpdateFilter)],
                 ListState::default(),
+                ListState::default(),
             ),
             sort_sources: ActionableList::new(
                 vec![
@@ -116,6 +117,7 @@ impl Home {
                         .with_action(Action::SelectSortSource(SortSource::Timestamp)),
                 ],
                 ListState::default().with_selected(Some(0)),
+                ListState::default(),
             ),
             sort_directions: ActionableList::new(
                 vec![
@@ -125,9 +127,11 @@ impl Home {
                         .with_action(Action::SelectSortDirection(SortDirection::Descending)),
                 ],
                 ListState::default().with_selected(Some(0)),
+                ListState::default(),
             ),
             sort_actions: ActionableList::new(
                 vec![ActionableListItem::with_label("apply").with_action(Action::UpdateSort)],
+                ListState::default(),
                 ListState::default(),
             ),
             details_tabs: DetailsPane::iter().collect(),
@@ -197,8 +201,11 @@ impl Home {
                 )
             };
 
-            self.request_details_list =
-                ActionableList::new(rows, self.request_details_list.state.clone());
+            self.request_details_list = ActionableList::new(
+                rows,
+                self.request_details_list.scroll_state.clone(),
+                self.request_details_list.select_state.clone(),
+            );
 
             // QUERY PARAMS PANE
             let mut raw_params = parse_query_params(
@@ -235,8 +242,11 @@ impl Home {
                 )
             };
 
-            self.query_params_list =
-                ActionableList::new(next_items, self.query_params_list.state.clone());
+            self.query_params_list = ActionableList::new(
+                next_items,
+                self.query_params_list.scroll_state.clone(),
+                self.query_params_list.select_state.clone(),
+            );
 
             // RESPONSE DETAILS PANE
             let mut items: Vec<ActionableListItem> = vec![];
@@ -281,8 +291,11 @@ impl Home {
                 )
             };
 
-            self.response_details_list =
-                ActionableList::new(items, self.response_details_list.state.clone());
+            self.response_details_list = ActionableList::new(
+                items,
+                self.response_details_list.scroll_state.clone(),
+                self.response_details_list.select_state.clone(),
+            );
 
             // REQUEST HEADERS PANE
             let headers = trace.http.clone().unwrap_or_default().request_headers;
@@ -316,8 +329,11 @@ impl Home {
                 )
             };
 
-            self.request_headers_list =
-                ActionableList::new(next_items, self.request_headers_list.state.clone());
+            self.request_headers_list = ActionableList::new(
+                next_items,
+                self.request_headers_list.scroll_state.clone(),
+                self.request_headers_list.select_state.clone(),
+            );
 
             // RESPONSE HEADERS PANE
             let headers = trace.http.clone().unwrap_or_default().response_headers;
@@ -352,8 +368,11 @@ impl Home {
                 )
             };
 
-            self.response_headers_list =
-                ActionableList::new(next_items, self.response_headers_list.state.clone());
+            self.response_headers_list = ActionableList::new(
+                next_items,
+                self.response_headers_list.scroll_state.clone(),
+                self.response_headers_list.select_state.clone(),
+            );
 
             // TIMING PANE
             let next_items: Vec<ActionableListItem> = vec![
@@ -366,7 +385,11 @@ impl Home {
                 ActionableListItem::with_label("receiving"),
             ];
 
-            self.timing_list = ActionableList::new(next_items, self.timing_list.state.clone());
+            self.timing_list = ActionableList::new(
+                next_items,
+                self.timing_list.scroll_state.clone(),
+                self.timing_list.select_state.clone(),
+            );
         }
     }
 }
@@ -461,8 +484,10 @@ impl Component for Home {
                     return Ok(None);
                 }
 
-                self.sort_sources.select(0);
-                self.sort_directions.select(0);
+                self.sort_sources.reset();
+                self.sort_sources.top(0);
+                self.sort_directions.reset();
+                self.sort_directions.top(0);
                 self.selected_sort = TraceSort::default();
                 self.previous_blocks.push(self.active_block);
                 self.active_block = ActiveBlock::Sort(SortScreen::Source);
@@ -559,24 +584,46 @@ impl Component for Home {
                 Ok(None)
             }
             Action::SelectSortDirection(direction) => {
+                if let Some(next) = self
+                    .sort_directions
+                    .items
+                    .iter()
+                    .position(|item| item.label == direction.to_string())
+                {
+                    self.sort_directions.select(next);
+                }
+
                 self.selected_sort = TraceSort {
                     direction,
                     source: self.selected_sort.source.clone(),
                 };
+
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
                     SortScreen::Actions,
                 ))))
             }
             Action::SelectSortSource(source) => {
+                if let Some(next) = self
+                    .sort_sources
+                    .items
+                    .iter()
+                    .position(|item| item.label == source.to_string())
+                {
+                    self.sort_sources.select(next);
+                }
+
                 self.selected_sort = TraceSort {
                     direction: self.selected_sort.direction.clone(),
                     source,
                 };
+
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
                     SortScreen::Direction,
                 ))))
             }
             Action::UpdateSort => {
+                self.sort_directions.select(0);
+
                 self.sort = self.selected_sort.clone();
                 Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
             }

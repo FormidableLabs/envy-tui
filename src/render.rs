@@ -232,7 +232,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 .title(
                     Title::from(format!(
                         "  {} OF {}  ",
-                        actionable_list.state.selected().unwrap_or(0) + 1,
+                        actionable_list.scroll_state.selected().unwrap_or(0) + 1,
                         actionable_list.items.len(),
                     ))
                     .position(Position::Bottom)
@@ -317,7 +317,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             .title(
                 Title::from(format!(
                     "  {} OF {}  ",
-                    actionable_list.state.selected().unwrap_or(0) + 1,
+                    actionable_list.scroll_state.selected().unwrap_or(0) + 1,
                     actionable_list.items.len(),
                 ))
                 .position(Position::Bottom)
@@ -349,6 +349,59 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             );
         }
     }
+}
+
+fn render_selectable_list(
+    actionable_list: &mut ActionableList,
+    frame: &mut Frame,
+    area: Rect,
+    colors: &Colors,
+    active: bool,
+) {
+    let actionable_item_style = Style::default().fg(colors.text.accent_2);
+    let active_item_style = get_row_style(RowStyle::Active, colors);
+    let default_item_style = get_row_style(RowStyle::Default, colors);
+
+    let items: Vec<ListItem> = actionable_list
+        .items
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            ListItem::new(Line::from(vec![
+                Span::raw(if Some(idx) == actionable_list.select_state.selected() {
+                    "[x]"
+                } else {
+                    "[ ]"
+                }),
+                Span::raw(format!(" {:<15}", item.label)),
+                " ".into(),
+                Span::styled(
+                    item.value.clone().unwrap_or_default().to_string(),
+                    if active && item.action.is_some() {
+                        actionable_item_style
+                    } else if active {
+                        active_item_style
+                    } else {
+                        default_item_style
+                    },
+                ),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .style(Style::default().fg(if active {
+            colors.text.accent_1
+        } else {
+            colors.text.unselected
+        }))
+        .highlight_style(if active {
+            get_row_style(RowStyle::Selected, colors)
+        } else {
+            get_row_style(RowStyle::Inactive, colors)
+        });
+
+    frame.render_stateful_widget(list, area, &mut actionable_list.scroll_state)
 }
 
 fn render_actionable_list(
@@ -395,7 +448,7 @@ fn render_actionable_list(
             get_row_style(RowStyle::Inactive, colors)
         });
 
-    frame.render_stateful_widget(list, area, &mut actionable_list.state)
+    frame.render_stateful_widget(list, area, &mut actionable_list.scroll_state)
 }
 
 fn render_timing_chart(
@@ -1281,7 +1334,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         Style::default().fg(app.colors.text.accent_2),
     )])]);
 
-    render_actionable_list(
+    render_selectable_list(
         &mut app.sort_sources,
         frame,
         layout[0],
@@ -1289,7 +1342,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         app.active_block == ActiveBlock::Sort(SortScreen::Source),
     );
     frame.render_widget(divider, layout[1]);
-    render_actionable_list(
+    render_selectable_list(
         &mut app.sort_directions,
         frame,
         layout[2],
