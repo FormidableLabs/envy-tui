@@ -814,30 +814,15 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
     let rows = services
         .iter()
         .map(|item| {
-            let column_a =
+            let column_b =
                 Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
 
-            match &app.selected_filters.source {
-                SourceFilter::All => {
-                    let column_b = Cell::from(
-                        Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
-                    );
-
-                    let is_selected = current_service == Some(item.to_string());
-                    let row_style = if is_active && is_selected {
-                        RowStyle::Selected
-                    } else if is_selected {
-                        RowStyle::Inactive
-                    } else {
-                        RowStyle::Default
-                    };
-
-                    return Row::new(vec![column_b, column_a])
-                        .style(get_row_style(row_style, &app.colors));
-                }
+            let column_a = match &app.selected_filters.source {
+                SourceFilter::All => Cell::from(
+                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+                ),
                 SourceFilter::Applied(applied) => {
-                    let is_selected = current_service == Some(item.to_string());
-                    let column_b = if applied.contains(item) {
+                    if applied.contains(item) {
                         Cell::from(
                             Line::from(vec![Span::raw("[x]".to_string())])
                                 .alignment(Alignment::Left),
@@ -847,20 +832,24 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                             Line::from(vec![Span::raw("[ ]".to_string())])
                                 .alignment(Alignment::Left),
                         )
-                    };
-
-                    let row_style = if is_active && is_selected {
-                        RowStyle::Selected
-                    } else if is_selected {
-                        RowStyle::Inactive
-                    } else {
-                        RowStyle::Default
-                    };
-
-                    return Row::new(vec![column_b, column_a])
-                        .style(get_row_style(row_style, &app.colors));
+                    }
                 }
             };
+            let is_selected = current_service == Some(item.to_string());
+
+            let maybe_row_style = if is_active && is_selected {
+                Some(RowStyle::Selected)
+            } else if is_selected {
+                Some(RowStyle::Inactive)
+            } else {
+                None
+            };
+
+            if let Some(row_style) = maybe_row_style {
+                Row::new(vec![column_a, column_b]).style(get_row_style(row_style, &app.colors))
+            } else {
+                Row::new(vec![column_a, column_b])
+            }
         })
         .collect::<Vec<_>>();
 
@@ -899,15 +888,19 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
 
             let is_selected = status_filter.status == item.name.clone();
 
-            let row_style = if is_active && is_selected {
-                RowStyle::Selected
+            let maybe_row_style = if is_active && is_selected {
+                Some(RowStyle::Selected)
             } else if is_selected {
-                RowStyle::Inactive
+                Some(RowStyle::Inactive)
             } else {
-                RowStyle::Default
+                None
             };
 
-            Row::new(vec![column_b, column_a]).style(get_row_style(row_style, &app.colors))
+            if let Some(row_style) = maybe_row_style {
+                Row::new(vec![column_b, column_a]).style(get_row_style(row_style, &app.colors))
+            } else {
+                Row::new(vec![column_b, column_a])
+            }
         })
         .collect::<Vec<_>>();
 
@@ -945,15 +938,19 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
 
             let is_selected = current_service == Some(item.name.clone());
 
-            let row_style = if is_active && is_selected {
-                RowStyle::Selected
+            let maybe_row_style = if is_active && is_selected {
+                Some(RowStyle::Selected)
             } else if is_selected {
-                RowStyle::Inactive
+                Some(RowStyle::Inactive)
             } else {
-                RowStyle::Default
+                None
             };
 
-            Row::new(vec![column_b, column_a]).style(get_row_style(row_style, &app.colors))
+            if let Some(row_style) = maybe_row_style {
+                Row::new(vec![column_b, column_a]).style(get_row_style(row_style, &app.colors))
+            } else {
+                Row::new(vec![column_b, column_a])
+            }
         })
         .collect::<Vec<_>>();
 
@@ -995,12 +992,13 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
     let filter_items = vec!["method", "source", "status"];
 
     let current_filter = filter_items.get(app.filter_source_index);
-
+    let is_active_block = filter_screen == FilterScreen::Main;
     let filter_item_rows = filter_items
         .iter()
         .map(|item| {
-            let is_active = filter_screen == FilterScreen::Main && current_filter == Some(item);
-            let is_inactive = current_filter == Some(item);
+            let is_selected_row = current_filter == Some(item);
+            let is_active = is_active_block && is_selected_row;
+            let is_inactive = !is_active && is_selected_row;
             let is_selected = match item {
                 &"method" => filter_screen == FilterScreen::Method,
                 &"source" => filter_screen == FilterScreen::Source,
@@ -1016,24 +1014,29 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
                 Line::from(vec![Span::raw(item.to_string())]).alignment(Alignment::Left),
             );
 
-            let row_style = if is_active {
-                RowStyle::Selected
+            let maybe_row_style = if is_active {
+                Some(RowStyle::Selected)
             } else if is_inactive {
-                RowStyle::Inactive
+                Some(RowStyle::Inactive)
             } else {
-                RowStyle::Default
+                None
             };
 
-            Row::new(vec![column_a, column_b]).style(get_row_style(row_style, &app.colors))
+            if let Some(row_style) = maybe_row_style {
+                Row::new(vec![column_a, column_b]).style(get_row_style(row_style, &app.colors))
+            } else {
+                Row::new(vec![column_a, column_b])
+            }
         })
         .collect::<Vec<_>>();
 
     let table = Table::new([filter_item_rows].concat())
         .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
-        .style(get_text_style(
-            filter_screen == FilterScreen::Method,
-            &app.colors,
-        ))
+        .style(if filter_screen == FilterScreen::Main {
+            get_row_style(RowStyle::Active, &app.colors)
+        } else {
+            get_row_style(RowStyle::Default, &app.colors)
+        })
         .widths(&[Constraint::Length(3), Constraint::Percentage(100)])
         .column_spacing(3);
 
@@ -1191,7 +1194,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
     )])]);
 
     frame.render_widget(parent_block, area);
-    render_actionable_list(
+    render_selectable_list(
         &mut app.sort_sources,
         frame,
         layout[0],
@@ -1199,7 +1202,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         app.active_block == ActiveBlock::Sort(SortScreen::Source),
     );
     frame.render_widget(divider, layout[1]);
-    render_actionable_list(
+    render_selectable_list(
         &mut app.sort_directions,
         frame,
         layout[2],
@@ -1220,7 +1223,11 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
 fn render_table(rows: Vec<Row>, frame: &mut Frame, area: Rect, colors: &Colors, active: bool) {
     let table = Table::new([rows].concat())
         .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
-        .style(get_text_style(active, colors))
+        .style(if active {
+            get_row_style(RowStyle::Active, colors)
+        } else {
+            get_row_style(RowStyle::Default, colors)
+        })
         .widths(&[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
@@ -1230,17 +1237,13 @@ fn render_table(rows: Vec<Row>, frame: &mut Frame, area: Rect, colors: &Colors, 
 
     frame.render_widget(table, area);
 }
-
-fn render_actionable_list(
+fn render_selectable_list(
     actionable_list: &mut ActionableList,
     frame: &mut Frame,
     area: Rect,
     colors: &Colors,
     active: bool,
 ) {
-    let actionable_item_style = Style::default().fg(colors.text.accent_2);
-    let active_item_style = get_row_style(RowStyle::Active, colors);
-    let default_item_style = get_row_style(RowStyle::Default, colors);
     let show_select_labels = actionable_list.show_select_labels;
 
     let items: Vec<ListItem> = actionable_list
@@ -1263,6 +1266,46 @@ fn render_actionable_list(
             spans.extend(vec![
                 Span::raw(format!("{:<15}", item.label)),
                 " ".into(),
+                Span::raw(item.value.clone().unwrap_or_default().to_string()),
+            ]);
+
+            ListItem::new(Line::from(spans))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .style(if active {
+            get_row_style(RowStyle::Active, colors)
+        } else {
+            get_row_style(RowStyle::Default, colors)
+        })
+        .highlight_style(if active {
+            get_row_style(RowStyle::Selected, colors)
+        } else {
+            get_row_style(RowStyle::Inactive, colors)
+        });
+
+    frame.render_stateful_widget(list, area, &mut actionable_list.scroll_state)
+}
+
+fn render_actionable_list(
+    actionable_list: &mut ActionableList,
+    frame: &mut Frame,
+    area: Rect,
+    colors: &Colors,
+    active: bool,
+) {
+    let actionable_item_style = Style::default().fg(colors.text.accent_2);
+    let active_item_style = get_row_style(RowStyle::Active, colors);
+    let default_item_style = get_row_style(RowStyle::Default, colors);
+
+    let items: Vec<ListItem> = actionable_list
+        .items
+        .iter()
+        .map(|item| {
+            ListItem::new(Line::from(vec![
+                Span::raw(format!("{:<15}", item.label)),
+                " ".into(),
                 Span::styled(
                     item.value.clone().unwrap_or_default().to_string(),
                     if active && item.action.is_some() {
@@ -1273,9 +1316,7 @@ fn render_actionable_list(
                         default_item_style
                     },
                 ),
-            ]);
-
-            ListItem::new(Line::from(spans))
+            ]))
         })
         .collect();
 
