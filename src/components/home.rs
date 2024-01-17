@@ -593,7 +593,7 @@ impl Component for Home {
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_filters(self, frame, main_layout[0]);
             }
@@ -602,7 +602,7 @@ impl Component for Home {
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_filters_source(self, frame, main_layout[0]);
             }
@@ -611,7 +611,7 @@ impl Component for Home {
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_filters_status(self, frame, main_layout[0]);
             }
@@ -620,7 +620,7 @@ impl Component for Home {
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_filters_method(self, frame, main_layout[0]);
             }
@@ -629,7 +629,7 @@ impl Component for Home {
                     .direction(Direction::Vertical)
                     .margin(3)
                     .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(frame.size());
+                    .split(rect);
 
                 render::render_sort(self, frame, main_layout[0]);
             }
@@ -643,9 +643,9 @@ impl Component for Home {
                 render::render_debug(self, frame, main_layout[0]);
             }
             _ => {
-                let terminal_width = frame.size().width;
+                let terminal_width = rect.width;
 
-                if terminal_width > 200 {
+                if terminal_width > 80 {
                     let main_layout = Layout::default()
                         .direction(Direction::Vertical)
                         .margin(1)
@@ -661,7 +661,9 @@ impl Component for Home {
                         )
                         .split(main_layout[0]);
 
-                    let [left_column, right_column, ..] = main_columns[..] else { todo!() };
+                    let [left_column, right_column, ..] = main_columns[..] else {
+                        todo!()
+                    };
 
                     let right_column_layout = Layout::default()
                         .direction(Direction::Vertical)
