@@ -37,6 +37,7 @@ pub struct ActionableList {
     pub items: Vec<ActionableListItem>,
     pub scroll_state: ListState,
     pub select_state: ListState,
+    pub show_select_labels: bool,
 }
 
 impl ActionableList {
@@ -45,12 +46,20 @@ impl ActionableList {
             items,
             scroll_state: ListState::default(),
             select_state: ListState::default(),
+            show_select_labels: false,
         }
     }
 
     pub fn with_scroll_state(self, scroll_state: ListState) -> Self {
         Self {
             scroll_state,
+            ..self
+        }
+    }
+
+    pub fn with_select_labels(self) -> Self {
+        Self {
+            show_select_labels: true,
             ..self
         }
     }

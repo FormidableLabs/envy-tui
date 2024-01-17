@@ -251,8 +251,8 @@ pub struct StatusFilter {
     strum_macros::AsRefStr,
 )]
 pub enum SortDirection {
-    #[default]
     Ascending,
+    #[default]
     Descending,
 }
 
@@ -268,12 +268,12 @@ pub enum SortDirection {
     strum_macros::AsRefStr,
 )]
 pub enum SortSource {
-    #[default]
     Method,
     Status,
     Source,
     Url,
     Duration,
+    #[default]
     Timestamp,
 }
 

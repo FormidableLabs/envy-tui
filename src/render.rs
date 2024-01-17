@@ -351,106 +351,6 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
     }
 }
 
-fn render_selectable_list(
-    actionable_list: &mut ActionableList,
-    frame: &mut Frame,
-    area: Rect,
-    colors: &Colors,
-    active: bool,
-) {
-    let actionable_item_style = Style::default().fg(colors.text.accent_2);
-    let active_item_style = get_row_style(RowStyle::Active, colors);
-    let default_item_style = get_row_style(RowStyle::Default, colors);
-
-    let items: Vec<ListItem> = actionable_list
-        .items
-        .iter()
-        .enumerate()
-        .map(|(idx, item)| {
-            ListItem::new(Line::from(vec![
-                Span::raw(if Some(idx) == actionable_list.select_state.selected() {
-                    "[x]"
-                } else {
-                    "[ ]"
-                }),
-                Span::raw(format!(" {:<15}", item.label)),
-                " ".into(),
-                Span::styled(
-                    item.value.clone().unwrap_or_default().to_string(),
-                    if active && item.action.is_some() {
-                        actionable_item_style
-                    } else if active {
-                        active_item_style
-                    } else {
-                        default_item_style
-                    },
-                ),
-            ]))
-        })
-        .collect();
-
-    let list = List::new(items)
-        .style(Style::default().fg(if active {
-            colors.text.accent_1
-        } else {
-            colors.text.unselected
-        }))
-        .highlight_style(if active {
-            get_row_style(RowStyle::Selected, colors)
-        } else {
-            get_row_style(RowStyle::Inactive, colors)
-        });
-
-    frame.render_stateful_widget(list, area, &mut actionable_list.scroll_state)
-}
-
-fn render_actionable_list(
-    actionable_list: &mut ActionableList,
-    frame: &mut Frame,
-    area: Rect,
-    colors: &Colors,
-    active: bool,
-) {
-    let actionable_item_style = Style::default().fg(colors.text.accent_2);
-    let active_item_style = get_row_style(RowStyle::Active, colors);
-    let default_item_style = get_row_style(RowStyle::Default, colors);
-
-    let items: Vec<ListItem> = actionable_list
-        .items
-        .iter()
-        .map(|item| {
-            ListItem::new(Line::from(vec![
-                Span::raw(format!("{:<15}", item.label)),
-                " ".into(),
-                Span::styled(
-                    item.value.clone().unwrap_or_default().to_string(),
-                    if active && item.action.is_some() {
-                        actionable_item_style
-                    } else if active {
-                        active_item_style
-                    } else {
-                        default_item_style
-                    },
-                ),
-            ]))
-        })
-        .collect();
-
-    let list = List::new(items)
-        .style(Style::default().fg(if active {
-            colors.text.accent_1
-        } else {
-            colors.text.unselected
-        }))
-        .highlight_style(if active {
-            get_row_style(RowStyle::Selected, colors)
-        } else {
-            get_row_style(RowStyle::Inactive, colors)
-        });
-
-    frame.render_stateful_widget(list, area, &mut actionable_list.scroll_state)
-}
-
 fn render_timing_chart(
     trace: &Trace,
     actionable_list: &mut ActionableList,
@@ -887,19 +787,6 @@ pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
     frame.render_widget(list, area);
 }
 
-/// helper function to create an overlay rect `r`
-fn overlay_area(r: Rect) -> Rect {
-    let overlay_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(100), Constraint::Min(0)].as_ref())
-        .split(overlay_layout[1])[0]
-}
-
 pub fn get_services_from_traces(app: &Home) -> Vec<String> {
     let services = app
         .items
@@ -977,17 +864,7 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([rows].concat())
-        .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
-        .style(get_text_style(is_active, &app.colors))
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
-
-    frame.render_widget(list, area);
+    render_table(rows, frame, area, &app.colors, is_active);
 }
 
 pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
@@ -999,7 +876,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
 
     let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Status);
 
-    let rows1 = app
+    let rows = app
         .selected_filters
         .status
         .iter()
@@ -1034,17 +911,7 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([rows1].concat())
-        .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
-        .style(get_text_style(is_active, &app.colors))
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
-
-    frame.render_widget(list, area);
+    render_table(rows, frame, area, &app.colors, is_active);
 }
 
 pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
@@ -1057,7 +924,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
 
     let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Method);
 
-    let rows1 = app
+    let rows = app
         .selected_filters
         .method
         .iter()
@@ -1090,17 +957,7 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([rows1].concat())
-        .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
-        .style(get_text_style(is_active, &app.colors))
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
-
-    frame.render_widget(list, area);
+    render_table(rows, frame, area, &app.colors, is_active);
 }
 
 pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
@@ -1117,7 +974,6 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         .border_type(BorderType::Plain);
 
     let inner_area = parent_block.inner(area);
-    frame.render_widget(parent_block, area);
 
     let vertical_layout = Layout::default()
         .constraints([Constraint::Min(0), Constraint::Length(4)])
@@ -1172,7 +1028,7 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([filter_item_rows].concat())
+    let table = Table::new([filter_item_rows].concat())
         .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
         .style(get_text_style(
             filter_screen == FilterScreen::Method,
@@ -1252,7 +1108,8 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         Style::default().fg(app.colors.text.accent_2),
     )])]);
 
-    frame.render_widget(list, layout[0]);
+    frame.render_widget(parent_block, area);
+    frame.render_widget(table, layout[0]);
     frame.render_widget(divider, layout[1]);
     frame.render_widget(footer, vertical_layout[1]);
     frame.render_widget(footer_content, footer_layout[0]);
@@ -1281,7 +1138,6 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         .border_type(BorderType::Plain);
 
     let inner_area = parent_block.inner(area);
-    frame.render_widget(parent_block, area);
 
     let vertical_layout = Layout::default()
         .constraints([Constraint::Min(0), Constraint::Length(4)])
@@ -1334,7 +1190,8 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         Style::default().fg(app.colors.text.accent_2),
     )])]);
 
-    render_selectable_list(
+    frame.render_widget(parent_block, area);
+    render_actionable_list(
         &mut app.sort_sources,
         frame,
         layout[0],
@@ -1342,7 +1199,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         app.active_block == ActiveBlock::Sort(SortScreen::Source),
     );
     frame.render_widget(divider, layout[1]);
-    render_selectable_list(
+    render_actionable_list(
         &mut app.sort_directions,
         frame,
         layout[2],
@@ -1358,4 +1215,94 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         &app.colors,
         app.active_block == ActiveBlock::Sort(SortScreen::Actions),
     );
+}
+
+fn render_table(rows: Vec<Row>, frame: &mut Frame, area: Rect, colors: &Colors, active: bool) {
+    let table = Table::new([rows].concat())
+        .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
+        .style(get_text_style(active, colors))
+        .widths(&[
+            Constraint::Percentage(15),
+            Constraint::Percentage(15),
+            Constraint::Percentage(60),
+        ])
+        .column_spacing(10);
+
+    frame.render_widget(table, area);
+}
+
+fn render_actionable_list(
+    actionable_list: &mut ActionableList,
+    frame: &mut Frame,
+    area: Rect,
+    colors: &Colors,
+    active: bool,
+) {
+    let actionable_item_style = Style::default().fg(colors.text.accent_2);
+    let active_item_style = get_row_style(RowStyle::Active, colors);
+    let default_item_style = get_row_style(RowStyle::Default, colors);
+    let show_select_labels = actionable_list.show_select_labels;
+
+    let items: Vec<ListItem> = actionable_list
+        .items
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            let mut spans = vec![];
+
+            if show_select_labels {
+                spans.push(Span::raw(
+                    if Some(idx) == actionable_list.select_state.selected() {
+                        "[x] "
+                    } else {
+                        "[ ] "
+                    },
+                ))
+            };
+
+            spans.extend(vec![
+                Span::raw(format!("{:<15}", item.label)),
+                " ".into(),
+                Span::styled(
+                    item.value.clone().unwrap_or_default().to_string(),
+                    if active && item.action.is_some() {
+                        actionable_item_style
+                    } else if active {
+                        active_item_style
+                    } else {
+                        default_item_style
+                    },
+                ),
+            ]);
+
+            ListItem::new(Line::from(spans))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .style(Style::default().fg(if active {
+            colors.text.accent_1
+        } else {
+            colors.text.unselected
+        }))
+        .highlight_style(if active {
+            get_row_style(RowStyle::Selected, colors)
+        } else {
+            get_row_style(RowStyle::Inactive, colors)
+        });
+
+    frame.render_stateful_widget(list, area, &mut actionable_list.scroll_state)
+}
+
+/// helper function to create an overlay rect `r`
+fn overlay_area(r: Rect) -> Rect {
+    let overlay_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(100), Constraint::Min(0)].as_ref())
+        .split(overlay_layout[1])[0]
 }

@@ -81,6 +81,7 @@ pub struct Home {
 impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
         let config = Config::new()?;
+
         let home = Home {
             key_map: config.mapping.0,
             colors: config.colors.clone(),
@@ -114,14 +115,16 @@ impl Home {
                 ActionableListItem::with_label(SortSource::Timestamp.as_ref())
                     .with_action(Action::SelectSortSource(SortSource::Timestamp)),
             ])
-            .with_scroll_state(ListState::default().with_selected(Some(0))),
+            .with_scroll_state(ListState::default().with_selected(Some(0)))
+            .with_select_labels(),
             sort_directions: ActionableList::with_items(vec![
                 ActionableListItem::with_label(SortDirection::Ascending.as_ref())
                     .with_action(Action::SelectSortDirection(SortDirection::Ascending)),
                 ActionableListItem::with_label(SortDirection::Descending.as_ref())
                     .with_action(Action::SelectSortDirection(SortDirection::Descending)),
             ])
-            .with_scroll_state(ListState::default().with_selected(Some(0))),
+            .with_scroll_state(ListState::default().with_selected(Some(0)))
+            .with_select_labels(),
             sort_actions: ActionableList::with_items(vec![
                 ActionableListItem::with_label("apply").with_action(Action::UpdateSort)
             ]),
