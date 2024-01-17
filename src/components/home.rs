@@ -1,18 +1,23 @@
-use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    layout::Layout,
-    prelude::{Constraint, Direction, Rect},
-};
 use std::error::Error;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
+
+use chrono::prelude::DateTime;
+use crossterm::event::{KeyCode, KeyEvent};
+use http::{HeaderName, HeaderValue};
+use ratatui::{
+    layout::Layout,
+    prelude::{Constraint, Direction, Rect},
+};
+use strum::IntoEnumIterator;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
 use crate::{
     app::{Action, ActiveBlock, DetailsPane, Mode, UIState},
+    components::actionable_list::{ActionableList, ActionableListItem},
     components::component::Component,
     components::handlers,
     components::jsonviewer,
@@ -20,7 +25,7 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::TraceSort,
+    utils::{parse_query_params, TraceSort},
 };
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
@@ -59,11 +64,7 @@ pub struct Home {
     pub active_block: ActiveBlock,
     pub action_tx: Option<UnboundedSender<Action>>,
     pub previous_blocks: Vec<ActiveBlock>,
-    pub details_block: DetailsPane,
     pub items: BTreeSet<Trace>,
-    pub selected_request_header_index: usize,
-    pub selected_response_header_index: usize,
-    pub selected_params_index: usize,
     pub abort_handlers: Vec<AbortHandle>,
     pub search_query: String,
     pub main: UIState,
@@ -91,6 +92,16 @@ pub struct Home {
     pub method_filters: HashMap<http::method::Method, MethodFilter>,
     pub status_filters: HashMap<String, StatusFilter>,
     pub order: TraceSort,
+    pub details_block: DetailsPane,
+    pub details_tabs: Vec<DetailsPane>,
+    pub details_tab_index: usize,
+    pub details_panes: Vec<DetailsPane>,
+    pub request_details_list: ActionableList,
+    pub query_params_list: ActionableList,
+    pub request_headers_list: ActionableList,
+    pub response_details_list: ActionableList,
+    pub response_headers_list: ActionableList,
+    pub timing_list: ActionableList,
 }
 
 impl Home {
@@ -111,6 +122,8 @@ impl Home {
                 "Response body",
                 config.colors.clone(),
             )?,
+            details_tabs: DetailsPane::iter().collect(),
+            details_panes: vec![],
             ..Self::default()
         };
 
@@ -168,6 +181,230 @@ impl Home {
                 http_trace.pretty_response_body = Some("TIMEOUT WAITING FOR RESPONSE".to_string());
                 self.items.replace(selected_trace);
             };
+        }
+    }
+
+    fn reset_active_pane(&mut self, pane: DetailsPane) {
+        match pane {
+            DetailsPane::QueryParams => self.query_params_list.reset(),
+            DetailsPane::RequestDetails => self.request_details_list.reset(),
+            DetailsPane::RequestHeaders => self.request_headers_list.reset(),
+            DetailsPane::ResponseDetails => self.response_details_list.reset(),
+            DetailsPane::ResponseHeaders => self.response_headers_list.reset(),
+            DetailsPane::Timing => {}
+        }
+    }
+
+    fn update_details_lists(&mut self) {
+        if let Some(trace) = &self.selected_trace {
+            // REQUEST DETAILS PANE
+            let mut rows: Vec<ActionableListItem> = vec![];
+
+            let sent = DateTime::from_timestamp(trace.timestamp, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d @ %H:%M:%S")
+                .to_string();
+            let host = trace.service_name.clone().unwrap_or(format!(""));
+            let path = trace.http.clone().map_or("".to_string(), |http| http.path);
+            let port = trace.http.clone().map_or("".to_string(), |http| http.port);
+
+            rows.push(ActionableListItem::with_labelled_value("sent", &sent));
+            rows.push(ActionableListItem::with_labelled_value("host", &host));
+            rows.push(ActionableListItem::with_labelled_value("path", &path));
+            rows.push(ActionableListItem::with_labelled_value("port", &port));
+            // add available actions to the item list
+            if self.details_tabs.contains(&DetailsPane::RequestDetails) {
+                rows.push(ActionableListItem::with_action(
+                    "actions",
+                    "pop-out [↗]",
+                    Action::PopOutDetailsTab(DetailsPane::RequestDetails),
+                ))
+            } else {
+                rows.push(ActionableListItem::with_action(
+                    "actions",
+                    "close [x]",
+                    Action::CloseDetailsPane(DetailsPane::RequestDetails),
+                ))
+            };
+
+            self.request_details_list =
+                ActionableList::new(rows, self.request_details_list.state.clone());
+
+            // QUERY PARAMS PANE
+            let mut raw_params = parse_query_params(
+                trace
+                    .http
+                    .clone()
+                    .expect("Missing http from trace")
+                    .uri
+                    .to_string(),
+            );
+
+            raw_params.sort_by(|a, b| {
+                let (name_a, _) = a;
+                let (name_b, _) = b;
+
+                name_a.cmp(name_b)
+            });
+
+            let mut next_items: Vec<ActionableListItem> = raw_params
+                .into_iter()
+                .map(|(label, value)| ActionableListItem::with_labelled_value(&label, &value))
+                .to_owned()
+                .collect();
+
+            if self.details_tabs.contains(&DetailsPane::QueryParams) {
+                next_items.push(ActionableListItem::with_action(
+                    "actions",
+                    "pop-out [↗]",
+                    Action::PopOutDetailsTab(DetailsPane::QueryParams),
+                ))
+            } else {
+                next_items.push(ActionableListItem::with_action(
+                    "actions",
+                    "close [x]",
+                    Action::CloseDetailsPane(DetailsPane::QueryParams),
+                ))
+            };
+
+            self.query_params_list =
+                ActionableList::new(next_items, self.query_params_list.state.clone());
+
+            // RESPONSE DETAILS PANE
+            let mut items: Vec<ActionableListItem> = vec![];
+
+            let received = DateTime::from_timestamp(trace.timestamp, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d @ %H:%M:%S")
+                .to_string();
+            let status = trace.http.clone().map_or(None, |http| http.status).map_or(
+                "".to_string(),
+                |status| {
+                    format!(
+                        "{} {}",
+                        status.as_str(),
+                        status.canonical_reason().unwrap_or_default()
+                    )
+                },
+            );
+            let duration = trace
+                .http
+                .clone()
+                .map_or(None, |http| http.duration)
+                .map_or("".to_string(), |duration| format!("{}ms", duration));
+
+            items.push(ActionableListItem::with_labelled_value(
+                "received", &received,
+            ));
+            items.push(ActionableListItem::with_labelled_value("status", &status));
+            items.push(ActionableListItem::with_labelled_value(
+                "duration", &duration,
+            ));
+
+            if self.details_tabs.contains(&DetailsPane::ResponseDetails) {
+                items.push(ActionableListItem::with_action(
+                    "actions",
+                    "pop-out [↗]",
+                    Action::PopOutDetailsTab(DetailsPane::ResponseDetails),
+                ))
+            } else {
+                items.push(ActionableListItem::with_action(
+                    "actions",
+                    "close [x]",
+                    Action::CloseDetailsPane(DetailsPane::ResponseDetails),
+                ))
+            };
+
+            self.response_details_list =
+                ActionableList::new(items, self.response_details_list.state.clone());
+
+            // REQUEST HEADERS PANE
+            let headers = trace.http.clone().unwrap_or_default().request_headers;
+            let mut parsed_headers = headers.iter().collect::<Vec<(&HeaderName, &HeaderValue)>>();
+            parsed_headers.sort_by(|a, b| {
+                let (name_a, _) = a;
+                let (name_b, _) = b;
+
+                name_a.to_string().cmp(&name_b.to_string())
+            });
+            let mut next_items: Vec<ActionableListItem> = parsed_headers
+                .into_iter()
+                .map(|(label, value)| {
+                    ActionableListItem::with_labelled_value(
+                        label.as_str(),
+                        value.to_str().unwrap_or("Unknown header value"),
+                    )
+                })
+                .to_owned()
+                .collect();
+            // add available actions to the item list
+            if self.details_tabs.contains(&DetailsPane::RequestHeaders) {
+                next_items.push(ActionableListItem::with_action(
+                    "actions",
+                    "pop-out [↗]",
+                    Action::PopOutDetailsTab(DetailsPane::RequestHeaders),
+                ))
+            } else {
+                next_items.push(ActionableListItem::with_action(
+                    "actions",
+                    "close [x]",
+                    Action::CloseDetailsPane(DetailsPane::RequestHeaders),
+                ))
+            };
+
+            self.request_headers_list =
+                ActionableList::new(next_items, self.request_headers_list.state.clone());
+
+            // RESPONSE HEADERS PANE
+            let headers = trace.http.clone().unwrap_or_default().response_headers;
+            let mut parsed_headers = headers.iter().collect::<Vec<(&HeaderName, &HeaderValue)>>();
+            parsed_headers.sort_by(|a, b| {
+                let (name_a, _) = a;
+                let (name_b, _) = b;
+
+                name_a.to_string().cmp(&name_b.to_string())
+            });
+            let mut next_items: Vec<ActionableListItem> = parsed_headers
+                .into_iter()
+                .map(|(label, value)| {
+                    ActionableListItem::with_labelled_value(
+                        label.as_str(),
+                        value.to_str().unwrap_or("Unknown header value"),
+                    )
+                })
+                .to_owned()
+                .collect();
+
+            // add available actions to the item list
+            if self.details_tabs.contains(&DetailsPane::ResponseHeaders) {
+                next_items.push(ActionableListItem::with_action(
+                    "actions",
+                    "pop-out [↗]",
+                    Action::PopOutDetailsTab(DetailsPane::ResponseHeaders),
+                ))
+            } else {
+                next_items.push(ActionableListItem::with_action(
+                    "actions",
+                    "close [x]",
+                    Action::CloseDetailsPane(DetailsPane::ResponseHeaders),
+                ))
+            };
+
+            self.response_headers_list =
+                ActionableList::new(next_items, self.response_headers_list.state.clone());
+
+            // TIMING PANE
+            let next_items: Vec<ActionableListItem> = vec![
+                ActionableListItem::with_label("blocked"),
+                ActionableListItem::with_label("DNS"),
+                ActionableListItem::with_label("connecting"),
+                ActionableListItem::with_label("TLS"),
+                ActionableListItem::with_label("sending"),
+                ActionableListItem::with_label("waiting"),
+                ActionableListItem::with_label("receiving"),
+            ];
+
+            self.timing_list = ActionableList::new(next_items, self.timing_list.state.clone());
         }
     }
 }
@@ -269,8 +506,8 @@ impl Component for Home {
             Action::GoToEnd => Ok(handlers::handle_go_to_end(self, metadata)),
             Action::GoToStart => Ok(handlers::handle_go_to_start(self)),
             Action::PreviousSection => Ok(handlers::handle_back_tab(self)),
-            Action::NextPane => Ok(handlers::handle_pane_next(self)),
-            Action::PreviousPane => Ok(handlers::handle_pane_prev(self)),
+            Action::NextDetailsTab => Ok(handlers::handle_details_tab_next(self)),
+            Action::PreviousDetailsTab => Ok(handlers::handle_details_tab_prev(self)),
             Action::NewSearch => Ok(handlers::handle_new_search(self)),
             Action::UpdateSearchQuery(c) => Ok(handlers::handle_search_push(self, c)),
             Action::DeleteSearchQuery => Ok(handlers::handle_search_pop(self)),
@@ -309,15 +546,38 @@ impl Component for Home {
                 self.mark_trace_as_timed_out(id);
                 Ok(Some(Action::SelectTrace(self.selected_trace.clone())))
             }
-            Action::SelectTrace(trace) => {
-                self.selected_trace = trace;
+            Action::SelectTrace(maybe_trace) => {
+                self.selected_trace = maybe_trace;
+
+                self.update_details_lists();
+
+                Ok(None)
+            }
+            Action::PopOutDetailsTab(pane) => {
+                self.details_panes.push(pane);
+                self.details_tabs.retain(|&d| pane != d);
+                self.details_tab_index = self.details_tab_index.saturating_sub(1);
+
+                self.update_details_lists();
+                self.reset_active_pane(pane);
+
+                Ok(None)
+            }
+            Action::CloseDetailsPane(pane) => {
+                self.details_panes.retain(|&d| pane != d);
+                self.details_tabs.push(pane);
+                self.details_tab_index = self.details_tabs.len() - 1;
+
+                self.update_details_lists();
+                self.reset_active_pane(pane);
+
                 Ok(None)
             }
             _ => Ok(None),
         }
     }
 
-    fn render(&self, frame: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
+    fn render(&mut self, frame: &mut Frame, rect: Rect) -> Result<(), Box<dyn Error>> {
         match self.active_block {
             ActiveBlock::Help => {
                 let main_layout = Layout::default()
@@ -422,10 +682,6 @@ impl Component for Home {
                     render::details(self, frame, right_column_layout[0]);
                     self.request_json_viewer.render(frame, body_layout[1])?;
                     self.response_json_viewer.render(frame, body_layout[0])?;
-
-                    // render::render_request_summary(self, frame, details_layout[0]);
-                    // render::render_response_details(self, frame, response_layout[0]);
-
                     render::render_footer(self, frame, main_layout[1]);
                     render::render_search(self, frame);
 
@@ -473,10 +729,6 @@ impl Component for Home {
                     self.response_json_viewer
                         .render(frame, response_layout[1])?;
                     render::render_traces(self, frame, main_layout[0]);
-
-                    // render::render_request_summary(self, frame, main_layout[1]);
-                    // render::render_response_details(self, frame, response_layout[0]);
-
                     render::render_search(self, frame);
                     render::render_footer(self, frame, main_layout[4]);
 
