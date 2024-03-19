@@ -698,6 +698,11 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
                 Action::PreviousDetailsTab => "Go To Previous Tab",
                 Action::StartWebSocketServer => "Start the Collector Server",
                 Action::StopWebSocketServer => "Stop the Collector Server",
+                Action::Select => "Select at cursor position",
+                Action::ExpandAll => "Expand all JSON objects",
+                Action::CollapseAll => "Collapse all JSON objects",
+                Action::OpenSort => "Open sort screen",
+                Action::OpenFilter => "Open filter screen",
                 _ => "",
             };
             let description = format!("{}:", description_str);
@@ -1003,18 +1008,7 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
             let is_selected_row = current_filter == Some(item);
             let is_active = is_active_block && is_selected_row;
             let is_inactive = !is_active && is_selected_row;
-            let is_selected = match item {
-                &"method" => filter_screen == FilterScreen::Method,
-                &"source" => filter_screen == FilterScreen::Source,
-                &"status" => filter_screen == FilterScreen::Status,
-                _ => false,
-            };
-            let label = if is_selected { "[x]" } else { "[ ]" };
-
-            let column_a = Cell::from(
-                Line::from(vec![Span::raw(label.to_string())]).alignment(Alignment::Left),
-            );
-            let column_b = Cell::from(
+            let column = Cell::from(
                 Line::from(vec![Span::raw(item.to_string())]).alignment(Alignment::Left),
             );
 
@@ -1027,24 +1021,21 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
             };
 
             if let Some(row_style) = maybe_row_style {
-                Row::new(vec![column_a, column_b]).style(get_row_style(row_style, &app.colors))
+                Row::new(vec![column]).style(get_row_style(row_style, &app.colors))
             } else {
-                Row::new(vec![column_a, column_b])
+                Row::new(vec![column])
             }
         })
         .collect::<Vec<_>>();
 
-    let table = Table::new(
-        [filter_item_rows].concat(),
-        &[Constraint::Length(3), Constraint::Percentage(100)],
-    )
-    .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
-    .style(if filter_screen == FilterScreen::Main {
-        get_row_style(RowStyle::Active, &app.colors)
-    } else {
-        get_row_style(RowStyle::Default, &app.colors)
-    })
-    .column_spacing(3);
+    let table = Table::new([filter_item_rows].concat(), &[Constraint::Percentage(100)])
+        .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
+        .style(if filter_screen == FilterScreen::Main {
+            get_row_style(RowStyle::Active, &app.colors)
+        } else {
+            get_row_style(RowStyle::Default, &app.colors)
+        })
+        .column_spacing(3);
 
     let divider = Block::default()
         .borders(Borders::LEFT)
@@ -1156,6 +1147,8 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         .constraints([
             Constraint::Percentage(50),
             Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
             Constraint::Percentage(50),
         ])
         .vertical_margin(1)
@@ -1205,11 +1198,11 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
         &app.colors,
         app.active_block == ActiveBlock::Sort(SortScreen::Source),
     );
-    frame.render_widget(divider, layout[1]);
+    frame.render_widget(divider, layout[2]);
     render_selectable_list(
         &mut app.sort_directions,
         frame,
-        layout[2],
+        layout[4],
         &app.colors,
         app.active_block == ActiveBlock::Sort(SortScreen::Direction),
     );

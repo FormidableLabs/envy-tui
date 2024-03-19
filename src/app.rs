@@ -299,7 +299,7 @@ impl Display for SortDirection {
 impl Display for SortSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SortSource::Timestamp => write!(f, "Timestamp ↓"),
+            SortSource::Timestamp => write!(f, "Timestamp"),
             SortSource::Method => write!(f, "Method"),
             SortSource::Status => write!(f, "Status"),
             SortSource::Duration  => write!(f, "Duration"),
