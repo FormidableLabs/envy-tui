@@ -210,21 +210,25 @@ impl JSONViewer {
             .constraints([Constraint::Length(4), Constraint::Min(0)])
             .split(inner_area);
 
-        let mut lines = raw_lines(
+        let raw_lines = raw_lines(
             self.data.clone(),
             self.expanded_idxs.clone(),
             self.is_expanded,
         )?;
 
-        for (idx, line) in lines.iter_mut().enumerate() {
-            let style = match (self.is_active, idx == self.cursor_position) {
-                (true, true) => get_row_style(RowStyle::Selected, &self.colors),
-                (true, false) => get_row_style(RowStyle::Active, &self.colors),
-                (false, true) => get_row_style(RowStyle::Inactive, &self.colors),
-                (false, false) => get_row_style(RowStyle::Default, &self.colors),
-            };
-            line.patch_style(style);
-        }
+        let mut lines: Vec<Line> = raw_lines
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| {
+                let style = match (self.is_active, idx == self.cursor_position) {
+                    (true, true) => get_row_style(RowStyle::Selected, &self.colors),
+                    (true, false) => get_row_style(RowStyle::Active, &self.colors),
+                    (false, true) => get_row_style(RowStyle::Inactive, &self.colors),
+                    (false, false) => get_row_style(RowStyle::Default, &self.colors),
+                };
+                line.clone().patch_style(style)
+            })
+            .collect();
 
         let mut indent: usize = 0;
         for line in lines.iter_mut() {

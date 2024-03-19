@@ -400,24 +400,6 @@ pub fn handle_down(
     }
 }
 
-pub fn handle_enter(app: &mut Home) -> Option<Action> {
-    if app.active_block == ActiveBlock::Traces {
-        app.active_block = ActiveBlock::Details;
-        None
-    } else if app.active_block == ActiveBlock::Details {
-        match app.details_block {
-            DetailsPane::RequestDetails => app.request_details_list.action(),
-            DetailsPane::QueryParams => app.query_params_list.action(),
-            DetailsPane::RequestHeaders => app.request_headers_list.action(),
-            DetailsPane::ResponseDetails => app.response_details_list.action(),
-            DetailsPane::ResponseHeaders => app.response_headers_list.action(),
-            DetailsPane::Timing => app.timing_list.action(),
-        }
-    } else {
-        None
-    }
-}
-
 pub fn handle_esc(app: &mut Home) -> Option<Action> {
     app.active_block = ActiveBlock::Traces;
 
@@ -1098,7 +1080,22 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             app.main.scroll_state = app.main.scroll_state.content_length(length.into());
 
             None
-        }
+        },
+        ActiveBlock::Traces => {
+            app.active_block = ActiveBlock::Details;
+
+            None
+        },
+        ActiveBlock::Details => {
+            match app.details_block {
+                DetailsPane::RequestDetails => app.request_details_list.action(),
+                DetailsPane::QueryParams => app.query_params_list.action(),
+                DetailsPane::RequestHeaders => app.request_headers_list.action(),
+                DetailsPane::ResponseDetails => app.response_details_list.action(),
+                DetailsPane::ResponseHeaders => app.response_headers_list.action(),
+                DetailsPane::Timing => app.timing_list.action(),
+            }
+        },
         _ => None,
     }
 }

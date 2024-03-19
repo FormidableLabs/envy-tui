@@ -20,14 +20,13 @@ mapping:
   ?: Help
   p: ToggleDebug
   d: DeleteItem
-  space: Select
   f: OpenFilter
   s: OpenSort
   "]": NextDetailsTab
   "[": PreviousDetailsTab
   e: ExpandAll
   E: CollapseAll
-  enter: ShowTraceDetails
+  enter: Select
 colors:
   surface:
     bg: !Indexed 235

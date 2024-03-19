@@ -475,7 +475,6 @@ impl Component for Home {
             Action::UpdateSearchQuery(c) => Ok(handlers::handle_search_push(self, c)),
             Action::DeleteSearchQuery => Ok(handlers::handle_search_pop(self)),
             Action::ExitSearch => Ok(handlers::handle_search_exit(self)),
-            Action::ShowTraceDetails => Ok(handlers::handle_enter(self)),
             Action::FocusOnTraces => Ok(handlers::handle_esc(self)),
             Action::StopWebSocketServer => {
                 self.wss_connected = false;
@@ -659,12 +658,9 @@ impl Component for Home {
                         .direction(Direction::Horizontal)
                         .constraints(
                             [Constraint::Percentage(35), Constraint::Percentage(65)].as_ref(),
-                        )
-                        .split(main_layout[0]);
+                        );
 
-                    let [left_column, right_column, ..] = main_columns[..] else {
-                        todo!()
-                    };
+                    let [left_column, right_column] = main_columns.areas(main_layout[0]);
 
                     let right_column_layout = Layout::default()
                         .direction(Direction::Vertical)

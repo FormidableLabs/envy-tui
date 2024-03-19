@@ -247,7 +247,6 @@ pub struct StatusFilter {
     Clone,
     Serialize,
     Deserialize,
-    strum_macros::Display,
     strum_macros::AsRefStr,
 )]
 pub enum SortDirection {
@@ -264,7 +263,6 @@ pub enum SortDirection {
     Clone,
     Serialize,
     Deserialize,
-    strum_macros::Display,
     strum_macros::AsRefStr,
 )]
 pub enum SortSource {
@@ -285,55 +283,29 @@ pub struct TraceSort {
 
 impl Display for TraceSort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.source, self.direction)
+    }
+}
+
+impl Display for SortDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TraceSort {
-                source: SortSource::Timestamp,
-                direction: SortDirection::Ascending,
-            } => write!(f, "Timestamp ↑"),
-            TraceSort {
-                source: SortSource::Timestamp,
-                direction: SortDirection::Descending,
-            } => write!(f, "Timestamp ↓"),
-            TraceSort {
-                source: SortSource::Method,
-                direction: SortDirection::Ascending,
-            } => write!(f, "Method ↑"),
-            TraceSort {
-                source: SortSource::Method,
-                direction: SortDirection::Descending,
-            } => write!(f, "Method ↓"),
-            TraceSort {
-                source: SortSource::Status,
-                direction: SortDirection::Ascending,
-            } => write!(f, "Status ↑"),
-            TraceSort {
-                source: SortSource::Status,
-                direction: SortDirection::Descending,
-            } => write!(f, "Status ↓"),
-            TraceSort {
-                source: SortSource::Duration,
-                direction: SortDirection::Ascending,
-            } => write!(f, "Duration ↑"),
-            TraceSort {
-                source: SortSource::Duration,
-                direction: SortDirection::Descending,
-            } => write!(f, "Duration ↓"),
-            TraceSort {
-                source: SortSource::Source,
-                direction: SortDirection::Ascending,
-            } => write!(f, "Source ↑"),
-            TraceSort {
-                source: SortSource::Source,
-                direction: SortDirection::Descending,
-            } => write!(f, "Source ↓"),
-            TraceSort {
-                source: SortSource::Url,
-                direction: SortDirection::Ascending,
-            } => write!(f, "Url ↑"),
-            TraceSort {
-                source: SortSource::Url,
-                direction: SortDirection::Descending,
-            } => write!(f, "Url ↓"),
+            SortDirection::Ascending => write!(f, "↑"),
+            SortDirection::Descending => write!(f, "↓"),
+        }
+    }
+}
+
+impl Display for SortSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SortSource::Timestamp => write!(f, "Timestamp ↓"),
+            SortSource::Method => write!(f, "Method"),
+            SortSource::Status => write!(f, "Status"),
+            SortSource::Duration  => write!(f, "Duration"),
+            SortSource::Source =>write!(f, "Source"),
+            SortSource::Url => write!(f, "Url"),
+
         }
     }
 }

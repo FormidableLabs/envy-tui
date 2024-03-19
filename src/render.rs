@@ -271,7 +271,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
         let is_active = app.active_block == ActiveBlock::Details
             && app.details_tabs.contains(&app.details_block);
 
-        let tabs = Tabs::new(app.details_tabs.iter().map(|t| t.to_string()).collect())
+        let tabs = Tabs::new(app.details_tabs.iter().map(|t| t.to_string()))
             .block(
                 Block::default()
                     .borders(Borders::BOTTOM)
@@ -543,36 +543,38 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
         })
         .collect();
 
-    let requests = Table::new(styled_rows)
-        // You can set the style of the entire Table.
-        .style(Style::default().fg(app.colors.surface.selected))
-        // It has an optional header, which is simply a Row always visible at the top.
-        .header(
-            Row::new(vec!["Method", "Status", "Request", "Duration"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(
-                    app.active_block == ActiveBlock::Traces,
-                    &app.colors,
-                ))
-                .title(title)
-                .title(
-                    Title::from(format!("{} of {}", app.main.index + 1, number_of_lines))
-                        .position(Position::Bottom)
-                        .alignment(Alignment::Right),
-                )
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
+    let requests = Table::new(
+        styled_rows,
+        &[
             Constraint::Percentage(10),
             Constraint::Percentage(10),
             Constraint::Percentage(60),
             Constraint::Length(20),
-        ]);
+        ],
+    )
+    // You can set the style of the entire Table.
+    .style(Style::default().fg(app.colors.surface.selected))
+    // It has an optional header, which is simply a Row always visible at the top.
+    .header(
+        Row::new(vec!["Method", "Status", "Request", "Duration"])
+            .style(Style::default().fg(app.colors.text.accent_1))
+            .bottom_margin(1),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(get_border_style(
+                app.active_block == ActiveBlock::Traces,
+                &app.colors,
+            ))
+            .title(title)
+            .title(
+                Title::from(format!("{} of {}", app.main.index + 1, number_of_lines))
+                    .position(Position::Bottom)
+                    .alignment(Alignment::Right),
+            )
+            .border_type(BorderType::Plain),
+    );
 
     let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
@@ -746,22 +748,24 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new(debug_lines)
-        .style(get_text_style(true, &app.colors))
-        .header(
-            Row::new(vec!["Action", "Map"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, &app.colors))
-                .title("Key Mappings")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
-        .column_spacing(10);
+    let list = Table::new(
+        debug_lines,
+        &[Constraint::Percentage(40), Constraint::Percentage(60)],
+    )
+    .style(get_text_style(true, &app.colors))
+    .header(
+        Row::new(vec!["Action", "Map"])
+            .style(Style::default().fg(app.colors.text.accent_1))
+            .bottom_margin(1),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(get_border_style(true, &app.colors))
+            .title("Key Mappings")
+            .border_type(BorderType::Plain),
+    )
+    .column_spacing(10);
 
     frame.render_widget(list, area);
 }
@@ -1030,15 +1034,17 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         })
         .collect::<Vec<_>>();
 
-    let table = Table::new([filter_item_rows].concat())
-        .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
-        .style(if filter_screen == FilterScreen::Main {
-            get_row_style(RowStyle::Active, &app.colors)
-        } else {
-            get_row_style(RowStyle::Default, &app.colors)
-        })
-        .widths(&[Constraint::Length(3), Constraint::Percentage(100)])
-        .column_spacing(3);
+    let table = Table::new(
+        [filter_item_rows].concat(),
+        &[Constraint::Length(3), Constraint::Percentage(100)],
+    )
+    .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
+    .style(if filter_screen == FilterScreen::Main {
+        get_row_style(RowStyle::Active, &app.colors)
+    } else {
+        get_row_style(RowStyle::Default, &app.colors)
+    })
+    .column_spacing(3);
 
     let divider = Block::default()
         .borders(Borders::LEFT)
@@ -1054,8 +1060,7 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         .method
         .values()
         .filter(|v| v.selected)
-        .map(|v| v.name.clone())
-        .map(|s| format!("method-{}", s.to_lowercase()))
+        .map(|v| format!("method-{}", v.name.to_lowercase()))
         .collect::<Vec<_>>();
     let source_filters: Vec<String> =
         if let SourceFilter::Applied(hashset) = &app.selected_filters.source {
@@ -1072,8 +1077,7 @@ pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
         .status
         .values()
         .filter(|v| v.selected)
-        .map(|v| v.name.clone())
-        .map(|s| format!("status-{}", s.to_lowercase()))
+        .map(|v| format!("status-{}", v.name.to_lowercase()))
         .collect();
 
     let filters = [method_filters, source_filters, status_filters]
@@ -1221,19 +1225,21 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
 }
 
 fn render_table(rows: Vec<Row>, frame: &mut Frame, area: Rect, colors: &Colors, active: bool) {
-    let table = Table::new([rows].concat())
-        .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
-        .style(if active {
-            get_row_style(RowStyle::Active, colors)
-        } else {
-            get_row_style(RowStyle::Default, colors)
-        })
-        .widths(&[
+    let table = Table::new(
+        [rows].concat(),
+        &[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
             Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
+        ],
+    )
+    .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
+    .style(if active {
+        get_row_style(RowStyle::Active, colors)
+    } else {
+        get_row_style(RowStyle::Default, colors)
+    })
+    .column_spacing(10);
 
     frame.render_widget(table, area);
 }
