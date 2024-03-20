@@ -654,6 +654,7 @@ impl Component for Home {
 
                     let main_columns = Layout::default()
                         .direction(Direction::Horizontal)
+                        .margin(1)
                         .constraints(
                             [Constraint::Percentage(35), Constraint::Percentage(65)].as_ref(),
                         );
@@ -697,45 +698,38 @@ impl Component for Home {
                         .margin(1)
                         .constraints(
                             [
-                                Constraint::Percentage(30),
-                                Constraint::Min(3),
-                                Constraint::Percentage(30),
-                                Constraint::Percentage(30),
-                                Constraint::Min(3),
+                                Constraint::Percentage(32),
+                                Constraint::Percentage(32),
+                                Constraint::Percentage(32),
+                                Constraint::Percentage(4),
                             ]
                             .as_ref(),
                         )
                         .split(rect);
 
-                    let request_layout = Layout::default()
+                    let json_viewer_layout = Layout::default()
                         .direction(Direction::Horizontal)
                         .constraints(
                             [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
                         )
                         .split(main_layout[2]);
 
-                    let response_layout = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints(
-                            [Constraint::Percentage(50), Constraint::Percentage(50)].as_ref(),
-                        )
-                        .split(main_layout[3]);
-
-                    render::details(self, frame, request_layout[0]);
-                    self.request_json_viewer.render(frame, request_layout[1])?;
+                    render::details(self, frame, main_layout[1]);
                     self.response_json_viewer
-                        .render(frame, response_layout[1])?;
+                        .render(frame, json_viewer_layout[0])?;
+                    self.request_json_viewer
+                        .render(frame, json_viewer_layout[1])?;
                     render::render_traces(self, frame, main_layout[0]);
                     render::render_search(self, frame);
-                    render::render_footer(self, frame, main_layout[4]);
+                    render::render_footer(self, frame, main_layout[3]);
 
                     let _ = self.action_tx.as_ref().unwrap().send(Action::UpdateMeta(
                         handlers::HandlerMetadata {
                             main_height: main_layout[0].height,
-                            response_body_rectangle_height: response_layout[1].height,
-                            response_body_rectangle_width: response_layout[1].width,
-                            request_body_rectangle_height: request_layout[1].height,
-                            request_body_rectangle_width: request_layout[1].width,
+                            request_body_rectangle_height: json_viewer_layout[1].height,
+                            request_body_rectangle_width: json_viewer_layout[1].width,
+                            response_body_rectangle_height: json_viewer_layout[0].height,
+                            response_body_rectangle_width: json_viewer_layout[0].width,
                         },
                     ));
                 }
