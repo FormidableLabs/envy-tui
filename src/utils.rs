@@ -1,9 +1,9 @@
 use core::str::FromStr;
 use http::Uri;
 use regex::Regex;
-use std::fmt::Display;
 
-use crate::components::home::{FilterSource, Home};
+use crate::app::{SortDirection, SortSource, SourceFilter, TraceSort};
+use crate::components::home::Home;
 use crate::services::websocket::Trace;
 
 // NOTE: [stackoverflow](https://stackoverflow.com/questions/38461429/how-can-i-truncate-a-string-to-have-at-most-n-characters)
@@ -52,48 +52,6 @@ fn fuzzy_regex(query: String) -> Regex {
     return Regex::from_str(&fuzzy_query).unwrap();
 }
 
-#[derive(Default, PartialEq, Eq, Debug, Clone)]
-pub enum Ordering {
-    #[default]
-    Ascending,
-    Descending,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub enum TraceSort {
-    Method(Ordering),
-    Status(Ordering),
-    Source(Ordering),
-    Url(Ordering),
-    Duration(Ordering),
-    Timestamp(Ordering),
-}
-
-impl Default for TraceSort {
-    fn default() -> Self {
-        Self::Timestamp(Ordering::Descending)
-    }
-}
-
-impl Display for TraceSort {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Timestamp(Ordering::Ascending) => write!(f, "Timestamp ↑"),
-            Self::Timestamp(Ordering::Descending) => write!(f, "Timestamp ↓"),
-            Self::Method(Ordering::Ascending) => write!(f, "Method ↑"),
-            Self::Method(Ordering::Descending) => write!(f, "Method ↓"),
-            Self::Status(Ordering::Ascending) => write!(f, "Status ↑"),
-            Self::Status(Ordering::Descending) => write!(f, "Status ↓"),
-            Self::Duration(Ordering::Ascending) => write!(f, "Duration ↑"),
-            Self::Duration(Ordering::Descending) => write!(f, "Duration ↓"),
-            Self::Source(Ordering::Ascending) => write!(f, "Source ↑"),
-            Self::Source(Ordering::Descending) => write!(f, "Source ↓"),
-            Self::Url(Ordering::Ascending) => write!(f, "Url ↑"),
-            Self::Url(Ordering::Descending) => write!(f, "Url ↓"),
-        }
-    }
-}
-
 pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
     let mut maybe_re: Option<Regex> = None;
     if !app.search_query.is_empty() {
@@ -101,14 +59,16 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
     }
 
     let no_applied_method_filter = app
-        .method_filters
+        .filters
+        .method
         .iter()
         .filter(|(_key, method_filter)| method_filter.selected == true)
         .collect::<Vec<_>>()
         .is_empty();
 
-    let no_applied_statud_filter = app
-        .status_filters
+    let no_applied_status_filter = app
+        .filters
+        .status
         .iter()
         .filter(|(_key, method_filter)| method_filter.selected == true)
         .collect::<Vec<_>>()
@@ -124,15 +84,11 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
                 true
             }
         })
-        .filter(
-            |trace| match (app.get_filter_source(), trace.service_name.as_ref()) {
-                (FilterSource::All, _) => true,
-                (FilterSource::Applied(sources), Some(trace_source)) => {
-                    sources.contains(trace_source)
-                }
-                _ => false,
-            },
-        )
+        .filter(|trace| match (&app.filters.source, &trace.service_name) {
+            (SourceFilter::All, _) => true,
+            (SourceFilter::Applied(sources), Some(trace_source)) => sources.contains(trace_source),
+            (SourceFilter::Applied(_), None) => false,
+        })
         .filter(|trace| {
             let method = &trace.http.as_ref().unwrap().status;
 
@@ -153,7 +109,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
                 _ => "",
             };
 
-            match (no_applied_statud_filter, app.status_filters.get(matcher)) {
+            match (no_applied_status_filter, app.filters.status.get(matcher)) {
                 (true, _) => true,
                 (_, Some(status_filter)) => status_filter.selected.clone(),
                 (_, _) => false,
@@ -162,7 +118,7 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
         .filter(|trace| {
             match (
                 no_applied_method_filter,
-                app.method_filters.get(&trace.http.as_ref().unwrap().method),
+                app.filters.method.get(&trace.http.as_ref().unwrap().method),
             ) {
                 (true, _) => true,
                 (_, Some(method_filter)) => method_filter.selected.clone(),
@@ -171,24 +127,39 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
         })
         .collect::<Vec<&Trace>>();
 
-    items_as_vector.sort_by(|a, b| match &app.order {
-        TraceSort::Duration(Ordering::Ascending) => a
+    items_as_vector.sort_by(|a, b| match &app.sort {
+        TraceSort {
+            source: SortSource::Duration,
+            direction: SortDirection::Ascending,
+        } => a
             .http
             .as_ref()
             .unwrap()
             .duration
             .unwrap_or(0)
             .cmp(&b.http.as_ref().unwrap().duration.unwrap_or(0)),
-        TraceSort::Duration(Ordering::Descending) => b
+        TraceSort {
+            source: SortSource::Duration,
+            direction: SortDirection::Descending,
+        } => b
             .http
             .as_ref()
             .unwrap()
             .duration
             .unwrap_or(0)
             .cmp(&a.http.as_ref().unwrap().duration.unwrap_or(0)),
-        TraceSort::Timestamp(Ordering::Ascending) => a.timestamp.cmp(&b.timestamp),
-        TraceSort::Timestamp(Ordering::Descending) => b.timestamp.cmp(&a.timestamp),
-        TraceSort::Status(Ordering::Descending) => {
+        TraceSort {
+            source: SortSource::Timestamp,
+            direction: SortDirection::Ascending,
+        } => a.timestamp.cmp(&b.timestamp),
+        TraceSort {
+            source: SortSource::Timestamp,
+            direction: SortDirection::Descending,
+        } => b.timestamp.cmp(&a.timestamp),
+        TraceSort {
+            source: SortSource::Status,
+            direction: SortDirection::Descending,
+        } => {
             let a_has = a.http.as_ref().unwrap().status.is_some();
             let b_has = b.http.as_ref().unwrap().status.is_some();
 
@@ -208,7 +179,10 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
                 std::cmp::Ordering::Equal
             }
         }
-        TraceSort::Status(Ordering::Ascending) => {
+        TraceSort {
+            source: SortSource::Status,
+            direction: SortDirection::Ascending,
+        } => {
             let a_has = a.http.as_ref().unwrap().status.is_some();
             let b_has = b.http.as_ref().unwrap().status.is_some();
 
@@ -228,32 +202,50 @@ pub fn get_rendered_items(app: &Home) -> Vec<&Trace> {
                 std::cmp::Ordering::Equal
             }
         }
-        TraceSort::Url(Ordering::Descending) => {
+        TraceSort {
+            source: SortSource::Url,
+            direction: SortDirection::Descending,
+        } => {
             let url = &a.http.as_ref().unwrap().uri;
             let urlb = &b.http.as_ref().unwrap().uri;
 
             url.cmp(&urlb)
         }
-        TraceSort::Url(Ordering::Ascending) => a.timestamp.cmp(&b.timestamp),
-        TraceSort::Method(Ordering::Ascending) => {
+        TraceSort {
+            source: SortSource::Url,
+            direction: SortDirection::Ascending,
+        } => a.timestamp.cmp(&b.timestamp),
+        TraceSort {
+            source: SortSource::Method,
+            direction: SortDirection::Ascending,
+        } => {
             let a_has = a.http.as_ref().unwrap().method.to_string();
             let b_has = b.http.as_ref().unwrap().method.to_string();
 
             a_has.cmp(&b_has)
         }
-        TraceSort::Method(Ordering::Descending) => {
+        TraceSort {
+            source: SortSource::Method,
+            direction: SortDirection::Descending,
+        } => {
             let a_has = a.http.as_ref().unwrap().method.to_string();
             let b_has = b.http.as_ref().unwrap().method.to_string();
 
             b_has.cmp(&a_has)
         }
-        TraceSort::Source(Ordering::Ascending) => {
+        TraceSort {
+            source: SortSource::Source,
+            direction: SortDirection::Ascending,
+        } => {
             let a_has = &a.service_name;
             let b_has = &b.service_name;
 
             a_has.cmp(&b_has)
         }
-        TraceSort::Source(Ordering::Descending) => {
+        TraceSort {
+            source: SortSource::Source,
+            direction: SortDirection::Descending,
+        } => {
             let a_has = &a.service_name;
             let b_has = &b.service_name;
 

@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::ops::Deref;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::{Alignment, Constraint, Direction, Layout, Margin, Rect};
@@ -21,13 +20,14 @@ use crate::app::{
     DetailsPane::{
         QueryParams, RequestDetails, RequestHeaders, ResponseDetails, ResponseHeaders, Timing,
     },
+    FilterScreen, SortScreen, SourceFilter, WebSocketInternalState,
 };
 use crate::components::actionable_list::ActionableList;
-use crate::components::home::{FilterSource, Home};
+use crate::components::home::Home;
 use crate::config::Colors;
 use crate::consts::NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE;
 use crate::services::websocket::Trace;
-use crate::utils::{get_rendered_items, truncate, TraceSort};
+use crate::utils::{get_rendered_items, truncate};
 
 #[derive(Clone, Copy, PartialEq, Debug, Hash, Eq)]
 pub enum RowStyle {
@@ -232,7 +232,7 @@ pub fn details_pane(app: &mut Home, frame: &mut Frame, area: Rect, pane_idx: usi
                 .title(
                     Title::from(format!(
                         "  {} OF {}  ",
-                        actionable_list.state.selected().unwrap_or(0) + 1,
+                        actionable_list.scroll_state.selected().unwrap_or(0) + 1,
                         actionable_list.items.len(),
                     ))
                     .position(Position::Bottom)
@@ -271,7 +271,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
         let is_active = app.active_block == ActiveBlock::Details
             && app.details_tabs.contains(&app.details_block);
 
-        let tabs = Tabs::new(app.details_tabs.iter().map(|t| t.to_string()).collect())
+        let tabs = Tabs::new(app.details_tabs.iter().map(|t| t.to_string()))
             .block(
                 Block::default()
                     .borders(Borders::BOTTOM)
@@ -317,7 +317,7 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             .title(
                 Title::from(format!(
                     "  {} OF {}  ",
-                    actionable_list.state.selected().unwrap_or(0) + 1,
+                    actionable_list.scroll_state.selected().unwrap_or(0) + 1,
                     actionable_list.items.len(),
                 ))
                 .position(Position::Bottom)
@@ -349,53 +349,6 @@ pub fn details_tabs(app: &mut Home, frame: &mut Frame, area: Rect) {
             );
         }
     }
-}
-
-fn render_actionable_list(
-    actionable_list: &mut ActionableList,
-    frame: &mut Frame,
-    area: Rect,
-    colors: &Colors,
-    active: bool,
-) {
-    let actionable_item_style = Style::default().fg(colors.text.accent_2);
-    let active_item_style = get_row_style(RowStyle::Active, colors);
-    let default_item_style = get_row_style(RowStyle::Default, colors);
-
-    let items: Vec<ListItem> = actionable_list
-        .items
-        .iter()
-        .map(|item| {
-            ListItem::new(Line::from(vec![
-                Span::raw(format!("{:<15}", item.label)),
-                " ".into(),
-                Span::styled(
-                    item.value.clone().unwrap_or_default().to_string(),
-                    if active && item.action.is_some() {
-                        actionable_item_style
-                    } else if active {
-                        active_item_style
-                    } else {
-                        default_item_style
-                    },
-                ),
-            ]))
-        })
-        .collect();
-
-    let list = List::new(items)
-        .style(Style::default().fg(if active {
-            colors.text.accent_1
-        } else {
-            colors.text.unselected
-        }))
-        .highlight_style(if active {
-            get_row_style(RowStyle::Selected, colors)
-        } else {
-            get_row_style(RowStyle::Inactive, colors)
-        });
-
-    frame.render_stateful_widget(list, area, &mut actionable_list.state)
 }
 
 fn render_timing_chart(
@@ -481,48 +434,59 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
 
     let selected_item = items_as_vector.get(app.main.index);
 
-    let method_len = app.method_filters.iter().fold(0, |sum, (_key, item)| {
-        let mut result = sum;
-
-        if item.selected {
-            result += 1;
-        }
-
-        return result;
-    });
-
-    let status_len = app.status_filters.iter().fold(0, |sum, (_key, item)| {
-        let mut result = sum;
-
-        if item.selected {
-            result += 1;
-        }
-
-        return result;
-    });
-
-    let filter_message = match status_len + method_len {
-        0 => String::from("No filters selected"),
-        _ => {
-            let mut filters_text = format!("Active filter(s): ");
-
-            app.method_filters.iter().for_each(|(_a, filter_method)| {
-                if filter_method.selected {
-                    filters_text.push_str((format!(" {} (Method)", filter_method.name)).as_str());
-                }
-            });
-
-            app.status_filters.iter().for_each(|(_a, filter_status)| {
-                if filter_status.selected {
-                    filters_text.push_str((format!(" {} (Status)", filter_status.name)).as_str());
-                }
-            });
-
-            filters_text
-        }
+    let source_len = if let SourceFilter::Applied(filter_source) = &app.filters.source {
+        filter_source.len()
+    } else {
+        0
     };
 
-    let sort_message = format!("Active sort: {}", &app.order);
+    let method_len = app.filters.method.iter().fold(0, |sum, (_key, item)| {
+        let mut result = sum;
+
+        if item.selected {
+            result += 1;
+        }
+
+        return result;
+    });
+
+    let status_len = app.filters.status.iter().fold(0, |sum, (_key, item)| {
+        let mut result = sum;
+
+        if item.selected {
+            result += 1;
+        }
+
+        return result;
+    });
+
+    let filter_message = if source_len + status_len + method_len == 0 {
+        String::from("No filters selected")
+    } else {
+        let mut filters_text: String = format!("Active filter(s): ");
+
+        if let SourceFilter::Applied(filter_sources) = &app.filters.source {
+            for filter_source in filter_sources {
+                filters_text.push_str(format!(" {} (Source)", filter_source).as_str());
+            }
+        }
+
+        app.filters.method.iter().for_each(|(_a, filter_method)| {
+            if filter_method.selected {
+                filters_text.push_str(format!(" {} (Method)", filter_method.name).as_str());
+            }
+        });
+
+        app.filters.status.iter().for_each(|(_a, filter_status)| {
+            if filter_status.selected {
+                filters_text.push_str(format!(" {} (Status)", filter_status.name).as_str());
+            }
+        });
+
+        filters_text
+    };
+
+    let sort_message = format!("Active sort: {}", &app.sort);
 
     let title = format!("Traces - [{}] - [{}]", filter_message, sort_message);
 
@@ -553,7 +517,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
             let id = request.id.clone();
 
             let selected = match selected_item {
-                Some(item) => item.deref() == request.deref(),
+                Some(item) => item == request,
                 None => false,
             };
 
@@ -579,36 +543,38 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
         })
         .collect();
 
-    let requests = Table::new(styled_rows)
-        // You can set the style of the entire Table.
-        .style(Style::default().fg(app.colors.surface.selected))
-        // It has an optional header, which is simply a Row always visible at the top.
-        .header(
-            Row::new(vec!["Method", "Status", "Request", "Duration"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(
-                    app.active_block == ActiveBlock::Traces,
-                    &app.colors,
-                ))
-                .title(title)
-                .title(
-                    Title::from(format!("{} of {}", app.main.index + 1, number_of_lines))
-                        .position(Position::Bottom)
-                        .alignment(Alignment::Right),
-                )
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
+    let requests = Table::new(
+        styled_rows,
+        &[
             Constraint::Percentage(10),
             Constraint::Percentage(10),
             Constraint::Percentage(60),
             Constraint::Length(20),
-        ]);
+        ],
+    )
+    // You can set the style of the entire Table.
+    .style(Style::default().fg(app.colors.surface.selected))
+    // It has an optional header, which is simply a Row always visible at the top.
+    .header(
+        Row::new(vec!["Method", "Status", "Request", "Duration"])
+            .style(Style::default().fg(app.colors.text.accent_1))
+            .bottom_margin(1),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(get_border_style(
+                app.active_block == ActiveBlock::Traces,
+                &app.colors,
+            ))
+            .title(title)
+            .title(
+                Title::from(format!("{} of {}", app.main.index + 1, number_of_lines))
+                    .position(Position::Bottom)
+                    .alignment(Alignment::Right),
+            )
+            .border_type(BorderType::Plain),
+    );
 
     let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
 
@@ -667,13 +633,11 @@ pub fn render_footer(app: &Home, frame: &mut Frame, area: Rect) {
         );
 
     let wss_status_message = match app.wss_state {
-        crate::components::home::WebSockerInternalState::Connected(1) => {
-            "🟢 1 client connected".to_string()
-        }
-        crate::components::home::WebSockerInternalState::Connected(v) => {
+        WebSocketInternalState::Connected(1) => "🟢 1 client connected".to_string(),
+        WebSocketInternalState::Connected(v) => {
             format!("🟢 {:?} clients connected", v)
         }
-        crate::components::home::WebSockerInternalState::Closed => "⭕ Server closed".to_string(),
+        WebSocketInternalState::Closed => "⭕ Server closed".to_string(),
 
         _ => "🟠 Waiting for connection".to_string(),
     };
@@ -734,6 +698,11 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
                 Action::PreviousDetailsTab => "Go To Previous Tab",
                 Action::StartWebSocketServer => "Start the Collector Server",
                 Action::StopWebSocketServer => "Stop the Collector Server",
+                Action::Select => "Select at cursor position",
+                Action::ExpandAll => "Expand all JSON objects",
+                Action::CollapseAll => "Collapse all JSON objects",
+                Action::OpenSort => "Open sort screen",
+                Action::OpenFilter => "Open filter screen",
                 _ => "",
             };
             let description = format!("{}:", description_str);
@@ -784,22 +753,24 @@ pub fn render_help(app: &Home, frame: &mut Frame, area: Rect) {
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new(debug_lines)
-        .style(get_text_style(true, &app.colors))
-        .header(
-            Row::new(vec!["Action", "Map"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, &app.colors))
-                .title("Key Mappings")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[Constraint::Percentage(40), Constraint::Percentage(60)])
-        .column_spacing(10);
+    let list = Table::new(
+        debug_lines,
+        &[Constraint::Percentage(40), Constraint::Percentage(60)],
+    )
+    .style(get_text_style(true, &app.colors))
+    .header(
+        Row::new(vec!["Action", "Map"])
+            .style(Style::default().fg(app.colors.text.accent_1))
+            .bottom_margin(1),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(get_border_style(true, &app.colors))
+            .title("Key Mappings")
+            .border_type(BorderType::Plain),
+    )
+    .column_spacing(10);
 
     frame.render_widget(list, area);
 }
@@ -825,19 +796,6 @@ pub fn render_debug(app: &Home, frame: &mut Frame, area: Rect) {
     frame.render_widget(list, area);
 }
 
-/// helper function to create an overlay rect `r`
-fn overlay_area(r: Rect) -> Rect {
-    let overlay_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(100), Constraint::Min(0)].as_ref())
-        .split(overlay_layout[1])[0]
-}
-
 pub fn get_services_from_traces(app: &Home) -> Vec<String> {
     let services = app
         .items
@@ -850,51 +808,30 @@ pub fn get_services_from_traces(app: &Home) -> Vec<String> {
 
     services_as_vec.sort();
 
-    services_as_vec.clone()
+    services_as_vec
 }
 
 pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
-    let mut services = get_services_from_traces(app);
+    let mut services = vec!["All".to_string()];
 
-    let mut a: Vec<String> = vec!["All".to_string()];
+    services.extend(get_services_from_traces(app));
 
-    a.append(&mut services);
+    let current_service = services.iter().nth(app.filter_value_index).cloned();
 
-    services = a;
-
-    let current_service = services.iter().nth(app.filter_index).cloned();
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Source);
 
     let rows = services
         .iter()
         .map(|item| {
-            let column_a =
+            let column_b =
                 Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
 
-            match app.get_filter_source() {
-                FilterSource::All => {
-                    let column_b = Cell::from(
-                        Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
-                    );
-
-                    let row_style = if current_service.is_some()
-                        && current_service.clone().unwrap() == item.deref().clone()
-                    {
-                        RowStyle::Selected
-                    } else {
-                        RowStyle::Default
-                    };
-
-                    let middle = Cell::from(
-                        Line::from(vec![Span::raw("Source".to_string())])
-                            .alignment(Alignment::Left),
-                    );
-
-                    return Row::new(vec![column_b, middle, column_a])
-                        .style(get_row_style(row_style, &app.colors));
-                }
-                FilterSource::Applied(applied) => {
-                    // let column_b = if applied.contains(current_service.as_ref().unwrap()) {
-                    let column_b = if applied.contains(item) {
+            let column_a = match &app.selected_filters.source {
+                SourceFilter::All => Cell::from(
+                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+                ),
+                SourceFilter::Applied(applied) => {
+                    if applied.contains(item) {
                         Cell::from(
                             Line::from(vec![Span::raw("[x]".to_string())])
                                 .alignment(Alignment::Left),
@@ -904,57 +841,42 @@ pub fn render_filters_source(app: &Home, frame: &mut Frame, area: Rect) {
                             Line::from(vec![Span::raw("[ ]".to_string())])
                                 .alignment(Alignment::Left),
                         )
-                    };
-
-                    let row_style = if current_service.is_some()
-                        && current_service.clone().unwrap() == item.deref().clone()
-                    {
-                        RowStyle::Selected
-                    } else {
-                        RowStyle::Default
-                    };
-
-                    let middle = Cell::from(
-                        Line::from(vec![Span::raw("Source".to_string())])
-                            .alignment(Alignment::Left),
-                    );
-
-                    return Row::new(vec![column_b, middle, column_a])
-                        .style(get_row_style(row_style, &app.colors));
+                    }
                 }
             };
+            let is_selected = current_service == Some(item.to_string());
+
+            let maybe_row_style = if is_active && is_selected {
+                Some(RowStyle::Selected)
+            } else if is_selected {
+                Some(RowStyle::Inactive)
+            } else {
+                None
+            };
+
+            if let Some(row_style) = maybe_row_style {
+                Row::new(vec![column_a, column_b]).style(get_row_style(row_style, &app.colors))
+            } else {
+                Row::new(vec![column_a, column_b])
+            }
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([rows].concat())
-        .style(get_text_style(true, &app.colors))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, &app.colors))
-                .title("[Filters - Sources]")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
-
-    frame.render_widget(list.clone(), area);
+    render_table(rows, frame, area, &app.colors, is_active);
 }
 
 pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
-    let current_service = app.status_filters.iter().nth(app.filter_index);
+    let current_service = app
+        .selected_filters
+        .status
+        .iter()
+        .nth(app.filter_value_index);
 
-    let rows1 = app
-        .status_filters
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Status);
+
+    let rows = app
+        .selected_filters
+        .status
         .iter()
         .map(|(_a, item)| {
             let column_a = Cell::from(
@@ -973,54 +895,40 @@ pub fn render_filters_status(app: &Home, frame: &mut Frame, area: Rect) {
 
             let (_key, status_filter) = current_service.clone().unwrap();
 
-            let row_style =
-                if current_service.is_some() && status_filter.status == item.name.clone() {
-                    RowStyle::Selected
-                } else {
-                    RowStyle::Default
-                };
+            let is_selected = status_filter.status == item.name.clone();
 
-            let h = Cell::from(
-                Line::from(vec![Span::raw("Status".to_string())]).alignment(Alignment::Left),
-            );
+            let maybe_row_style = if is_active && is_selected {
+                Some(RowStyle::Selected)
+            } else if is_selected {
+                Some(RowStyle::Inactive)
+            } else {
+                None
+            };
 
-            Row::new(vec![column_b, h, column_a]).style(get_row_style(row_style, &app.colors))
+            if let Some(row_style) = maybe_row_style {
+                Row::new(vec![column_b, column_a]).style(get_row_style(row_style, &app.colors))
+            } else {
+                Row::new(vec![column_b, column_a])
+            }
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([rows1].concat())
-        .style(get_text_style(true, &app.colors))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, &app.colors))
-                .title("[Filters - Status]")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
-
-    frame.render_widget(list.clone(), area);
+    render_table(rows, frame, area, &app.colors, is_active);
 }
 
 pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
     let current_service = app
-        .method_filters
+        .selected_filters
+        .method
         .iter()
         .map(|(_a, b)| b.name.clone())
-        .nth(app.filter_index);
+        .nth(app.filter_value_index);
 
-    let rows1 = app
-        .method_filters
+    let is_active = app.active_block == ActiveBlock::Filter(FilterScreen::Method);
+
+    let rows = app
+        .selected_filters
+        .method
         .iter()
         .map(|(_a, item)| {
             let column_a = Cell::from(
@@ -1037,235 +945,404 @@ pub fn render_filters_method(app: &Home, frame: &mut Frame, area: Rect) {
                 )
             };
 
-            let row_style = if current_service.is_some()
-                && current_service.clone().unwrap() == item.name.clone()
-            {
-                RowStyle::Selected
+            let is_selected = current_service == Some(item.name.clone());
+
+            let maybe_row_style = if is_active && is_selected {
+                Some(RowStyle::Selected)
+            } else if is_selected {
+                Some(RowStyle::Inactive)
             } else {
-                RowStyle::Default
+                None
             };
 
-            let h = Cell::from(
-                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
-            );
-
-            Row::new(vec![column_b, h, column_a]).style(get_row_style(row_style, &app.colors))
+            if let Some(row_style) = maybe_row_style {
+                Row::new(vec![column_b, column_a]).style(get_row_style(row_style, &app.colors))
+            } else {
+                Row::new(vec![column_b, column_a])
+            }
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([rows1].concat())
-        .style(get_text_style(true, &app.colors))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, &app.colors))
-                .title("[Filters - Method]")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
-
-    frame.render_widget(list.clone(), area);
+    render_table(rows, frame, area, &app.colors, is_active);
 }
 
-pub fn render_filters(app: &Home, frame: &mut Frame, area: Rect) {
+pub fn render_filters(app: &mut Home, frame: &mut Frame, area: Rect) {
+    let filter_screen = if let ActiveBlock::Filter(screen) = app.active_block {
+        screen
+    } else {
+        FilterScreen::Main
+    };
+
+    let parent_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(get_border_style(true, &app.colors))
+        .title(" FILTER ")
+        .border_type(BorderType::Plain);
+
+    let inner_area = parent_block.inner(area);
+
+    let vertical_layout = Layout::default()
+        .constraints([Constraint::Min(0), Constraint::Length(4)])
+        .horizontal_margin(1)
+        .direction(Direction::Vertical)
+        .split(inner_area);
+
+    let layout = Layout::default()
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Length(1),
+            Constraint::Percentage(50),
+        ])
+        .vertical_margin(1)
+        .margin(1)
+        .direction(Direction::Horizontal)
+        .split(vertical_layout[0]);
+
     let filter_items = vec!["method", "source", "status"];
 
-    let current_service = filter_items.iter().nth(app.filter_index).cloned();
-
+    let current_filter = filter_items.get(app.filter_source_index);
+    let is_active_block = filter_screen == FilterScreen::Main;
     let filter_item_rows = filter_items
         .iter()
         .map(|item| {
-            let column_a =
-                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
-
-            let column_b = Cell::from(
-                Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
+            let is_selected_row = current_filter == Some(item);
+            let is_active = is_active_block && is_selected_row;
+            let is_inactive = !is_active && is_selected_row;
+            let column = Cell::from(
+                Line::from(vec![Span::raw(item.to_string())]).alignment(Alignment::Left),
             );
 
-            let row_style = if current_service.is_some()
-                && current_service.clone().unwrap() == item.deref().clone()
-            {
-                RowStyle::Selected
+            let maybe_row_style = if is_active {
+                Some(RowStyle::Selected)
+            } else if is_inactive {
+                Some(RowStyle::Inactive)
             } else {
-                RowStyle::Default
+                None
             };
 
-            let middle = Cell::from(
-                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
-            );
-
-            Row::new(vec![column_b, middle, column_a]).style(get_row_style(row_style, &app.colors))
+            if let Some(row_style) = maybe_row_style {
+                Row::new(vec![column]).style(get_row_style(row_style, &app.colors))
+            } else {
+                Row::new(vec![column])
+            }
         })
         .collect::<Vec<_>>();
 
-    let list = Table::new([filter_item_rows].concat())
-        .style(get_text_style(true, &app.colors))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, &app.colors))
-                .title("[Filters]")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
+    let table = Table::new([filter_item_rows].concat(), &[Constraint::Percentage(100)])
+        .block(Block::default().padding(Padding::new(0, 1, 0, 0)))
+        .style(if filter_screen == FilterScreen::Main {
+            get_row_style(RowStyle::Active, &app.colors)
+        } else {
+            get_row_style(RowStyle::Default, &app.colors)
+        })
+        .column_spacing(3);
+
+    let divider = Block::default()
+        .borders(Borders::LEFT)
+        .border_style(get_border_style(true, &app.colors));
+
+    let footer = Block::default()
+        .borders(Borders::TOP)
+        .border_set(symbols::border::DOUBLE)
+        .border_style(get_border_style(true, &app.colors));
+
+    let method_filters = app
+        .selected_filters
+        .method
+        .values()
+        .filter(|v| v.selected)
+        .map(|v| format!("method-{}", v.name.to_lowercase()))
+        .collect::<Vec<_>>();
+    let source_filters: Vec<String> =
+        if let SourceFilter::Applied(hashset) = &app.selected_filters.source {
+            hashset
+                .iter()
+                .map(|s| format!("source-{}", s.to_lowercase()))
+                .collect()
+        } else {
+            vec![]
+        };
+
+    let status_filters: Vec<String> = app
+        .selected_filters
+        .status
+        .values()
+        .filter(|v| v.selected)
+        .map(|v| format!("status-{}", v.name.to_lowercase()))
+        .collect();
+
+    let filters = [method_filters, source_filters, status_filters]
+        .concat()
+        .join(", ");
+
+    let footer_rect = footer.inner(vertical_layout[1]);
+    let footer_vertical_layout = Layout::default()
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .direction(Direction::Vertical)
+        .split(footer_rect);
+
+    let footer_layout = Layout::default()
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Min(0),
+            Constraint::Length(5),
+        ])
+        .direction(Direction::Horizontal)
+        .split(footer_vertical_layout[1]);
+
+    let footer_content = Paragraph::new(vec![Line::from(vec![Span::styled(
+        format!(
+            "filter: {}",
+            if filters.len() > 0 {
+                filters
+            } else {
+                "none".into()
+            }
+        ),
+        Style::default().fg(app.colors.text.accent_2),
+    )])]);
+
+    frame.render_widget(parent_block, area);
+    frame.render_widget(table, layout[0]);
+    frame.render_widget(divider, layout[1]);
+    frame.render_widget(footer, vertical_layout[1]);
+    frame.render_widget(footer_content, footer_layout[0]);
+    render_actionable_list(
+        &mut app.filter_actions,
+        frame,
+        footer_layout[2],
+        &app.colors,
+        app.active_block == ActiveBlock::Filter(FilterScreen::Actions),
+    );
+
+    match app.filter_value_screen {
+        FilterScreen::Main => {}
+        FilterScreen::Actions => {}
+        FilterScreen::Method => render_filters_method(app, frame, layout[2]),
+        FilterScreen::Source => render_filters_source(app, frame, layout[2]),
+        FilterScreen::Status => render_filters_status(app, frame, layout[2]),
+    }
+}
+
+pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
+    let parent_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(get_border_style(true, &app.colors))
+        .title(" SORT ")
+        .border_type(BorderType::Plain);
+
+    let inner_area = parent_block.inner(area);
+
+    let vertical_layout = Layout::default()
+        .constraints([Constraint::Min(0), Constraint::Length(4)])
+        .horizontal_margin(1)
+        .direction(Direction::Vertical)
+        .split(inner_area);
+
+    let layout = Layout::default()
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Percentage(50),
+        ])
+        .vertical_margin(1)
+        .margin(1)
+        .direction(Direction::Horizontal)
+        .split(vertical_layout[0]);
+
+    let divider = Block::default()
+        .borders(Borders::LEFT)
+        .border_style(get_border_style(true, &app.colors));
+
+    let footer = Block::default()
+        .borders(Borders::TOP)
+        .border_set(symbols::border::DOUBLE)
+        .border_style(get_border_style(true, &app.colors));
+
+    let footer_rect = footer.inner(vertical_layout[1]);
+    let footer_vertical_layout = Layout::default()
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .direction(Direction::Vertical)
+        .split(footer_rect);
+
+    let footer_layout = Layout::default()
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Min(0),
+            Constraint::Length(5),
+        ])
+        .direction(Direction::Horizontal)
+        .split(footer_vertical_layout[1]);
+
+    let sort = format!("{}", app.selected_sort.to_string().to_lowercase());
+    let footer_content = Paragraph::new(vec![Line::from(vec![Span::styled(
+        format!("sort: {}", sort),
+        Style::default().fg(app.colors.text.accent_2),
+    )])]);
+
+    frame.render_widget(parent_block, area);
+    render_selectable_list(
+        &mut app.sort_sources,
+        frame,
+        layout[0],
+        &app.colors,
+        app.active_block == ActiveBlock::Sort(SortScreen::Source),
+    );
+    frame.render_widget(divider, layout[2]);
+    render_selectable_list(
+        &mut app.sort_directions,
+        frame,
+        layout[4],
+        &app.colors,
+        app.active_block == ActiveBlock::Sort(SortScreen::Direction),
+    );
+    frame.render_widget(footer, vertical_layout[1]);
+    frame.render_widget(footer_content, footer_layout[0]);
+    render_actionable_list(
+        &mut app.sort_actions,
+        frame,
+        footer_layout[2],
+        &app.colors,
+        app.active_block == ActiveBlock::Sort(SortScreen::Actions),
+    );
+}
+
+fn render_table(rows: Vec<Row>, frame: &mut Frame, area: Rect, colors: &Colors, active: bool) {
+    let table = Table::new(
+        [rows].concat(),
+        &[
             Constraint::Percentage(15),
             Constraint::Percentage(15),
             Constraint::Percentage(60),
-        ])
-        .column_spacing(10);
+        ],
+    )
+    .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
+    .style(if active {
+        get_row_style(RowStyle::Active, colors)
+    } else {
+        get_row_style(RowStyle::Default, colors)
+    })
+    .column_spacing(10);
 
-    frame.render_widget(list.clone(), area);
+    frame.render_widget(table, area);
+}
+fn render_selectable_list(
+    actionable_list: &mut ActionableList,
+    frame: &mut Frame,
+    area: Rect,
+    colors: &Colors,
+    active: bool,
+) {
+    let show_select_labels = actionable_list.show_select_labels;
+
+    let items: Vec<ListItem> = actionable_list
+        .items
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            let mut spans = vec![];
+
+            if show_select_labels {
+                spans.push(Span::raw(
+                    if Some(idx) == actionable_list.select_state.selected() {
+                        "[x] "
+                    } else {
+                        "[ ] "
+                    },
+                ))
+            };
+
+            spans.extend(vec![
+                Span::raw(format!("{:<15}", item.label)),
+                " ".into(),
+                Span::raw(item.value.clone().unwrap_or_default().to_string()),
+            ]);
+
+            ListItem::new(Line::from(spans))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .style(if active {
+            get_row_style(RowStyle::Active, colors)
+        } else {
+            get_row_style(RowStyle::Default, colors)
+        })
+        .highlight_style(if active {
+            get_row_style(RowStyle::Selected, colors)
+        } else {
+            get_row_style(RowStyle::Inactive, colors)
+        });
+
+    frame.render_stateful_widget(list, area, &mut actionable_list.scroll_state)
 }
 
-pub fn render_sort(app: &Home, frame: &mut Frame, area: Rect) {
-    let filter_items = vec![
-        (
-            "Method",
-            "Asc",
-            TraceSort::Method(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Method",
-            "Desc",
-            TraceSort::Method(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Source",
-            "Asc",
-            TraceSort::Source(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Source",
-            "Desc",
-            TraceSort::Source(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Status",
-            "Asc",
-            TraceSort::Status(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Status",
-            "Desc",
-            TraceSort::Status(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Timestamp",
-            "Asc",
-            TraceSort::Timestamp(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Timestamp",
-            "Desc",
-            TraceSort::Timestamp(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Duration",
-            "Asc",
-            TraceSort::Duration(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Duration",
-            "Desc",
-            TraceSort::Duration(crate::utils::Ordering::Descending),
-        ),
-        (
-            "Url",
-            "Asc",
-            TraceSort::Url(crate::utils::Ordering::Ascending),
-        ),
-        (
-            "Url",
-            "Desc",
-            TraceSort::Url(crate::utils::Ordering::Descending),
-        ),
-    ];
+fn render_actionable_list(
+    actionable_list: &mut ActionableList,
+    frame: &mut Frame,
+    area: Rect,
+    colors: &Colors,
+    active: bool,
+) {
+    let actionable_item_style = Style::default().fg(colors.text.accent_2);
+    let active_item_style = get_row_style(RowStyle::Active, colors);
+    let default_item_style = get_row_style(RowStyle::Default, colors);
 
-    let current_service = filter_items.iter().nth(app.sort_index).cloned();
-
-    let filter_item_rows = filter_items
+    let items: Vec<ListItem> = actionable_list
+        .items
         .iter()
-        .map(|(item, order, sort_enum)| {
-            let column_a =
-                Cell::from(Line::from(vec![Span::raw(item.clone())]).alignment(Alignment::Left));
-
-            let current_sort = &app.order;
-
-            let column_b = if current_sort == sort_enum {
-                Cell::from(
-                    Line::from(vec![Span::raw("[x]".to_string())]).alignment(Alignment::Left),
-                )
-            } else {
-                Cell::from(
-                    Line::from(vec![Span::raw("[ ]".to_string())]).alignment(Alignment::Left),
-                )
-            };
-
-            let (sort_type, sort_order, _enum) = current_service.clone().unwrap();
-
-            let row_style = if current_service.is_some()
-                && sort_type == item.to_string()
-                && sort_order == order.deref()
-            {
-                RowStyle::Selected
-            } else {
-                RowStyle::Default
-            };
-
-            let middle = Cell::from(
-                Line::from(vec![Span::raw("Method".to_string())]).alignment(Alignment::Left),
-            );
-
-            let order1 = Cell::from(
-                Line::from(vec![Span::raw(order.to_string())]).alignment(Alignment::Left),
-            );
-
-            Row::new(vec![
-                column_b.clone(),
-                middle.clone(),
-                column_a.clone(),
-                order1,
-            ])
-            .style(get_row_style(row_style, &app.colors))
+        .map(|item| {
+            ListItem::new(Line::from(vec![
+                Span::raw(format!("{:<15}", item.label)),
+                " ".into(),
+                Span::styled(
+                    item.value.clone().unwrap_or_default().to_string(),
+                    if active && item.action.is_some() {
+                        actionable_item_style
+                    } else if active {
+                        active_item_style
+                    } else {
+                        default_item_style
+                    },
+                ),
+            ]))
         })
-        .collect::<Vec<_>>();
+        .collect();
 
-    let list = Table::new([filter_item_rows].concat())
-        .style(get_text_style(true, &app.colors))
-        .header(
-            Row::new(vec!["Selected", "Type", "Value", "Order"])
-                .style(Style::default().fg(app.colors.text.accent_1))
-                .bottom_margin(1),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(get_border_style(true, &app.colors))
-                .title("[Sort traces by]")
-                .border_type(BorderType::Plain),
-        )
-        .widths(&[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(40),
-        ])
-        .column_spacing(10);
+    let list = List::new(items)
+        .style(Style::default().fg(if active {
+            colors.text.accent_1
+        } else {
+            colors.text.unselected
+        }))
+        .highlight_style(if active {
+            get_row_style(RowStyle::Selected, colors)
+        } else {
+            get_row_style(RowStyle::Inactive, colors)
+        });
 
-    frame.render_widget(list.clone(), area);
+    frame.render_stateful_widget(list, area, &mut actionable_list.scroll_state)
+}
+
+/// helper function to create an overlay rect `r`
+fn overlay_area(r: Rect) -> Rect {
+    let overlay_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(100), Constraint::Min(0)].as_ref())
+        .split(overlay_layout[1])[0]
 }

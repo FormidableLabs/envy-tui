@@ -1,8 +1,5 @@
+use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
-use std::{
-    collections::{BTreeSet, HashMap, HashSet},
-    str::FromStr,
-};
 
 use chrono::prelude::DateTime;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -10,13 +7,17 @@ use http::{HeaderName, HeaderValue};
 use ratatui::{
     layout::Layout,
     prelude::{Constraint, Direction, Rect},
+    widgets::ListState,
 };
 use strum::IntoEnumIterator;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::AbortHandle;
 
 use crate::{
-    app::{Action, ActiveBlock, DetailsPane, Mode, UIState},
+    app::{
+        Action, ActiveBlock, DetailsPane, FilterScreen, Mode, SortDirection, SortScreen,
+        SortSource, TraceFilter, TraceSort, UIState, WebSocketInternalState,
+    },
     components::actionable_list::{ActionableList, ActionableListItem},
     components::component::Component,
     components::handlers,
@@ -25,40 +26,8 @@ use crate::{
     render,
     services::websocket::{State, Trace},
     tui::{Event, Frame},
-    utils::{parse_query_params, TraceSort},
+    utils::parse_query_params,
 };
-
-#[derive(Default, PartialEq, Eq, Debug, Clone)]
-pub enum WebSockerInternalState {
-    Connected(usize),
-    Open,
-    #[default]
-    Closed,
-}
-
-#[derive(Clone, PartialEq, Debug, Eq, Default)]
-pub enum FilterSource {
-    #[default]
-    All,
-    Applied(HashSet<String>), // Source(String),
-                              // Method(http::method::Method),
-                              // Status(String),
-}
-
-#[derive(Default)]
-pub struct MethodFilter {
-    pub method: http::method::Method,
-    pub name: String,
-    pub selected: bool,
-}
-
-#[derive(Default)]
-pub struct StatusFilter {
-    pub status: String,
-    pub name: String,
-    pub selected: bool,
-}
-
 #[derive(Default)]
 pub struct Home {
     pub active_block: ActiveBlock,
@@ -81,17 +50,22 @@ pub struct Home {
     pub ws_status: String,
     pub wss_connected: bool,
     pub wss_connection_count: usize,
-    pub wss_state: WebSockerInternalState,
+    pub wss_state: WebSocketInternalState,
     pub request_json_viewer: jsonviewer::JSONViewer,
     pub response_json_viewer: jsonviewer::JSONViewer,
     pub selected_trace: Option<Trace>,
-    pub filter_index: usize,
-    pub sort_index: usize,
+    pub filter_actions: ActionableList,
+    pub filters: TraceFilter,
+    pub selected_filters: TraceFilter,
+    pub filter_source_index: usize,
+    pub filter_value_index: usize,
+    pub filter_value_screen: FilterScreen,
+    pub sort: TraceSort,
+    pub selected_sort: TraceSort,
+    pub sort_actions: ActionableList,
+    pub sort_directions: ActionableList,
+    pub sort_sources: ActionableList,
     pub metadata: Option<handlers::HandlerMetadata>,
-    pub filter_source: FilterSource,
-    pub method_filters: HashMap<http::method::Method, MethodFilter>,
-    pub status_filters: HashMap<String, StatusFilter>,
-    pub order: TraceSort,
     pub details_block: DetailsPane,
     pub details_tabs: Vec<DetailsPane>,
     pub details_tab_index: usize,
@@ -107,7 +81,8 @@ pub struct Home {
 impl Home {
     pub fn new() -> Result<Home, Box<dyn Error>> {
         let config = Config::new()?;
-        let mut home = Home {
+
+        let home = Home {
             key_map: config.mapping.0,
             colors: config.colors.clone(),
             request_json_viewer: jsonviewer::JSONViewer::new(
@@ -122,48 +97,41 @@ impl Home {
                 "Response body",
                 config.colors.clone(),
             )?,
+            filter_actions: ActionableList::with_items(vec![ActionableListItem::with_label(
+                "apply",
+            )
+            .with_action(Action::UpdateFilter)]),
+            sort_sources: ActionableList::with_items(vec![
+                ActionableListItem::with_label(SortSource::Method.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Method)),
+                ActionableListItem::with_label(SortSource::Status.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Status)),
+                ActionableListItem::with_label(SortSource::Source.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Source)),
+                ActionableListItem::with_label(SortSource::Url.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Url)),
+                ActionableListItem::with_label(SortSource::Duration.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Duration)),
+                ActionableListItem::with_label(SortSource::Timestamp.as_ref())
+                    .with_action(Action::SelectSortSource(SortSource::Timestamp)),
+            ])
+            .with_scroll_state(ListState::default().with_selected(Some(0))),
+            sort_directions: ActionableList::with_items(vec![
+                ActionableListItem::with_label(SortDirection::Ascending.as_ref())
+                    .with_action(Action::SelectSortDirection(SortDirection::Ascending)),
+                ActionableListItem::with_label(SortDirection::Descending.as_ref())
+                    .with_action(Action::SelectSortDirection(SortDirection::Descending)),
+            ])
+            .with_scroll_state(ListState::default().with_selected(Some(0))),
+            sort_actions: ActionableList::with_items(vec![
+                ActionableListItem::with_label("apply").with_action(Action::UpdateSort)
+            ]),
             details_tabs: DetailsPane::iter().collect(),
             details_panes: vec![],
             ..Self::default()
         };
 
-        let methods = vec!["POST", "GET", "DELETE", "PUT", "PATCH", "OPTION"];
-
-        let statuses = vec!["1xx", "2xx", "3xx", "4xx", "5xx"];
-
-        statuses.iter().for_each(|status| {
-            home.status_filters.insert(
-                status.clone().to_string(),
-                StatusFilter {
-                    status: status.to_string(),
-                    selected: false,
-                    name: status.to_string(),
-                },
-            );
-        });
-
-        methods.iter().for_each(|method| {
-            if let Ok(method) = http::method::Method::from_str(method) {
-                home.method_filters.insert(
-                    method.clone(),
-                    MethodFilter {
-                        method: method.clone(),
-                        selected: false,
-                        name: method.to_string(),
-                    },
-                );
-            }
-        });
-
         Ok(home)
-    }
-
-    pub fn get_filter_source(&self) -> &FilterSource {
-        &self.filter_source
-    }
-
-    pub fn set_filter_source(&mut self, f: FilterSource) {
-        self.filter_source = f
     }
 
     fn mark_trace_as_timed_out(&mut self, id: String) {
@@ -214,21 +182,18 @@ impl Home {
             rows.push(ActionableListItem::with_labelled_value("port", &port));
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::RequestDetails) {
-                rows.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::RequestDetails),
-                ))
+                rows.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::RequestDetails)),
+                )
             } else {
-                rows.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::RequestDetails),
-                ))
+                rows.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::RequestDetails)),
+                )
             };
 
-            self.request_details_list =
-                ActionableList::new(rows, self.request_details_list.state.clone());
+            self.request_details_list = ActionableList::with_items(rows);
 
             // QUERY PARAMS PANE
             let mut raw_params = parse_query_params(
@@ -254,21 +219,18 @@ impl Home {
                 .collect();
 
             if self.details_tabs.contains(&DetailsPane::QueryParams) {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::QueryParams),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::QueryParams)),
+                )
             } else {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::QueryParams),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::QueryParams)),
+                )
             };
 
-            self.query_params_list =
-                ActionableList::new(next_items, self.query_params_list.state.clone());
+            self.query_params_list = ActionableList::with_items(next_items);
 
             // RESPONSE DETAILS PANE
             let mut items: Vec<ActionableListItem> = vec![];
@@ -302,21 +264,18 @@ impl Home {
             ));
 
             if self.details_tabs.contains(&DetailsPane::ResponseDetails) {
-                items.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::ResponseDetails),
-                ))
+                items.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::ResponseDetails)),
+                )
             } else {
-                items.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::ResponseDetails),
-                ))
+                items.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::ResponseDetails)),
+                )
             };
 
-            self.response_details_list =
-                ActionableList::new(items, self.response_details_list.state.clone());
+            self.response_details_list = ActionableList::with_items(items);
 
             // REQUEST HEADERS PANE
             let headers = trace.http.clone().unwrap_or_default().request_headers;
@@ -339,21 +298,18 @@ impl Home {
                 .collect();
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::RequestHeaders) {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::RequestHeaders),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::RequestHeaders)),
+                )
             } else {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::RequestHeaders),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::RequestHeaders)),
+                )
             };
 
-            self.request_headers_list =
-                ActionableList::new(next_items, self.request_headers_list.state.clone());
+            self.request_headers_list = ActionableList::with_items(next_items);
 
             // RESPONSE HEADERS PANE
             let headers = trace.http.clone().unwrap_or_default().response_headers;
@@ -377,21 +333,18 @@ impl Home {
 
             // add available actions to the item list
             if self.details_tabs.contains(&DetailsPane::ResponseHeaders) {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "pop-out [↗]",
-                    Action::PopOutDetailsTab(DetailsPane::ResponseHeaders),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "pop-out [↗]")
+                        .with_action(Action::PopOutDetailsTab(DetailsPane::ResponseHeaders)),
+                )
             } else {
-                next_items.push(ActionableListItem::with_action(
-                    "actions",
-                    "close [x]",
-                    Action::CloseDetailsPane(DetailsPane::ResponseHeaders),
-                ))
+                next_items.push(
+                    ActionableListItem::with_labelled_value("actions", "close [x]")
+                        .with_action(Action::CloseDetailsPane(DetailsPane::ResponseHeaders)),
+                )
             };
 
-            self.response_headers_list =
-                ActionableList::new(next_items, self.response_headers_list.state.clone());
+            self.response_headers_list = ActionableList::with_items(next_items);
 
             // TIMING PANE
             let next_items: Vec<ActionableListItem> = vec![
@@ -404,7 +357,7 @@ impl Home {
                 ActionableListItem::with_label("receiving"),
             ];
 
-            self.timing_list = ActionableList::new(next_items, self.timing_list.state.clone());
+            self.timing_list = ActionableList::with_items(next_items);
         }
     }
 }
@@ -471,8 +424,6 @@ impl Component for Home {
                     return Ok(Some(Action::QuitApplication));
                 }
 
-                self.filter_index = 0;
-
                 self.active_block = last_block.unwrap();
 
                 Ok(None)
@@ -484,20 +435,30 @@ impl Component for Home {
             Action::Select => Ok(handlers::handle_select(self)),
             Action::HandleFilter(l) => Ok(handlers::handle_general_status(self, l.to_string())),
             Action::OpenFilter => {
-                let current_block = self.active_block;
+                if self.active_block.is_filter() {
+                    return Ok(None);
+                }
 
-                self.previous_blocks.push(current_block);
-
-                self.active_block = ActiveBlock::Filter(crate::app::FilterScreen::FilterMain);
+                self.filter_source_index = 0;
+                self.filter_value_index = 0;
+                self.selected_filters = TraceFilter::default();
+                self.previous_blocks.push(self.active_block);
+                self.active_block = ActiveBlock::Filter(FilterScreen::Main);
 
                 Ok(None)
             }
             Action::OpenSort => {
-                let current_block = self.active_block;
+                if self.active_block.is_sort() {
+                    return Ok(None);
+                }
 
-                self.previous_blocks.push(current_block);
-
-                self.active_block = ActiveBlock::Sort;
+                self.sort_sources.reset();
+                self.sort_sources.top(0);
+                self.sort_directions.reset();
+                self.sort_directions.top(0);
+                self.selected_sort = TraceSort::default();
+                self.previous_blocks.push(self.active_block);
+                self.active_block = ActiveBlock::Sort(SortScreen::Source);
 
                 Ok(None)
             }
@@ -512,7 +473,6 @@ impl Component for Home {
             Action::UpdateSearchQuery(c) => Ok(handlers::handle_search_push(self, c)),
             Action::DeleteSearchQuery => Ok(handlers::handle_search_pop(self)),
             Action::ExitSearch => Ok(handlers::handle_search_exit(self)),
-            Action::ShowTraceDetails => Ok(handlers::handle_enter(self)),
             Action::FocusOnTraces => Ok(handlers::handle_esc(self)),
             Action::StopWebSocketServer => {
                 self.wss_connected = false;
@@ -573,6 +533,71 @@ impl Component for Home {
 
                 Ok(None)
             }
+            Action::ActivateBlock(block) => {
+                if block == ActiveBlock::Sort(SortScreen::Actions) {
+                    self.sort_actions.next();
+                } else {
+                    self.sort_actions.reset();
+                }
+
+                if block == ActiveBlock::Filter(FilterScreen::Actions) {
+                    self.filter_actions.next();
+                } else {
+                    self.filter_actions.reset();
+                }
+
+                self.active_block = block;
+
+                Ok(None)
+            }
+            Action::SelectSortDirection(direction) => {
+                if let Some(next) = self
+                    .sort_directions
+                    .items
+                    .iter()
+                    .position(|item| item.label == direction.to_string())
+                {
+                    self.sort_directions.select(next);
+                }
+
+                self.selected_sort = TraceSort {
+                    direction,
+                    source: self.selected_sort.source.clone(),
+                };
+
+                Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
+                    SortScreen::Actions,
+                ))))
+            }
+            Action::SelectSortSource(source) => {
+                if let Some(next) = self
+                    .sort_sources
+                    .items
+                    .iter()
+                    .position(|item| item.label == source.to_string())
+                {
+                    self.sort_sources.select(next);
+                }
+
+                self.selected_sort = TraceSort {
+                    direction: self.selected_sort.direction.clone(),
+                    source,
+                };
+
+                Ok(Some(Action::ActivateBlock(ActiveBlock::Sort(
+                    SortScreen::Direction,
+                ))))
+            }
+            Action::UpdateSort => {
+                self.sort_directions.select(0);
+
+                self.sort = self.selected_sort.clone();
+                Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
+            }
+            Action::UpdateFilter => {
+                self.filters = self.selected_filters.clone();
+                Ok(Some(Action::ActivateBlock(ActiveBlock::Traces)))
+            }
             _ => Ok(None),
         }
     }
@@ -588,7 +613,7 @@ impl Component for Home {
 
                 render::render_help(self, frame, main_layout[0]);
             }
-            ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
+            ActiveBlock::Filter(_) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(3)
@@ -597,34 +622,7 @@ impl Component for Home {
 
                 render::render_filters(self, frame, main_layout[0]);
             }
-            ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(3)
-                    .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(rect);
-
-                render::render_filters_source(self, frame, main_layout[0]);
-            }
-            ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(3)
-                    .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(rect);
-
-                render::render_filters_status(self, frame, main_layout[0]);
-            }
-            ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
-                let main_layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .margin(3)
-                    .constraints([Constraint::Percentage(100)].as_ref())
-                    .split(rect);
-
-                render::render_filters_method(self, frame, main_layout[0]);
-            }
-            ActiveBlock::Sort => {
+            ActiveBlock::Sort(_) => {
                 let main_layout = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(3)
@@ -658,12 +656,9 @@ impl Component for Home {
                         .direction(Direction::Horizontal)
                         .constraints(
                             [Constraint::Percentage(35), Constraint::Percentage(65)].as_ref(),
-                        )
-                        .split(main_layout[0]);
+                        );
 
-                    let [left_column, right_column, ..] = main_columns[..] else {
-                        todo!()
-                    };
+                    let [left_column, right_column] = main_columns.areas(main_layout[0]);
 
                     let right_column_layout = Layout::default()
                         .direction(Direction::Vertical)

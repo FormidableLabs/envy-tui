@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use crossterm::event::KeyEvent;
+use http::Method;
 use ratatui::widgets::ScrollbarState;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumIs, EnumIter};
@@ -13,12 +15,14 @@ use tokio::sync::Mutex;
 
 use crate::components::component::Component;
 use crate::components::handlers::HandlerMetadata;
-use crate::components::home::{Home, WebSockerInternalState};
+use crate::components::home::Home;
 use crate::services::websocket::{Client, Trace};
 use crate::tui::{Event, Tui};
 use crate::wss::client;
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize, Display, EnumIs, EnumIter)]
+#[derive(
+    Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize, Display, EnumIs, EnumIter,
+)]
 #[repr(u8)]
 pub enum DetailsPane {
     #[default]
@@ -46,10 +50,11 @@ pub enum Mode {
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilterScreen {
     #[default]
-    FilterMain,
-    FilterMethod,
-    FilterSource,
-    FilterStatus,
+    Main,
+    Method,
+    Source,
+    Status,
+    Actions,
 }
 
 impl Display for FilterScreen {
@@ -58,7 +63,15 @@ impl Display for FilterScreen {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SortScreen {
+    #[default]
+    Source,
+    Direction,
+    Actions,
+}
+
+#[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize, strum_macros::EnumIs)]
 pub enum ActiveBlock {
     #[default]
     Traces,
@@ -68,7 +81,7 @@ pub enum ActiveBlock {
     Help,
     Debug,
     Filter(FilterScreen),
-    Sort,
+    Sort(SortScreen),
     SearchQuery,
 }
 
@@ -108,6 +121,10 @@ pub enum Action {
     QuitApplication,
     NewSearch,
     UpdateSearchQuery(char),
+    UpdateFilter,
+    UpdateSort,
+    SelectSortSource(SortSource),
+    SelectSortDirection(SortDirection),
     DeleteSearchQuery,
     ExitSearch,
     Help,
@@ -129,7 +146,7 @@ pub enum Action {
     #[serde(skip)]
     SetGeneralStatus(String),
     #[serde(skip)]
-    SetWebsocketStatus(WebSockerInternalState),
+    SetWebsocketStatus(WebSocketInternalState),
     #[serde(skip)]
     MarkTraceAsTimedOut(String),
     #[serde(skip)]
@@ -142,6 +159,155 @@ pub enum Action {
     ActivateBlock(ActiveBlock),
     PopOutDetailsTab(DetailsPane),
     CloseDetailsPane(DetailsPane),
+}
+
+#[derive(Default, PartialEq, Eq, Debug, Clone)]
+pub enum WebSocketInternalState {
+    Connected(usize),
+    Open,
+    #[default]
+    Closed,
+}
+
+#[derive(Clone, PartialEq, Debug, Eq, Default)]
+pub enum SourceFilter {
+    #[default]
+    All,
+    Applied(HashSet<String>),
+}
+
+#[derive(Clone)]
+pub struct TraceFilter {
+    pub source: SourceFilter,
+    pub method: HashMap<Method, MethodFilter>,
+    pub status: HashMap<String, StatusFilter>,
+}
+
+impl Default for TraceFilter {
+    fn default() -> Self {
+        let mut method: HashMap<Method, MethodFilter> = HashMap::new();
+        let mut status: HashMap<String, StatusFilter> = HashMap::new();
+
+        vec!["1xx", "2xx", "3xx", "4xx", "5xx"].iter().for_each(|http_status| {
+            status.insert(
+                http_status.to_string(),
+                StatusFilter {
+                    status: http_status.to_string(),
+                    selected: false,
+                    name: http_status.to_string(),
+                },
+            );
+        });
+
+        vec![
+            Method::POST,
+            Method::GET,
+            Method::DELETE,
+            Method::PUT,
+            Method::PATCH,
+            Method::OPTIONS,
+        ].iter().for_each(|http_method| {
+            method.insert(
+                http_method.clone(),
+                MethodFilter {
+                    method: http_method.clone(),
+                    selected: false,
+                    name: http_method.to_string(),
+                },
+            );
+        });
+
+        Self {
+            source: SourceFilter::default(),
+            method,
+            status,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct MethodFilter {
+    pub method: Method,
+    pub name: String,
+    pub selected: bool,
+}
+
+#[derive(Clone, Default)]
+pub struct StatusFilter {
+    pub status: String,
+    pub name: String,
+    pub selected: bool,
+}
+
+#[derive(
+    Default,
+    PartialEq,
+    Eq,
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    strum_macros::AsRefStr,
+)]
+pub enum SortDirection {
+    Ascending,
+    #[default]
+    Descending,
+}
+
+#[derive(
+    Default,
+    PartialEq,
+    Eq,
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    strum_macros::AsRefStr,
+)]
+pub enum SortSource {
+    Method,
+    Status,
+    Source,
+    Url,
+    Duration,
+    #[default]
+    Timestamp,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Default)]
+pub struct TraceSort {
+    pub source: SortSource,
+    pub direction: SortDirection,
+}
+
+impl Display for TraceSort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.source, self.direction)
+    }
+}
+
+impl Display for SortDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SortDirection::Ascending => write!(f, "↑"),
+            SortDirection::Descending => write!(f, "↓"),
+        }
+    }
+}
+
+impl Display for SortSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SortSource::Timestamp => write!(f, "Timestamp"),
+            SortSource::Method => write!(f, "Method"),
+            SortSource::Status => write!(f, "Status"),
+            SortSource::Duration  => write!(f, "Duration"),
+            SortSource::Source =>write!(f, "Source"),
+            SortSource::Url => write!(f, "Url"),
+
+        }
+    }
 }
 
 #[derive(Default)]
