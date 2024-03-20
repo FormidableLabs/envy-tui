@@ -1,4 +1,7 @@
-use crate::app::{Action, ActiveBlock, DetailsPane, FilterScreen};
+use crate::app::{
+    Action, ActiveBlock, DetailsPane, FilterScreen, MethodFilter, SortScreen, SourceFilter,
+    StatusFilter,
+};
 use crate::components::home::Home;
 use crate::consts::{
     NETWORK_REQUESTS_UNUSABLE_VERTICAL_SPACE, REQUEST_HEADERS_UNUSABLE_VERTICAL_SPACE,
@@ -9,7 +12,7 @@ use crate::render::get_services_from_traces;
 use crate::services::websocket::Trace;
 use crate::utils::{
     calculate_scrollbar_position, get_content_length, get_currently_selected_trace,
-    get_rendered_items, set_content_length, Ordering, TraceSort,
+    get_rendered_items, set_content_length,
 };
 use crossterm::event::{KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
@@ -17,8 +20,6 @@ use std::collections::HashSet;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
-
-use super::home::{FilterSource, MethodFilter, StatusFilter};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct HandlerMetadata {
@@ -105,22 +106,44 @@ pub fn handle_up(
             _ => None,
         },
         _ => match (app.active_block, app.details_block) {
-            (ActiveBlock::Filter(_), _) => match app.filter_index.checked_sub(1) {
+            (ActiveBlock::Filter(FilterScreen::Main), _) => {
+                match app.filter_source_index.checked_sub(1) {
+                    Some(v) => {
+                        app.filter_source_index = v;
+
+                        None
+                    }
+                    _ => None,
+                }
+            }
+            (ActiveBlock::Filter(FilterScreen::Actions), _) => {
+                app.filter_actions.previous();
+
+                None
+            }
+            (ActiveBlock::Filter(_), _) => match app.filter_value_index.checked_sub(1) {
                 Some(v) => {
-                    app.filter_index = v;
+                    app.filter_value_index = v;
 
                     None
                 }
                 _ => None,
             },
-            (ActiveBlock::Sort, _) => match app.sort_index.checked_sub(1) {
-                Some(v) => {
-                    app.sort_index = v;
+            (ActiveBlock::Sort(SortScreen::Source), _) => {
+                app.sort_sources.previous();
 
-                    None
-                }
-                _ => None,
-            },
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::Direction), _) => {
+                app.sort_directions.previous();
+
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::Actions), _) => {
+                app.sort_actions.previous();
+
+                None
+            }
             (ActiveBlock::Traces, _) => {
                 if app.main.index > 0 {
                     app.main.index -= 1;
@@ -246,38 +269,51 @@ pub fn handle_down(
             _ => None,
         },
         _ => match (app.active_block, app.details_block) {
-            (ActiveBlock::Filter(FilterScreen::FilterMethod), _) => {
-                if app.filter_index + 1 < app.method_filters.len() {
-                    app.filter_index += 1;
+            (ActiveBlock::Filter(FilterScreen::Method), _) => {
+                if app.filter_value_index + 1 < app.selected_filters.method.len() {
+                    app.filter_value_index += 1;
                 }
 
                 None
             }
-            (ActiveBlock::Filter(FilterScreen::FilterSource), _) => {
-                if app.filter_index + 1 < get_services_from_traces(app).len() + 1 {
-                    app.filter_index += 1;
+            (ActiveBlock::Filter(FilterScreen::Source), _) => {
+                if app.filter_value_index + 1 < get_services_from_traces(app).len() + 1 {
+                    app.filter_value_index += 1;
                 }
 
                 None
             }
-            (ActiveBlock::Filter(FilterScreen::FilterMain), _) => {
-                if app.filter_index + 1 < 3 {
-                    app.filter_index += 1;
+            (ActiveBlock::Filter(FilterScreen::Main), _) => {
+                if app.filter_source_index + 1 < 3 {
+                    app.filter_source_index += 1;
                 }
 
                 None
             }
-            (ActiveBlock::Filter(FilterScreen::FilterStatus), _) => {
-                if app.filter_index + 1 < app.status_filters.len() {
-                    app.filter_index += 1;
+            (ActiveBlock::Filter(FilterScreen::Status), _) => {
+                if app.filter_value_index + 1 < app.selected_filters.status.len() {
+                    app.filter_value_index += 1;
                 }
 
                 None
             }
-            (ActiveBlock::Sort, _) => {
-                if app.sort_index + 1 < 12 {
-                    app.sort_index += 1;
-                }
+            (ActiveBlock::Filter(FilterScreen::Actions), _) => {
+                app.filter_actions.next();
+
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::Source), _) => {
+                app.sort_sources.next();
+
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::Direction), _) => {
+                app.sort_directions.next();
+
+                None
+            }
+            (ActiveBlock::Sort(SortScreen::Actions), _) => {
+                app.sort_actions.next();
 
                 None
             }
@@ -364,24 +400,6 @@ pub fn handle_down(
     }
 }
 
-pub fn handle_enter(app: &mut Home) -> Option<Action> {
-    if app.active_block == ActiveBlock::Traces {
-        app.active_block = ActiveBlock::Details;
-        None
-    } else if app.active_block == ActiveBlock::Details {
-        match app.details_block {
-            DetailsPane::RequestDetails => app.request_details_list.select(),
-            DetailsPane::QueryParams => app.query_params_list.select(),
-            DetailsPane::RequestHeaders => app.request_headers_list.select(),
-            DetailsPane::ResponseDetails => app.response_details_list.select(),
-            DetailsPane::ResponseHeaders => app.response_headers_list.select(),
-            DetailsPane::Timing => app.timing_list.select(),
-        }
-    } else {
-        None
-    }
-}
-
 pub fn handle_esc(app: &mut Home) -> Option<Action> {
     app.active_block = ActiveBlock::Traces;
 
@@ -430,6 +448,18 @@ pub fn handle_tab(app: &mut Home) -> Option<Action> {
         ActiveBlock::Details => ActiveBlock::ResponseBody,
         ActiveBlock::ResponseBody => ActiveBlock::RequestBody,
         ActiveBlock::RequestBody => ActiveBlock::Traces,
+        ActiveBlock::Filter(screen) => match screen {
+            FilterScreen::Main => ActiveBlock::Filter(FilterScreen::Actions),
+            FilterScreen::Source => ActiveBlock::Filter(FilterScreen::Actions),
+            FilterScreen::Method => ActiveBlock::Filter(FilterScreen::Actions),
+            FilterScreen::Status => ActiveBlock::Filter(FilterScreen::Actions),
+            FilterScreen::Actions => ActiveBlock::Filter(FilterScreen::Main),
+        },
+        ActiveBlock::Sort(screen) => match screen {
+            SortScreen::Source => ActiveBlock::Sort(SortScreen::Direction),
+            SortScreen::Direction => ActiveBlock::Sort(SortScreen::Actions),
+            SortScreen::Actions => ActiveBlock::Sort(SortScreen::Source),
+        },
         _ => app.active_block,
     };
 
@@ -452,6 +482,18 @@ pub fn handle_back_tab(app: &mut Home) -> Option<Action> {
         ActiveBlock::Details => ActiveBlock::Traces,
         ActiveBlock::RequestBody => ActiveBlock::ResponseBody,
         ActiveBlock::ResponseBody => ActiveBlock::Details,
+        ActiveBlock::Filter(screen) => match screen {
+            FilterScreen::Main => ActiveBlock::Filter(FilterScreen::Actions),
+            FilterScreen::Source => ActiveBlock::Filter(FilterScreen::Main),
+            FilterScreen::Method => ActiveBlock::Filter(FilterScreen::Main),
+            FilterScreen::Status => ActiveBlock::Filter(FilterScreen::Main),
+            FilterScreen::Actions => ActiveBlock::Filter(FilterScreen::Main),
+        },
+        ActiveBlock::Sort(screen) => match screen {
+            SortScreen::Source => ActiveBlock::Sort(SortScreen::Actions),
+            SortScreen::Direction => ActiveBlock::Sort(SortScreen::Source),
+            SortScreen::Actions => ActiveBlock::Sort(SortScreen::Direction),
+        },
         _ => app.active_block,
     };
 
@@ -722,7 +764,9 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.request_headers_list.state.offset() >= { usable_height as usize };
+                                app.request_headers_list.scroll_state.offset() >= {
+                                    usable_height as usize
+                                };
 
                             let offset_does_not_intersects_bottom_of_rect =
                                 (app.request_details.offset as u16 + usable_height)
@@ -765,7 +809,9 @@ pub fn handle_go_to_end(app: &mut Home, additional_metadata: HandlerMetadata) ->
 
                         if requires_scrollbar {
                             let current_index_hit_viewport_end =
-                                app.response_headers_list.state.offset() >= { usable_height as usize };
+                                app.response_headers_list.scroll_state.offset() >= {
+                                    usable_height as usize
+                                };
 
                             let offset_does_not_intersects_bottom_of_rect =
                                 (app.response_details.offset as u16 + usable_height)
@@ -879,97 +925,46 @@ pub fn handle_general_status(app: &mut Home, s: String) -> Option<Action> {
 
 pub fn handle_select(app: &mut Home) -> Option<Action> {
     match app.active_block {
-        ActiveBlock::Sort => {
-            let filter_items = vec![
-                ("Method", "Asc"),
-                ("Method", "Desc"),
-                ("Source", "Asc"),
-                ("Source", "Desc"),
-                ("Status", "Asc"),
-                ("Status", "Desc"),
-                ("Timestamp", "Asc"),
-                ("Timestamp", "Desc"),
-                ("Duration", "Asc"),
-                ("Duration", "Desc"),
-                ("Url", "Asc"),
-                ("Url", "Desc"),
-            ];
-
-            let selected_filter = filter_items.iter().nth(app.sort_index).cloned();
-
-            if let Some(selected_filter) = selected_filter {
-                match selected_filter {
-                    ("Method", "Asc") => app.order = TraceSort::Method(Ordering::Ascending),
-                    ("Method", "Desc") => app.order = TraceSort::Method(Ordering::Descending),
-                    ("Status", "Asc") => app.order = TraceSort::Status(Ordering::Ascending),
-                    ("Status", "Desc") => app.order = TraceSort::Status(Ordering::Descending),
-                    ("Timestamp", "Asc") => app.order = TraceSort::Timestamp(Ordering::Ascending),
-                    ("Timestamp", "Desc") => app.order = TraceSort::Timestamp(Ordering::Descending),
-                    ("Url", "Asc") => app.order = TraceSort::Url(Ordering::Ascending),
-                    ("Url", "Desc") => app.order = TraceSort::Url(Ordering::Descending),
-                    ("Duration", "Asc") => app.order = TraceSort::Duration(Ordering::Ascending),
-                    ("Duration", "Desc") => app.order = TraceSort::Duration(Ordering::Descending),
-                    ("Source", "Asc") => app.order = TraceSort::Source(Ordering::Ascending),
-                    ("Source", "Desc") => app.order = TraceSort::Source(Ordering::Descending),
-                    (_, _) => {}
-                }
-            }
-
-            None
-        }
-        ActiveBlock::Filter(crate::app::FilterScreen::FilterMain) => {
+        ActiveBlock::Sort(SortScreen::Source) => app.sort_sources.action(),
+        ActiveBlock::Sort(SortScreen::Direction) => app.sort_directions.action(),
+        ActiveBlock::Sort(SortScreen::Actions) => app.sort_actions.action(),
+        ActiveBlock::Filter(FilterScreen::Actions) => app.filter_actions.action(),
+        ActiveBlock::Filter(FilterScreen::Main) => {
             let blocks = vec!["method", "source", "status"];
 
-            let maybe_selected_filter = blocks.iter().nth(app.filter_index).cloned();
+            let maybe_selected_filter = blocks.iter().nth(app.filter_source_index).cloned();
 
             if let Some(selected_filter) = maybe_selected_filter {
-                match selected_filter {
-                    "method" => {
-                        app.previous_blocks
-                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
+                let screen = match selected_filter {
+                    "method" => FilterScreen::Method,
+                    "source" => FilterScreen::Source,
+                    "status" => FilterScreen::Status,
+                    _ => FilterScreen::default(),
+                };
 
-                        app.active_block =
-                            ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod)
-                    }
-                    "source" => {
-                        app.previous_blocks
-                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
-
-                        app.active_block =
-                            ActiveBlock::Filter(crate::app::FilterScreen::FilterSource)
-                    }
-                    "status" => {
-                        app.previous_blocks
-                            .push(ActiveBlock::Filter(crate::app::FilterScreen::FilterMain));
-
-                        app.active_block =
-                            ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus)
-                    }
-                    _ => {}
-                }
+                app.filter_value_screen = screen;
+                app.filter_value_index = 0;
+                app.active_block = ActiveBlock::Filter(screen);
             };
-
-            app.filter_index = 0;
 
             None
         }
 
-        ActiveBlock::Filter(crate::app::FilterScreen::FilterStatus) => {
+        ActiveBlock::Filter(FilterScreen::Status) => {
             let current_service = app
-                .status_filters
+                .selected_filters
+                .status
                 .iter()
                 .map(|(key, _item)| key)
-                .nth(app.filter_index);
+                .nth(app.filter_value_index);
 
             if current_service.is_none() {
                 return None;
             }
 
             if let Some(filter) = current_service {
-                if let Some(status_filter) = app.status_filters.get(filter) {
-                    let d = status_filter.clone();
-
-                    app.status_filters.insert(
+                if let Some(d) = app.selected_filters.status.get(filter) {
+                    app.selected_filters.status.insert(
                         filter.clone(),
                         StatusFilter {
                             name: d.name.clone(),
@@ -990,22 +985,21 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             None
         }
-        ActiveBlock::Filter(crate::app::FilterScreen::FilterMethod) => {
+        ActiveBlock::Filter(FilterScreen::Method) => {
             let current_service = app
-                .method_filters
+                .selected_filters
+                .method
                 .iter()
                 .map(|(a, _item)| a)
-                .nth(app.filter_index);
+                .nth(app.filter_value_index);
 
             if current_service.is_none() {
                 return None;
             }
 
             if let Some(filter) = current_service {
-                if let Some(d) = app.method_filters.get(filter) {
-                    let d = d.clone();
-
-                    app.method_filters.insert(
+                if let Some(d) = app.selected_filters.method.get(filter) {
+                    app.selected_filters.method.insert(
                         filter.clone(),
                         MethodFilter {
                             name: d.name.clone(),
@@ -1026,7 +1020,7 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             None
         }
-        ActiveBlock::Filter(crate::app::FilterScreen::FilterSource) => {
+        ActiveBlock::Filter(FilterScreen::Source) => {
             let mut services = get_services_from_traces(app);
 
             let mut a: Vec<String> = vec!["All".to_string()];
@@ -1035,39 +1029,35 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
 
             services = a;
 
-            let selected_filter = services.iter().nth(app.filter_index).cloned();
-
-            if selected_filter.is_none() {
-                return None;
-            }
+            let selected_filter = services.iter().nth(app.filter_value_index).cloned();
 
             if let Some(filter) = selected_filter {
                 match filter.as_str() {
-                    "All" => app.set_filter_source(FilterSource::All),
-                    source => match app.get_filter_source() {
-                        FilterSource::All => {
+                    "All" => app.selected_filters.source = SourceFilter::All,
+                    source => match &app.selected_filters.source {
+                        SourceFilter::All => {
                             let mut set = HashSet::new();
 
                             set.insert(source.to_string());
 
-                            app.set_filter_source(FilterSource::Applied(set))
+                            app.selected_filters.source = SourceFilter::Applied(set)
                         }
-                        FilterSource::Applied(applied_sources) => {
+                        SourceFilter::Applied(applied_sources) => {
                             if applied_sources.contains(&source.to_string()) {
                                 let mut set = applied_sources.clone();
 
                                 set.remove(source);
 
-                                app.set_filter_source(FilterSource::Applied(set))
+                                app.selected_filters.source = SourceFilter::Applied(set)
                             } else {
                                 let mut set = applied_sources.clone();
 
                                 set.insert(source.to_string());
 
                                 if set.len() == get_services_from_traces(app).len() {
-                                    app.set_filter_source(FilterSource::All)
+                                    app.selected_filters.source = SourceFilter::All
                                 } else {
-                                    app.set_filter_source(FilterSource::Applied(set))
+                                    app.selected_filters.source = SourceFilter::Applied(set)
                                 }
                             }
                         }
@@ -1090,7 +1080,22 @@ pub fn handle_select(app: &mut Home) -> Option<Action> {
             app.main.scroll_state = app.main.scroll_state.content_length(length.into());
 
             None
-        }
+        },
+        ActiveBlock::Traces => {
+            app.active_block = ActiveBlock::Details;
+
+            None
+        },
+        ActiveBlock::Details => {
+            match app.details_block {
+                DetailsPane::RequestDetails => app.request_details_list.action(),
+                DetailsPane::QueryParams => app.query_params_list.action(),
+                DetailsPane::RequestHeaders => app.request_headers_list.action(),
+                DetailsPane::ResponseDetails => app.response_details_list.action(),
+                DetailsPane::ResponseHeaders => app.response_headers_list.action(),
+                DetailsPane::Timing => app.timing_list.action(),
+            }
+        },
         _ => None,
     }
 }

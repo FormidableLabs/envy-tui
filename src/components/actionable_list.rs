@@ -24,11 +24,10 @@ impl ActionableListItem {
             action: None,
         }
     }
-    pub fn with_action(label: &str, value: &str, action: Action) -> Self {
+    pub fn with_action(self, action: Action) -> Self {
         Self {
-            label: label.to_string(),
-            value: Some(value.to_string()),
             action: Some(action),
+            ..self
         }
     }
 }
@@ -36,16 +35,50 @@ impl ActionableListItem {
 #[derive(Default, new)]
 pub struct ActionableList {
     pub items: Vec<ActionableListItem>,
-    pub state: ListState,
+    pub scroll_state: ListState,
+    pub select_state: ListState,
+    pub show_select_labels: bool,
 }
 
 impl ActionableList {
+    pub fn with_items(items: Vec<ActionableListItem>) -> Self {
+        Self {
+            items,
+            scroll_state: ListState::default(),
+            select_state: ListState::default(),
+            show_select_labels: false,
+        }
+    }
+
+    pub fn with_scroll_state(self, scroll_state: ListState) -> Self {
+        Self {
+            scroll_state,
+            ..self
+        }
+    }
+
+    pub fn with_select_labels(self) -> Self {
+        Self {
+            show_select_labels: true,
+            ..self
+        }
+    }
+
     pub fn reset(&mut self) {
-        self.state.select(Some(0));
+        self.scroll_state.select(None);
+        self.select_state.select(None);
+    }
+
+    pub fn top(&mut self, index: usize) {
+        self.scroll_state.select(Some(index));
+    }
+
+    pub fn select(&mut self, index: usize) {
+        self.select_state.select(Some(index));
     }
 
     pub fn next(&mut self) {
-        let i = match self.state.selected() {
+        let i = match self.scroll_state.selected() {
             Some(i) => {
                 if i >= self.items.len().saturating_sub(1) {
                     i
@@ -55,11 +88,11 @@ impl ActionableList {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        self.scroll_state.select(Some(i));
     }
 
     pub fn previous(&mut self) {
-        let i = match self.state.selected() {
+        let i = match self.scroll_state.selected() {
             Some(i) => {
                 if i == 0 {
                     i
@@ -69,11 +102,11 @@ impl ActionableList {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        self.scroll_state.select(Some(i));
     }
 
-    pub fn select(&mut self) -> Option<Action> {
-        match self.state.selected() {
+    pub fn action(&mut self) -> Option<Action> {
+        match self.scroll_state.selected() {
             Some(i) => {
                 if let Some(item) = self.items.get(i) {
                     item.action.clone()
