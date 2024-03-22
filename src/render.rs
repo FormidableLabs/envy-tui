@@ -509,7 +509,7 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
 
             let duration = match duration {
                 Some(v) => {
-                    format!("{:.3} s", ((v as f32) / 1000.0))
+                    format!("{:.3}s", ((v as f32) / 1000.0))
                 }
                 None => "...".to_string(),
             };
@@ -548,8 +548,8 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
         &[
             Constraint::Percentage(10),
             Constraint::Percentage(10),
-            Constraint::Percentage(60),
-            Constraint::Length(20),
+            Constraint::Percentage(67),
+            Constraint::Percentage(13),
         ],
     )
     // You can set the style of the entire Table.
@@ -573,7 +573,8 @@ pub fn render_traces(app: &Home, frame: &mut Frame, area: Rect) {
                     .position(Position::Bottom)
                     .alignment(Alignment::Right),
             )
-            .border_type(BorderType::Plain),
+            .border_type(BorderType::Plain)
+            .padding(Padding::new(2, 2, 1, 1)),
     );
 
     let vertical_scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
@@ -1220,11 +1221,7 @@ pub fn render_sort(app: &mut Home, frame: &mut Frame, area: Rect) {
 fn render_table(rows: Vec<Row>, frame: &mut Frame, area: Rect, colors: &Colors, active: bool) {
     let table = Table::new(
         [rows].concat(),
-        &[
-            Constraint::Percentage(15),
-            Constraint::Percentage(15),
-            Constraint::Percentage(60),
-        ],
+        &[Constraint::Percentage(50), Constraint::Percentage(50)],
     )
     .block(Block::default().padding(Padding::new(1, 0, 0, 0)))
     .style(if active {
